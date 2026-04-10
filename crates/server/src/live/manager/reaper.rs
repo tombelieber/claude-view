@@ -433,6 +433,7 @@ mod tests {
                 cache_creation_tokens: None,
                 cost_usd: None,
                 current_activity: Some("Read".to_string()),
+                error_reason: None,
             },
             SubAgentInfo {
                 tool_use_id: "toolu_done".to_string(),
@@ -451,6 +452,7 @@ mod tests {
                 cache_creation_tokens: None,
                 cost_usd: Some(0.001),
                 current_activity: None,
+                error_reason: None,
             },
             SubAgentInfo {
                 tool_use_id: "toolu_run2".to_string(),
@@ -469,6 +471,7 @@ mod tests {
                 cache_creation_tokens: None,
                 cost_usd: None,
                 current_activity: Some("Grep".to_string()),
+                error_reason: None,
             },
         ];
 

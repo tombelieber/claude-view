@@ -536,6 +536,10 @@ mod tests {
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Complete);
         assert!(acc.sub_agents[0].completed_at.is_some());
         assert_eq!(acc.sub_agents[0].current_activity, None);
+        assert_eq!(
+            acc.sub_agents[0].error_reason, None,
+            "completed notification should have no error_reason"
+        );
     }
 
     #[test]
@@ -585,6 +589,11 @@ mod tests {
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
+        assert_eq!(
+            acc.sub_agents[0].error_reason.as_deref(),
+            Some("failed"),
+            "notification error_reason should carry the status string"
+        );
     }
 
     #[test]
@@ -634,6 +643,11 @@ mod tests {
         acc.process_line(&notif_line, 0, &pricing);
 
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
+        assert_eq!(
+            acc.sub_agents[0].error_reason.as_deref(),
+            Some("killed"),
+            "notification error_reason should carry the status string"
+        );
     }
 
     #[test]
@@ -688,31 +702,41 @@ mod tests {
     }
 
     #[test]
-    fn test_sub_agent_unknown_nonterminal_status_stays_running() {
-        // Forward-compatibility: any unrecognized status that isn't a known
-        // terminal ("completed"/"failed"/"killed") should keep the agent Running.
-        // This prevents future protocol additions from breaking the UI.
-        let mut acc = SessionAccumulator::new();
+    fn test_sub_agent_unknown_status_becomes_error() {
+        // Safety: any status not in the whitelist (completed, async_launched,
+        // teammate_spawned, queued) is treated as terminal Error.
+        // This catches interrupted/rejected subagents that return free-form
+        // error strings like "Error: [Request interrupted by user for tool use]".
         let pricing = HashMap::new();
 
-        let mut spawn_line = empty_line();
-        spawn_line.line_type = LineType::Assistant;
-        spawn_line
-            .sub_agent_spawns
-            .push(crate::live_parser::SubAgentSpawn {
-                tool_use_id: "toolu_01FUTURE".to_string(),
-                agent_type: "general-purpose".to_string(),
-                description: "future-agent".to_string(),
-                team_name: None,
-                model: None,
-            });
-        acc.process_line(&spawn_line, 0, &pricing);
+        for status in [
+            "delegated",
+            "pending_review",
+            "some_new_status",
+            "Error: [Request interrupted by user for tool use]",
+            "failed",
+            "killed",
+        ] {
+            let mut acc = SessionAccumulator::new();
+            let tid = format!("toolu_{}", status.replace(' ', "_"));
 
-        for status in ["queued", "delegated", "pending_review", "some_new_status"] {
+            let mut spawn_line = empty_line();
+            spawn_line.line_type = LineType::Assistant;
+            spawn_line
+                .sub_agent_spawns
+                .push(crate::live_parser::SubAgentSpawn {
+                    tool_use_id: tid.clone(),
+                    agent_type: "general-purpose".to_string(),
+                    description: "test-agent".to_string(),
+                    team_name: None,
+                    model: None,
+                });
+            acc.process_line(&spawn_line, 0, &pricing);
+
             let mut result_line = empty_line();
             result_line.line_type = LineType::User;
             result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
-                tool_use_id: "toolu_01FUTURE".to_string(),
+                tool_use_id: tid,
                 agent_id: Some("afuture1".to_string()),
                 status: status.to_string(),
                 total_duration_ms: None,
@@ -729,23 +753,79 @@ mod tests {
 
             assert_eq!(
                 acc.sub_agents[0].status,
+                SubAgentStatus::Error,
+                "status '{status}' should be Error (not in whitelist)"
+            );
+            assert_eq!(
+                acc.sub_agents[0].error_reason.as_deref(),
+                Some(status),
+                "error_reason should carry the original status string"
+            );
+        }
+    }
+
+    #[test]
+    fn test_sub_agent_whitelisted_nonterminal_stays_running() {
+        // Only the whitelisted non-terminal statuses keep the agent Running.
+        let pricing = HashMap::new();
+
+        for status in ["async_launched", "teammate_spawned", "queued"] {
+            let mut acc = SessionAccumulator::new();
+            let tid = format!("toolu_{status}");
+
+            let mut spawn_line = empty_line();
+            spawn_line.line_type = LineType::Assistant;
+            spawn_line
+                .sub_agent_spawns
+                .push(crate::live_parser::SubAgentSpawn {
+                    tool_use_id: tid.clone(),
+                    agent_type: "general-purpose".to_string(),
+                    description: "nonterminal-agent".to_string(),
+                    team_name: None,
+                    model: None,
+                });
+            acc.process_line(&spawn_line, 0, &pricing);
+
+            let mut result_line = empty_line();
+            result_line.line_type = LineType::User;
+            result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+                tool_use_id: tid,
+                agent_id: Some(format!("a_{status}")),
+                status: status.to_string(),
+                total_duration_ms: None,
+                total_tool_use_count: None,
+                usage_input_tokens: None,
+                usage_output_tokens: None,
+                usage_cache_read_tokens: None,
+                usage_cache_creation_tokens: None,
+                usage_cache_creation_5m_tokens: None,
+                usage_cache_creation_1hr_tokens: None,
+                model: None,
+            });
+            acc.process_line(&result_line, 0, &pricing);
+
+            assert_eq!(
+                acc.sub_agents[0].status,
                 SubAgentStatus::Running,
-                "status '{status}' should keep agent Running, not mark Error"
+                "whitelisted status '{status}' should keep agent Running"
+            );
+            assert_eq!(
+                acc.sub_agents[0].error_reason, None,
+                "Running agent should have no error_reason"
             );
         }
     }
 
     #[test]
     fn test_sub_agent_terminal_statuses_via_result() {
-        // "completed" -> Complete, "failed"/"killed" -> Error
-        // These are the ONLY statuses that should trigger state transitions
-        // in the toolUseResult path (non-notification).
+        // "completed" -> Complete (no error_reason),
+        // "failed"/"killed" -> Error (with error_reason).
         let pricing = HashMap::new();
 
-        for (status, expected) in [
-            ("completed", SubAgentStatus::Complete),
-            ("failed", SubAgentStatus::Error),
-            ("killed", SubAgentStatus::Error),
+        for (status, expected, expect_reason) in [
+            ("completed", SubAgentStatus::Complete, false),
+            ("failed", SubAgentStatus::Error, true),
+            ("killed", SubAgentStatus::Error, true),
         ] {
             let mut acc = SessionAccumulator::new();
             let tid = format!("toolu_{status}");
@@ -792,6 +872,20 @@ mod tests {
                 "terminal status '{status}' should set completed_at"
             );
             assert_eq!(acc.sub_agents[0].duration_ms, Some(5000));
+
+            // error_reason check
+            if expect_reason {
+                assert_eq!(
+                    acc.sub_agents[0].error_reason.as_deref(),
+                    Some(status),
+                    "Error status '{status}' should carry error_reason"
+                );
+            } else {
+                assert_eq!(
+                    acc.sub_agents[0].error_reason, None,
+                    "Complete status should have no error_reason"
+                );
+            }
         }
     }
 
@@ -846,6 +940,11 @@ mod tests {
 
         // Notifications are always terminal -- unknown = Error
         assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Error);
+        assert_eq!(
+            acc.sub_agents[0].error_reason.as_deref(),
+            Some("timed_out"),
+            "notification error_reason should carry the status string"
+        );
     }
 
     #[test]
@@ -1419,5 +1518,117 @@ mod tests {
 
         assert_eq!(acc.sub_agents.len(), 1);
         assert_eq!(acc.team_name, None);
+    }
+
+    // -----------------------------------------------------------------------
+    // Subagent error transparency — regression tests for inverted match fix
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_string_error_tool_use_result_transitions_to_error() {
+        // Production bug: a subagent interrupted/rejected by the user returns a
+        // toolUseResult with status = "Error: [Request interrupted by user for tool use]".
+        // Before the fix, the catch-all `_ => None` treated this as non-terminal,
+        // leaving the subagent as "running" forever.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_interrupted".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search codebase".to_string(),
+                team_name: None,
+                model: None,
+            });
+        acc.process_line(&spawn_line, 0, &pricing);
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Running);
+
+        // Interrupted result — free-form error string
+        let mut result_line = empty_line();
+        result_line.line_type = LineType::User;
+        result_line.timestamp = Some("2026-02-20T10:01:00Z".to_string());
+        result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_interrupted".to_string(),
+            agent_id: None,
+            status: "Error: [Request interrupted by user for tool use]".to_string(),
+            total_duration_ms: None,
+            total_tool_use_count: None,
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
+            model: None,
+        });
+        acc.process_line(&result_line, 0, &pricing);
+
+        assert_eq!(
+            acc.sub_agents[0].status,
+            SubAgentStatus::Error,
+            "interrupted subagent must be Error, not stuck as Running"
+        );
+        assert_eq!(
+            acc.sub_agents[0].error_reason.as_deref(),
+            Some("Error: [Request interrupted by user for tool use]"),
+            "error_reason should carry the full status string"
+        );
+        assert!(
+            acc.sub_agents[0].completed_at.is_some(),
+            "completed_at should be set for errored subagent"
+        );
+        assert_eq!(
+            acc.sub_agents[0].current_activity, None,
+            "current_activity should be cleared on error"
+        );
+    }
+
+    #[test]
+    fn test_completed_result_has_no_error_reason() {
+        // Regression: "completed" must yield Complete with no error_reason.
+        let mut acc = SessionAccumulator::new();
+        let pricing = HashMap::new();
+
+        let mut spawn_line = empty_line();
+        spawn_line.line_type = LineType::Assistant;
+        spawn_line
+            .sub_agent_spawns
+            .push(crate::live_parser::SubAgentSpawn {
+                tool_use_id: "toolu_ok".to_string(),
+                agent_type: "Explore".to_string(),
+                description: "Search".to_string(),
+                team_name: None,
+                model: None,
+            });
+        acc.process_line(&spawn_line, 0, &pricing);
+
+        let mut result_line = empty_line();
+        result_line.line_type = LineType::User;
+        result_line.timestamp = Some("2026-02-20T10:01:00Z".to_string());
+        result_line.sub_agent_result = Some(crate::live_parser::SubAgentResult {
+            tool_use_id: "toolu_ok".to_string(),
+            agent_id: Some("aok123".to_string()),
+            status: "completed".to_string(),
+            total_duration_ms: Some(5000),
+            total_tool_use_count: Some(3),
+            usage_input_tokens: None,
+            usage_output_tokens: None,
+            usage_cache_read_tokens: None,
+            usage_cache_creation_tokens: None,
+            usage_cache_creation_5m_tokens: None,
+            usage_cache_creation_1hr_tokens: None,
+            model: None,
+        });
+        acc.process_line(&result_line, 0, &pricing);
+
+        assert_eq!(acc.sub_agents[0].status, SubAgentStatus::Complete);
+        assert_eq!(
+            acc.sub_agents[0].error_reason, None,
+            "completed subagent must have no error_reason"
+        );
     }
 }

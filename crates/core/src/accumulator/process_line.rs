@@ -259,6 +259,7 @@ impl SessionAccumulator {
                 cache_creation_tokens: None,
                 cost_usd: None,
                 current_activity: None,
+                error_reason: None,
             });
         }
 
@@ -269,20 +270,24 @@ impl SessionAccumulator {
                 .iter_mut()
                 .find(|a| a.tool_use_id == result.tool_use_id)
             {
-                // Whitelist known terminal statuses. Everything else
-                // (async_launched, teammate_spawned, queued, or any future
-                // non-terminal status) means the agent is still running --
-                // just capture the agentId and keep Running.
+                // Whitelist known non-terminal statuses. Everything else
+                // (including unknown strings like "Error: [Request interrupted
+                // by user for tool use]") is treated as terminal Error.
+                // This prevents interrupted/rejected subagents from staying
+                // "running" forever.
                 let terminal_status = match result.status.as_str() {
                     "completed" => Some(SubAgentStatus::Complete),
-                    "failed" | "killed" => Some(SubAgentStatus::Error),
-                    _ => None, // non-terminal: still running
+                    "async_launched" | "teammate_spawned" | "queued" => None,
+                    _ => Some(SubAgentStatus::Error),
                 };
 
                 agent.agent_id = result.agent_id.clone();
 
                 if let Some(status) = terminal_status {
                     agent.status = status;
+                    if status == SubAgentStatus::Error {
+                        agent.error_reason = Some(result.status.clone());
+                    }
                     agent.completed_at =
                         line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
                     agent.duration_ms = result.total_duration_ms;
@@ -339,12 +344,12 @@ impl SessionAccumulator {
                 .iter_mut()
                 .find(|a| a.agent_id.as_deref() == Some(&notif.agent_id))
             {
-                agent.status = if notif.status == "completed" {
-                    SubAgentStatus::Complete
+                if notif.status == "completed" {
+                    agent.status = SubAgentStatus::Complete;
                 } else {
-                    // "failed", "killed", or any other terminal status
-                    SubAgentStatus::Error
-                };
+                    agent.status = SubAgentStatus::Error;
+                    agent.error_reason = Some(notif.status.clone());
+                }
                 agent.completed_at = line.timestamp.as_deref().and_then(parse_timestamp_to_unix);
                 agent.current_activity = None;
             }

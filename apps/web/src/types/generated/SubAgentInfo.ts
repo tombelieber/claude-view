@@ -78,4 +78,10 @@ export type SubAgentInfo = {
    * Cleared to None when status transitions to Complete/Error.
    */
   currentActivity?: string | null
+  /**
+   * Human-readable reason when status is Error.
+   * Populated from the toolUseResult string or notification status.
+   * None when status is Running or Complete.
+   */
+  errorReason?: string | null
 }

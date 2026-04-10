@@ -181,7 +181,9 @@ export function TimelineView({
                 <div className="text-emerald-600 dark:text-emerald-400 mt-1">Running…</div>
               )}
               {agent.status === 'error' && (
-                <div className="text-red-500 dark:text-red-400 mt-1">Error</div>
+                <div className="text-red-500 dark:text-red-400 mt-1">
+                  {agent.errorReason || 'Error'}
+                </div>
               )}
             </div>
           )

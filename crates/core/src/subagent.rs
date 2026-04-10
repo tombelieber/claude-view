@@ -106,17 +106,24 @@ pub struct SubAgentInfo {
     /// Cleared to None when status transitions to Complete/Error.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_activity: Option<String>,
+
+    /// Human-readable reason when status is Error.
+    /// Populated from the toolUseResult string or notification status.
+    /// None when status is Running or Complete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_reason: Option<String>,
 }
 
 impl SubAgentInfo {
     /// Mark a Running sub-agent as Error (orphaned/abandoned).
-    /// Sets completed_at, clears current_activity.
+    /// Sets completed_at, clears current_activity, records the reason.
     /// No-op if the sub-agent is already Complete or Error.
-    pub fn finalize_as_orphaned(&mut self, now: i64) {
+    pub fn finalize_as_orphaned(&mut self, now: i64, reason: &str) {
         if self.status == SubAgentStatus::Running {
             self.status = SubAgentStatus::Error;
             self.current_activity = None;
             self.completed_at = Some(now);
+            self.error_reason = Some(reason.to_string());
         }
     }
 }
@@ -144,6 +151,7 @@ mod tests {
             cache_creation_tokens: None,
             cost_usd: None,
             current_activity: Some("Read".to_string()),
+            error_reason: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"currentActivity\":\"Read\""));
@@ -168,13 +176,15 @@ mod tests {
             cache_creation_tokens: None,
             cost_usd: None,
             current_activity: Some("Read".to_string()),
+            error_reason: None,
         };
 
-        info.finalize_as_orphaned(1739700100);
+        info.finalize_as_orphaned(1739700100, "Parent process exited");
 
         assert_eq!(info.status, SubAgentStatus::Error);
         assert_eq!(info.current_activity, None);
         assert_eq!(info.completed_at, Some(1739700100));
+        assert_eq!(info.error_reason.as_deref(), Some("Parent process exited"));
     }
 
     #[test]
@@ -196,14 +206,16 @@ mod tests {
             cache_creation_tokens: None,
             cost_usd: Some(0.001),
             current_activity: None,
+            error_reason: None,
         };
 
-        info.finalize_as_orphaned(1739700200);
+        info.finalize_as_orphaned(1739700200, "Parent process exited");
 
         // Should remain unchanged
         assert_eq!(info.status, SubAgentStatus::Complete);
         assert_eq!(info.completed_at, Some(1739700050));
         assert_eq!(info.cost_usd, Some(0.001));
+        assert_eq!(info.error_reason, None);
     }
 
     #[test]
@@ -225,13 +237,15 @@ mod tests {
             cache_creation_tokens: None,
             cost_usd: None,
             current_activity: None,
+            error_reason: Some("previously failed".to_string()),
         };
 
-        info.finalize_as_orphaned(1739700200);
+        info.finalize_as_orphaned(1739700200, "Parent process exited");
 
-        // Should remain unchanged
+        // Should remain unchanged — already Error
         assert_eq!(info.status, SubAgentStatus::Error);
         assert_eq!(info.completed_at, Some(1739700030));
+        assert_eq!(info.error_reason.as_deref(), Some("previously failed"));
     }
 
     #[test]
@@ -253,8 +267,67 @@ mod tests {
             cache_creation_tokens: None,
             cost_usd: None,
             current_activity: None,
+            error_reason: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(!json.contains("currentActivity"));
+        assert!(!json.contains("errorReason"));
+    }
+
+    #[test]
+    fn test_error_reason_serialization() {
+        // With error_reason = Some, JSON should contain "errorReason"
+        let info_with_reason = SubAgentInfo {
+            tool_use_id: "toolu_err1".to_string(),
+            agent_id: None,
+            agent_type: "Explore".to_string(),
+            description: "Failed agent".to_string(),
+            status: SubAgentStatus::Error,
+            started_at: 1739700000,
+            completed_at: Some(1739700100),
+            duration_ms: None,
+            tool_use_count: None,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: None,
+            current_activity: None,
+            error_reason: Some("test error reason".to_string()),
+        };
+        let json = serde_json::to_string(&info_with_reason).unwrap();
+        assert!(
+            json.contains("\"errorReason\":\"test error reason\""),
+            "JSON should contain errorReason when Some, got: {}",
+            json
+        );
+
+        // With error_reason = None, JSON should NOT contain "errorReason"
+        let info_no_reason = SubAgentInfo {
+            tool_use_id: "toolu_ok1".to_string(),
+            agent_id: None,
+            agent_type: "Explore".to_string(),
+            description: "Running agent".to_string(),
+            status: SubAgentStatus::Running,
+            started_at: 1739700000,
+            completed_at: None,
+            duration_ms: None,
+            tool_use_count: None,
+            model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+            cost_usd: None,
+            current_activity: None,
+            error_reason: None,
+        };
+        let json = serde_json::to_string(&info_no_reason).unwrap();
+        assert!(
+            !json.contains("errorReason"),
+            "JSON should NOT contain errorReason when None, got: {}",
+            json
+        );
     }
 }

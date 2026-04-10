@@ -129,7 +129,7 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
               )}
             </div>
 
-            {/* Row 2: metrics (finished) or activity (running) */}
+            {/* Row 2: metrics (finished) or activity (running) or error reason */}
             {agent.status === 'running' ? (
               <div className="pl-4 flex items-center gap-2">
                 {agent.currentActivity ? (
@@ -145,6 +145,12 @@ export function SwimLanes({ subAgents, onDrillDown }: SwimLanesProps) {
                     awaiting agent ID...
                   </span>
                 )}
+              </div>
+            ) : agent.status === 'error' && agent.errorReason ? (
+              <div className="pl-4">
+                <span className="text-xs text-red-500/80 dark:text-red-400/70">
+                  {agent.errorReason}
+                </span>
               </div>
             ) : (
               <div className="flex items-center gap-1.5 pl-4 text-xs font-mono text-gray-400 dark:text-gray-500">

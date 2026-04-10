@@ -397,6 +397,7 @@ fn end_sweeps_running_subagents_as_orphaned() {
             cache_creation_tokens: None,
             cost_usd: None,
             current_activity: Some("Read".to_string()),
+            error_reason: None,
         },
         SubAgentInfo {
             tool_use_id: "toolu_done".to_string(),
@@ -415,6 +416,7 @@ fn end_sweeps_running_subagents_as_orphaned() {
             cache_creation_tokens: None,
             cost_usd: Some(0.001),
             current_activity: None,
+            error_reason: None,
         },
         SubAgentInfo {
             tool_use_id: "toolu_err".to_string(),
@@ -433,6 +435,7 @@ fn end_sweeps_running_subagents_as_orphaned() {
             cache_creation_tokens: None,
             cost_usd: None,
             current_activity: None,
+            error_reason: None,
         },
     ];
 
@@ -478,6 +481,7 @@ fn subagent_complete_sets_completed_at_and_clears_activity() {
         cache_creation_tokens: None,
         cost_usd: None,
         current_activity: Some("Grep".to_string()),
+        error_reason: None,
     }];
 
     let event = LifecycleEvent::SubEntity(SubEntityEvent::SubagentComplete {

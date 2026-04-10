@@ -238,6 +238,7 @@ pub fn apply_lifecycle(
                     cache_creation_tokens: None,
                     cost_usd: None,
                     current_activity: None,
+                    error_reason: None,
                 });
 
             bind_pid(hook, *pid);

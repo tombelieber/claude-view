@@ -17,7 +17,7 @@ pub fn finalize_orphaned_subagents(
     now: i64,
 ) {
     for agent in sub_agents.iter_mut() {
-        agent.finalize_as_orphaned(now);
+        agent.finalize_as_orphaned(now, "Session ended");
     }
 }
 
