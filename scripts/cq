@@ -1,13 +1,15 @@
 #!/bin/bash
 # scripts/cq — cargo-queue: serializes cargo builds across all worktrees
 #
-# Three protections:
+# Four protections:
 #   1. flock queue — one build gets ALL cores (burst mode), others wait
 #   2. CARGO_INCREMENTAL=0 — one-shot commands (test/check/clippy) skip
 #      incremental cache writes (saves ~52MB/crate, prevents 15GB bloat)
 #   3. Process groups — cargo + all children (rustc, linker, test binaries)
 #      run in a dedicated process group. If cq is killed, the entire group
 #      is cleaned up. No more orphan rustc at 880% CPU.
+#   4. Shared target dir — git worktrees default to the repo-common target/
+#      instead of duplicating multi-GB Rust outputs per worktree.
 #
 # Usage:
 #   cq build                 # queued, incremental ON (interactive dev loop)
@@ -21,6 +23,12 @@ set -euo pipefail
 LOCK_FILE="/tmp/claude-view-cargo.lock"
 CARGO="${CARGO:-$(command -v cargo)}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+COMMON_GIT_DIR="$(git -C "$ROOT_DIR" rev-parse --git-common-dir)"
+case "$COMMON_GIT_DIR" in
+  /*) ;;
+  *) COMMON_GIT_DIR="$ROOT_DIR/$COMMON_GIT_DIR" ;;
+esac
+COMMON_ROOT="$(cd "$COMMON_GIT_DIR/.." && pwd)"
 
 if [[ -z "$CARGO" ]]; then
   echo "cargo not found in PATH" >&2
@@ -31,7 +39,12 @@ fi
 if [[ "${1:-}" == "sweep" ]]; then
   echo "Sweeping stale incremental caches (>6h old)..."
   swept=0
-  for target_dir in "$ROOT_DIR/target" "$ROOT_DIR/.worktrees"/*/target; do
+  for target_dir in \
+    "$COMMON_ROOT/target" \
+    "$COMMON_ROOT/target-playwright" \
+    "$COMMON_ROOT/.worktrees"/*/target \
+    "$COMMON_ROOT/.worktrees"/*/target-playwright
+  do
     inc_dir="$target_dir/debug/incremental"
     [[ -d "$inc_dir" ]] || continue
     while IFS= read -r -d '' dir; do
@@ -55,6 +68,11 @@ case "${1:-}" in
     exec "$CARGO" "$@"
     ;;
 esac
+
+# Share Rust build outputs across git worktrees unless the caller overrides it.
+# This keeps dev/test artifacts in one cache instead of duplicating multi-GB
+# targets per worktree.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$COMMON_ROOT/target}"
 
 # --- incremental: OFF for one-shot, ON for interactive dev loop ---
 case "${1:-}" in

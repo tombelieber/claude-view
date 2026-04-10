@@ -53,6 +53,8 @@ export CLAUDE_VIEW_SIDECAR_EXTERNAL=1
 # Per-process notes:
 #   rust:    cargo watch recompiles on any crates/ change. Rebuild is slow
 #            (~8s first boot, ~3s incremental via cq). Output is verbose.
+#            The watched command goes through ./scripts/cq so all worktrees
+#            share one target dir and one queued cargo lane.
 #   web:     vite is fast (~200ms ready). Proxies to :47892 and :3001.
 #            First 8s will show ECONNREFUSED for /api/* until rust binds.
 #            This is expected — not an error.
@@ -66,6 +68,6 @@ exec bunx concurrently \
   --prefix-colors "red,cyan,yellow" \
   --prefix "[{name}]" \
   --timestamp-format "HH:mm:ss" \
-  "cargo watch -w crates -x 'run -p claude-view-server'" \
+  "cargo watch -w crates -s './scripts/cq run -p claude-view-server'" \
   "bun --filter='@claude-view/web' run dev" \
   "cd sidecar && bun run dev"

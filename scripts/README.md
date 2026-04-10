@@ -11,6 +11,8 @@ Runs Rust server + Vite web + sidecar in parallel with crash-aware teardown.
 - **Pre-flight**: kills port holders AND orphan processes via `dev-cleanup.sh`
 - **Env setup**: sets `CLAUDE_VIEW_SIDECAR_EXTERNAL=1` so Rust doesn't kill the
   dev-owned sidecar (see `CLAUDE.md` "Dev/Prod Process Ownership" rule)
+- **Cargo discipline**: runs the watched Rust server through `./scripts/cq`
+  so dev builds are queued across worktrees and share one Rust `target/`
 - **Process supervision**: uses `concurrently --kill-others-on-fail` so any
   boot-phase crash tears down the whole stack instead of leaving a half-alive
   dev server
@@ -40,7 +42,38 @@ Runs automatically before every `bun dev` via `dev.sh`.
 
 Standalone mode for debugging the Rust server without web/sidecar. Still
 opts into `CLAUDE_VIEW_SIDECAR_EXTERNAL=1` so it never kills an externally-
-running sidecar.
+running sidecar. Uses `./scripts/cq run -p claude-view-server` inside
+`cargo watch` so rebuilds are queued and share the common Rust `target/`.
+
+### `cq` — queued Cargo wrapper
+
+Serializes CPU-heavy Cargo commands across git worktrees and defaults their
+build output to the repo's shared `target/` directory (derived from the git
+common dir, not the current worktree path).
+
+Usage:
+
+```bash
+bash scripts/cq run -p claude-view-server
+bash scripts/cq test --workspace
+bash scripts/cq sweep
+```
+
+`sweep` prunes stale incremental caches from both `target/` and
+`target-playwright/`, including legacy per-worktree targets that still exist.
+
+### `worktree-storage.sh` — report and clean orphaned worktree disk usage
+
+Shows which `.worktrees/*` directories are still active, which are orphaned,
+and how much space each is using from `target/`, `target-playwright/`, and
+`node_modules/`.
+
+Usage:
+
+```bash
+bun run disk:report
+bun run disk:cleanup:orphans
+```
 
 ### `sidecar/scripts/dev-watch.sh` — crash-aware sidecar supervisor
 

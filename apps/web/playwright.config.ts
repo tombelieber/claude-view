@@ -1,8 +1,23 @@
+import { execSync } from 'child_process'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { defineConfig, devices } from '@playwright/test'
 
 const webDir = path.dirname(fileURLToPath(import.meta.url))
+const repoRoot = path.resolve(webDir, '../..')
+
+function resolveCommonRoot() {
+  const gitCommonDir = execSync('git rev-parse --git-common-dir', {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  }).trim()
+  const absoluteGitCommonDir = path.isAbsolute(gitCommonDir)
+    ? gitCommonDir
+    : path.resolve(repoRoot, gitCommonDir)
+  return path.resolve(absoluteGitCommonDir, '..')
+}
+
+const commonRoot = resolveCommonRoot()
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,10 +40,11 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `cd ${path.resolve(webDir, '../..')} && cargo run -p claude-view-server`,
+      command: `cd ${repoRoot} && ./scripts/cq run -p claude-view-server`,
       env: {
         STATIC_DIR: path.resolve(webDir, 'dist'),
-        CARGO_TARGET_DIR: path.resolve(webDir, '../../target-playwright'),
+        CARGO_INCREMENTAL: '0',
+        CARGO_TARGET_DIR: path.join(commonRoot, 'target-playwright'),
       },
       url: 'http://localhost:47892/api/health',
       reuseExistingServer: !process.env.CI,

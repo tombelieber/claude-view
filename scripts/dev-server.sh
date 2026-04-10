@@ -11,7 +11,8 @@
 # - Still opts into external sidecar mode to avoid killing any
 #   externally-running sidecar on port 3001.
 # - Uses cq (build queue) to prevent CPU oversubscription when multiple
-#   worktrees rebuild concurrently. See CLAUDE.md "Use cq" section.
+#   worktrees rebuild concurrently, and to share one target dir across them.
+#   See CLAUDE.md "Use cq" section.
 
 set -euo pipefail
 
@@ -28,4 +29,4 @@ export SUPABASE_URL="${SUPABASE_URL:-https://iebjyftoadahqptmfcio.supabase.co}"
 export SHARE_WORKER_URL="https://claude-view-share-worker-dev.vickyai-tech.workers.dev"
 export SHARE_VIEWER_URL="https://claude-view-share-viewer-dev.pages.dev"
 
-exec cargo watch -w crates -x 'run -p claude-view-server'
+exec cargo watch -w crates -s './scripts/cq run -p claude-view-server'
