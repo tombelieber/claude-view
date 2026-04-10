@@ -16,6 +16,12 @@ import type { ConversationBlock } from '../types/blocks'
 
 // ── Helpers ────────────────────────────────────────────────────────
 
+let _idCounter = 0
+
+function uniqueFallbackId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${++_idCounter}`
+}
+
 function ensureArray<T>(val: unknown): T[] {
   return Array.isArray(val) ? val : []
 }
@@ -39,8 +45,9 @@ function normalizeAssistant(block: Record<string, unknown>): void {
 
 function normalizeInteraction(block: Record<string, unknown>): void {
   // Rust: request_id is Option<String> — can be None/omitted
-  // TS: requestId was declared as `string` but is actually optional
-  if (block.requestId == null) block.requestId = ''
+  // Each interaction needs a unique requestId because useInteractionHandlers()
+  // keys response state by requestId — shared '' would cross-contaminate cards
+  if (block.requestId == null) block.requestId = uniqueFallbackId('req')
   block.resolved = block.resolved ?? false
   block.data = block.data ?? {}
 }
@@ -117,7 +124,7 @@ function normalizeTeamTranscript(block: Record<string, unknown>): void {
 export function normalizeBlock(block: ConversationBlock): ConversationBlock {
   // All blocks must have an id
   const raw = block as Record<string, unknown>
-  raw.id = ensureString(raw.id, `unknown-${Date.now()}`)
+  if (!raw.id || typeof raw.id !== 'string') raw.id = uniqueFallbackId('block')
 
   switch (block.type) {
     case 'assistant':

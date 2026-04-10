@@ -1,4 +1,5 @@
 import type { ConversationBlock, ProgressBlock } from '@claude-view/shared/types/blocks'
+import { normalizeBlock } from '@claude-view/shared/utils/normalize-block'
 
 /** Extract a sortable timestamp from any ConversationBlock variant. */
 export function blockTimestamp(b: ConversationBlock): number {
@@ -55,7 +56,7 @@ export async function fetchHookEventBlocks(sessionId: string): Promise<Conversat
     const toolName = e.toolName as string | undefined
     const label = (e.label as string) ?? ''
 
-    return {
+    return normalizeBlock({
       type: 'progress',
       id: `hook-${ts}-${i}`,
       variant: 'hook',
@@ -68,6 +69,6 @@ export async function fetchHookEventBlocks(sessionId: string): Promise<Conversat
         statusMessage: label,
       },
       ts,
-    }
+    }) as ProgressBlock
   })
 }

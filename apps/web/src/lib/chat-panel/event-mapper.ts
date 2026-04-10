@@ -1,4 +1,4 @@
-import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import { normalizeBlocks } from '@claude-view/shared/utils/normalize-block'
 import type { RawEvent } from './types'
 
 /** Defensive backstop: ensure name arrays are string[] even if sidecar sends objects */
@@ -36,13 +36,13 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
     case 'blocks_snapshot':
       return {
         type: 'BLOCKS_SNAPSHOT',
-        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
+        blocks: normalizeBlocks((raw.blocks as unknown[]) ?? []),
       }
 
     case 'blocks_update':
       return {
         type: 'BLOCKS_UPDATE',
-        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
+        blocks: normalizeBlocks((raw.blocks as unknown[]) ?? []),
       }
 
     case 'stream_delta':
@@ -56,7 +56,7 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
     case 'turn_complete':
       return {
         type: 'TURN_COMPLETE',
-        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
+        blocks: normalizeBlocks((raw.blocks as unknown[]) ?? []),
         totalInputTokens: (raw.totalInputTokens as number) ?? 0,
         contextWindowSize: (raw.contextWindowSize as number) ?? 0,
       }
@@ -64,7 +64,7 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
     case 'turn_error':
       return {
         type: 'TURN_ERROR',
-        blocks: (raw.blocks as ConversationBlock[] | undefined) ?? [],
+        blocks: normalizeBlocks((raw.blocks as unknown[]) ?? []),
         totalInputTokens: (raw.totalInputTokens as number) ?? 0,
         contextWindowSize: (raw.contextWindowSize as number) ?? 0,
       }
