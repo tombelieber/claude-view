@@ -1,0 +1,15 @@
+{
+  "name": "claude-view",
+  "owner": { "name": "tombelieber" },
+  "metadata": {
+    "description": "Mission Control for Claude Code",
+    "version": "0.33.2"
+  },
+  "plugins": [
+    {
+      "name": "claude-view",
+      "source": "./packages/plugin",
+      "description": "Mission Control for Claude Code — auto-starts web dashboard, provides 90 MCP tools and 9 skills including /session-recap, /daily-cost, /standup, /coaching, /insights, and /team-status."
+    }
+  ]
+}

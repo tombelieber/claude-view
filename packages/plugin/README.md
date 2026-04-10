@@ -11,7 +11,8 @@ Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/clau
 ## Install
 
 ```bash
-claude plugin add @claude-view/plugin
+claude plugin marketplace add tombelieber/claude-view
+claude plugin install claude-view
 ```
 
 ## Prerequisites
