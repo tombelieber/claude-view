@@ -34,7 +34,7 @@ pub struct TokenBreakdown {
 }
 
 /// Accumulated token counts for a live session.
-#[derive(Debug, Clone, Default, Serialize, TS)]
+#[derive(Debug, Clone, Default, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(
@@ -63,7 +63,7 @@ pub struct TokenUsage {
 }
 
 /// Itemized cost breakdown in USD.
-#[derive(Debug, Clone, Default, Serialize, TS)]
+#[derive(Debug, Clone, Default, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(

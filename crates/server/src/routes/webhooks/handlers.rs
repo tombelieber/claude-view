@@ -48,6 +48,12 @@ fn validate_create_request(req: &CreateWebhookRequest) -> Result<(), ApiError> {
 // ============================================================================
 
 /// GET /api/webhooks — list all webhooks (secrets excluded).
+#[utoipa::path(get, path = "/api/webhooks", tag = "webhooks",
+    responses(
+        (status = 200, description = "All configured webhooks (secrets excluded)", body = crate::routes::webhooks::types::WebhookListResponse),
+        (status = 500, description = "Failed to load webhook config"),
+    )
+)]
 pub async fn list_webhooks(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<WebhookListResponse>> {
@@ -58,6 +64,14 @@ pub async fn list_webhooks(
 }
 
 /// POST /api/webhooks — create a new webhook (returns signing secret once).
+#[utoipa::path(post, path = "/api/webhooks", tag = "webhooks",
+    request_body = CreateWebhookRequest,
+    responses(
+        (status = 200, description = "Webhook created (signing secret returned once)", body = crate::routes::webhooks::types::CreateWebhookResponse),
+        (status = 400, description = "Invalid request (bad URL, name, or events)"),
+        (status = 500, description = "Failed to persist webhook config or secrets"),
+    )
+)]
 pub async fn create_webhook(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateWebhookRequest>,
@@ -99,6 +113,13 @@ pub async fn create_webhook(
 }
 
 /// GET /api/webhooks/{id} — get a single webhook by ID.
+#[utoipa::path(get, path = "/api/webhooks/{id}", tag = "webhooks",
+    params(("id" = String, Path, description = "Webhook ID")),
+    responses(
+        (status = 200, description = "Webhook configuration", body = crate::webhook_engine::config::WebhookConfig),
+        (status = 404, description = "Webhook not found"),
+    )
+)]
 pub async fn get_webhook(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -113,6 +134,15 @@ pub async fn get_webhook(
 }
 
 /// PUT /api/webhooks/{id} — update an existing webhook (partial update).
+#[utoipa::path(put, path = "/api/webhooks/{id}", tag = "webhooks",
+    params(("id" = String, Path, description = "Webhook ID")),
+    request_body = UpdateWebhookRequest,
+    responses(
+        (status = 200, description = "Updated webhook configuration", body = crate::webhook_engine::config::WebhookConfig),
+        (status = 404, description = "Webhook not found"),
+        (status = 500, description = "Failed to persist webhook config"),
+    )
+)]
 pub async fn update_webhook(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -152,6 +182,14 @@ pub async fn update_webhook(
 }
 
 /// DELETE /api/webhooks/{id} — remove a webhook from config and secrets.
+#[utoipa::path(delete, path = "/api/webhooks/{id}", tag = "webhooks",
+    params(("id" = String, Path, description = "Webhook ID")),
+    responses(
+        (status = 200, description = "Webhook deleted", body = crate::routes::webhooks::types::DeleteWebhookResponse),
+        (status = 404, description = "Webhook not found"),
+        (status = 500, description = "Failed to persist config or secrets"),
+    )
+)]
 pub async fn delete_webhook(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -178,6 +216,14 @@ pub async fn delete_webhook(
 }
 
 /// POST /api/webhooks/{id}/test — send a synthetic test payload.
+#[utoipa::path(post, path = "/api/webhooks/{id}/test", tag = "webhooks",
+    params(("id" = String, Path, description = "Webhook ID")),
+    responses(
+        (status = 200, description = "Test delivery result", body = crate::routes::webhooks::types::TestSendResponse),
+        (status = 404, description = "Webhook not found"),
+        (status = 500, description = "Signing secret not found or delivery error"),
+    )
+)]
 pub async fn test_send(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,

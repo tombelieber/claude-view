@@ -134,7 +134,7 @@ pub async fn get_team_cost(
     Ok(Json(cost))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct TeamSidechainsQuery {
     pub session_id: String,
 }

@@ -163,7 +163,7 @@ pub struct PluginActionResponse {
 }
 
 /// Request body for POST /api/plugins/marketplaces/action.
-#[derive(Debug, Deserialize, Serialize, TS)]
+#[derive(Debug, Deserialize, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct MarketplaceActionRequest {

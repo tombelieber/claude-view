@@ -431,7 +431,16 @@ pub async fn list_marketplaces(
 // ---------------------------------------------------------------------------
 
 /// POST /api/plugins/marketplaces/action
-pub(crate) async fn marketplace_action(
+#[utoipa::path(post, path = "/api/plugins/marketplaces/action", tag = "plugins",
+    request_body = MarketplaceActionRequest,
+    responses(
+        (status = 200, description = "Marketplace action result", body = PluginActionResponse),
+        (status = 400, description = "Invalid action or missing required fields"),
+        (status = 409, description = "A mutation is already in progress"),
+        (status = 500, description = "Internal error"),
+    )
+)]
+pub async fn marketplace_action(
     State(state): State<Arc<AppState>>,
     Json(req): Json<MarketplaceActionRequest>,
 ) -> ApiResult<Json<PluginActionResponse>> {

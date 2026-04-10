@@ -51,7 +51,7 @@ pub async fn get_project_memories(
     Ok(Json(memories))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::IntoParams)]
 pub struct MemoryFileQuery {
     pub path: String,
 }

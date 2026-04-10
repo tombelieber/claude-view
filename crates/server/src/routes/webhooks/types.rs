@@ -8,7 +8,7 @@ use crate::webhook_engine::config::{WebhookConfig, WebhookEventType, WebhookForm
 // Request types
 // ============================================================================
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWebhookRequest {
     pub name: String,
@@ -17,7 +17,7 @@ pub struct CreateWebhookRequest {
     pub events: Vec<WebhookEventType>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateWebhookRequest {
     pub name: Option<String>,
@@ -31,27 +31,27 @@ pub struct UpdateWebhookRequest {
 // Response types
 // ============================================================================
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateWebhookResponse {
     pub webhook: WebhookConfig,
     pub signing_secret: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WebhookListResponse {
     pub webhooks: Vec<WebhookConfig>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeleteWebhookResponse {
     pub deleted: bool,
     pub id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct TestSendResponse {
     pub success: bool,

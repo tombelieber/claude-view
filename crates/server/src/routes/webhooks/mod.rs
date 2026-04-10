@@ -16,6 +16,19 @@ pub mod types;
 #[cfg(test)]
 mod tests;
 
+// Re-export handlers for external use (openapi.rs).
+pub use handlers::{
+    create_webhook, delete_webhook, get_webhook, list_webhooks, test_send, update_webhook,
+};
+
+// Re-export utoipa hidden path types.
+pub use handlers::__path_create_webhook;
+pub use handlers::__path_delete_webhook;
+pub use handlers::__path_get_webhook;
+pub use handlers::__path_list_webhooks;
+pub use handlers::__path_test_send;
+pub use handlers::__path_update_webhook;
+
 use axum::{
     routing::{get, post},
     Router,

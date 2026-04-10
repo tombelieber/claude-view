@@ -59,6 +59,8 @@ pub use activity::__path_list_branches;
 #[allow(unused_imports)]
 pub use activity::__path_session_activity;
 #[allow(unused_imports)]
+pub use activity::__path_session_activity_rich;
+#[allow(unused_imports)]
 pub use archive::__path_archive_session_handler;
 #[allow(unused_imports)]
 pub use archive::__path_bulk_archive_handler;
@@ -78,6 +80,8 @@ pub use messages::__path_get_session_messages_by_id;
 pub use messages::__path_get_session_parsed;
 #[allow(unused_imports)]
 pub use messages::__path_get_session_rich;
+#[allow(unused_imports)]
+pub use messages::__path_get_subagent_messages;
 
 // Router
 use std::sync::Arc;

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 pub enum WebhookEventType {
     #[serde(rename = "session.started")]
     SessionStarted,
@@ -17,7 +17,7 @@ pub enum WebhookEventType {
     SessionUpdated,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum WebhookFormat {
     Raw,
@@ -25,7 +25,7 @@ pub enum WebhookFormat {
     Slack,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct WebhookConfig {
     pub id: String,

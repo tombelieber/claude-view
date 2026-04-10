@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A tmux-managed CLI session running Claude Code.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct CliSession {
@@ -20,7 +20,7 @@ pub struct CliSession {
 }
 
 /// Status of a CLI session.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum CliSessionStatus {
     Running,
@@ -28,7 +28,7 @@ pub enum CliSessionStatus {
 }
 
 /// Request body for POST /api/cli-sessions.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateRequest {
     /// Optional working directory for the CLI session.
@@ -40,7 +40,7 @@ pub struct CreateRequest {
 }
 
 /// Response for POST /api/cli-sessions.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct CreateResponse {

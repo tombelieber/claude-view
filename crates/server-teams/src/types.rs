@@ -90,7 +90,7 @@ pub enum InboxMessageType {
 // ============================================================================
 
 /// Per-member cost data for the team cost breakdown.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TeamMemberCost {
@@ -112,7 +112,7 @@ pub struct TeamMemberCost {
 }
 
 /// Aggregated cost breakdown for an entire team.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct TeamCostBreakdown {
@@ -211,7 +211,7 @@ pub(super) struct RawInboxMessage {
 // ============================================================================
 
 /// A single sidechain instance for a team member.
-#[derive(Debug, Clone, Serialize, TS)]
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(

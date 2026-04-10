@@ -41,6 +41,8 @@ pub use types::{BindControlRequest, MessagesQuery, UnbindControlRequest};
 
 // ---- Re-export utoipa hidden path types ----
 pub use actions::__path_bind_control;
+pub use actions::__path_dismiss_all_closed;
+pub use actions::__path_dismiss_session;
 pub use actions::__path_kill_session;
 pub use actions::__path_unbind_control;
 pub use sessions::__path_get_live_session;

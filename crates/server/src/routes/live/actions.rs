@@ -162,6 +162,13 @@ pub async fn unbind_control(
 }
 
 /// DELETE /api/live/sessions/:id/dismiss -- Dismiss from recently closed (in-memory only).
+#[utoipa::path(delete, path = "/api/live/sessions/{id}/dismiss", tag = "live",
+    params(("id" = String, Path, description = "Session ID")),
+    responses(
+        (status = 200, description = "Session dismissed", body = serde_json::Value),
+        (status = 404, description = "Session not found in recently closed"),
+    )
+)]
 pub async fn dismiss_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -184,6 +191,11 @@ pub async fn dismiss_session(
 }
 
 /// DELETE /api/live/recently-closed -- Dismiss all recently closed (in-memory only).
+#[utoipa::path(delete, path = "/api/live/recently-closed", tag = "live",
+    responses(
+        (status = 200, description = "All recently closed sessions dismissed", body = serde_json::Value),
+    )
+)]
 pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let count = {
         let mut rc = state.recently_closed.write().await;

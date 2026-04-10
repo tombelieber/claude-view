@@ -32,6 +32,15 @@ fn to_cli_info(s: &CliSession) -> CliSessionInfo {
 // ============================================================================
 
 /// POST /api/cli-sessions -- Create a new tmux-backed CLI session.
+#[utoipa::path(post, path = "/api/cli-sessions", tag = "cli",
+    request_body = CreateRequest,
+    responses(
+        (status = 200, description = "CLI session created", body = CreateResponse),
+        (status = 400, description = "Invalid request (e.g. bad project_dir)"),
+        (status = 409, description = "Maximum concurrent sessions reached"),
+        (status = 503, description = "tmux unavailable"),
+    )
+)]
 pub async fn create_session(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateRequest>,

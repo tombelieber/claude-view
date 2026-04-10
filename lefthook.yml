@@ -32,6 +32,8 @@ pre-push:
       run: ./scripts/cq clippy --workspace -- -D warnings
     generated-types:
       run: bash scripts/ci/check-generated-types.sh
+    openapi-drift:
+      run: bash scripts/ci/check-openapi-drift.sh
     cargo-deny:
       run: |
         # Self-healing: if advisory DB is corrupted (untracked files from
