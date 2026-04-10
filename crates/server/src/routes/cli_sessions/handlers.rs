@@ -9,10 +9,23 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::{
     error::{ApiError, ApiResult},
+    live::state::{CliSessionInfo, SessionEvent},
     state::AppState,
 };
 
 use super::types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};
+
+fn to_cli_info(s: &CliSession) -> CliSessionInfo {
+    CliSessionInfo {
+        id: s.id.clone(),
+        created_at: s.created_at,
+        status: match s.status {
+            CliSessionStatus::Running => "running".to_string(),
+            CliSessionStatus::Exited => "exited".to_string(),
+        },
+        project_dir: s.project_dir.clone(),
+    }
+}
 
 // ============================================================================
 // Handlers
@@ -79,6 +92,11 @@ pub async fn create_session(
     // Store the session.
     state.cli_sessions.insert(session.clone()).await;
 
+    // Broadcast SSE event so connected frontends update immediately.
+    let _ = state.live_tx.send(SessionEvent::CliSessionCreated {
+        cli_session: to_cli_info(&session),
+    });
+
     tracing::info!(id = %session.id, "CLI session created");
 
     Ok(Json(CreateResponse { session }))
@@ -97,6 +115,10 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                 .cli_sessions
                 .update_status(&session.id, CliSessionStatus::Exited)
                 .await;
+            // Broadcast status change so frontends update immediately.
+            let _ = state.live_tx.send(SessionEvent::CliSessionUpdated {
+                cli_session: to_cli_info(&session),
+            });
         }
         result.push(session);
     }
@@ -123,6 +145,11 @@ pub async fn kill_session(
 
     // Remove from store.
     state.cli_sessions.remove(&id).await;
+
+    // Broadcast removal so frontends update immediately.
+    let _ = state.live_tx.send(SessionEvent::CliSessionRemoved {
+        cli_session_id: id.clone(),
+    });
 
     tracing::info!(id = %id, "CLI session killed");
 

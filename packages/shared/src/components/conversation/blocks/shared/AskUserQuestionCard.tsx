@@ -8,6 +8,8 @@ export interface AskUserQuestionCardProps {
   onAnswer?: (requestId: string, answers: Record<string, string>) => void
   answered?: boolean
   selectedAnswers?: Record<string, string>
+  /** CLI terminal delegation — when present, sends keystrokes instead of SDK answer. */
+  onTerminalDelegate?: (keys: string[]) => Promise<void>
 }
 
 export function AskUserQuestionCard({
@@ -15,6 +17,7 @@ export function AskUserQuestionCard({
   onAnswer,
   answered,
   selectedAnswers,
+  onTerminalDelegate,
 }: AskUserQuestionCardProps) {
   const questions = question.questions
 
@@ -58,6 +61,19 @@ export function AskUserQuestionCard({
   const requestId = question.requestId
 
   const handleSubmit = useCallback(() => {
+    // CLI terminal delegation: send selected option index as keystroke
+    if (onTerminalDelegate) {
+      const q = questions[0]
+      if (q?.multiSelect) {
+        const selected = multiSelections[0]
+        if (selected) onTerminalDelegate(Array.from(selected).map((i) => String(i + 1)))
+      } else {
+        const oi = singleSelections[0]
+        if (oi !== undefined) onTerminalDelegate([String(oi + 1)])
+      }
+      return
+    }
+
     if (!onAnswer) return
     const answers: Record<string, string> = {}
     for (let qi = 0; qi < questions.length; qi++) {
@@ -85,7 +101,7 @@ export function AskUserQuestionCard({
       answers[q.question] = parts.join(', ')
     }
     onAnswer(requestId, answers)
-  }, [questions, multiSelections, singleSelections, otherSelected, otherTexts, onAnswer, requestId])
+  }, [questions, multiSelections, singleSelections, otherSelected, otherTexts, onAnswer, onTerminalDelegate, requestId])
 
   const resolvedState = answered ? { label: 'Answered', variant: 'success' as const } : undefined
 

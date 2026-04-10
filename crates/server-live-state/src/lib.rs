@@ -42,7 +42,7 @@ pub use core::{ControlBinding, LiveSession, SessionSnapshot, SessionStatus, Snap
 
 // event
 pub use event::{append_capped_hook_event, MAX_HOOK_EVENTS_PER_SESSION};
-pub use event::{HookEvent, SessionEvent};
+pub use event::{CliSessionInfo, HookEvent, SessionEvent};
 
 // field_types
 pub use field_types::{FileSourceKind, ToolUsed, VerifiedFile};

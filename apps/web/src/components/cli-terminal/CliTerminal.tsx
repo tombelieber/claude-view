@@ -10,7 +10,7 @@ interface CliTerminalProps {
 
 export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { isConnected, error, sendKeys } = useCliTerminal({ tmuxSessionId, containerRef })
+  const { isConnected, error, sendKeys, reconnect } = useCliTerminal({ tmuxSessionId, containerRef })
 
   // Expose sendKeys to parent
   useEffect(() => {
@@ -30,11 +30,20 @@ export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTermina
       </div>
       {/* Terminal container */}
       <div ref={containerRef} className="w-full h-full pt-5" />
-      {/* Error overlay */}
+      {/* Error overlay with reconnect button */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900/90">
-          <div className="text-center">
+          <div className="text-center space-y-2">
             <div className="text-sm text-gray-400">{error}</div>
+            {!isConnected && (
+              <button
+                type="button"
+                onClick={reconnect}
+                className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors"
+              >
+                Reconnect
+              </button>
+            )}
           </div>
         </div>
       )}

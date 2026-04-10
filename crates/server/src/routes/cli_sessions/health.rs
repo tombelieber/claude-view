@@ -4,6 +4,9 @@
 //! dead ones as `Exited`.
 
 use std::sync::Arc;
+use tokio::sync::broadcast;
+
+use crate::live::state::{CliSessionInfo, SessionEvent};
 
 use super::store::CliSessionStore;
 use super::tmux::TmuxCommand;
@@ -18,13 +21,14 @@ const HEALTH_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_sec
 pub fn spawn_health_check(
     store: Arc<CliSessionStore>,
     tmux: Arc<dyn TmuxCommand>,
+    live_tx: broadcast::Sender<SessionEvent>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(HEALTH_CHECK_INTERVAL) => {
-                    check_sessions(&store, &*tmux).await;
+                    check_sessions(&store, &*tmux, &live_tx).await;
                 }
                 _ = shutdown.changed() => {
                     if *shutdown.borrow() {
@@ -38,7 +42,11 @@ pub fn spawn_health_check(
 }
 
 /// Check all sessions against tmux and mark dead ones as Exited.
-async fn check_sessions(store: &CliSessionStore, tmux: &dyn TmuxCommand) {
+async fn check_sessions(
+    store: &CliSessionStore,
+    tmux: &dyn TmuxCommand,
+    live_tx: &broadcast::Sender<SessionEvent>,
+) {
     let sessions = store.list().await;
     for session in sessions {
         if session.status == CliSessionStatus::Exited {
@@ -49,6 +57,14 @@ async fn check_sessions(store: &CliSessionStore, tmux: &dyn TmuxCommand) {
             store
                 .update_status(&session.id, CliSessionStatus::Exited)
                 .await;
+            let _ = live_tx.send(SessionEvent::CliSessionUpdated {
+                cli_session: CliSessionInfo {
+                    id: session.id.clone(),
+                    created_at: session.created_at,
+                    status: "exited".to_string(),
+                    project_dir: session.project_dir.clone(),
+                },
+            });
         }
     }
 }
@@ -58,6 +74,10 @@ mod tests {
     use super::*;
     use crate::routes::cli_sessions::tmux::mock::MockTmux;
     use crate::routes::cli_sessions::types::CliSession;
+
+    fn test_tx() -> broadcast::Sender<SessionEvent> {
+        broadcast::channel(16).0
+    }
 
     #[tokio::test]
     async fn test_health_check_marks_dead_sessions() {
@@ -89,7 +109,7 @@ mod tests {
             .await;
 
         // Run the health check.
-        check_sessions(&store, &*tmux).await;
+        check_sessions(&store, &*tmux, &test_tx()).await;
 
         // Dead session should be Exited.
         let dead = store.get("cv-dead").await.unwrap();
@@ -116,7 +136,7 @@ mod tests {
             .await;
 
         // Should not panic or change anything.
-        check_sessions(&store, &*tmux).await;
+        check_sessions(&store, &*tmux, &test_tx()).await;
 
         let s = store.get("cv-old").await.unwrap();
         assert_eq!(s.status, CliSessionStatus::Exited);
@@ -128,7 +148,7 @@ mod tests {
         let tmux: Arc<dyn TmuxCommand> = Arc::new(MockTmux::new());
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-        let handle = spawn_health_check(store, tmux, shutdown_rx);
+        let handle = spawn_health_check(store, tmux, test_tx(), shutdown_rx);
 
         // Signal shutdown immediately.
         shutdown_tx.send(true).unwrap();

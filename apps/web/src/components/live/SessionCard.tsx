@@ -18,6 +18,7 @@ import {
   TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { CliTerminalCompact } from '../cli-terminal'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -309,6 +310,8 @@ interface SessionCardProps {
   hideProjectBranch?: boolean
   /** When true, show StateBadge pill instead of green pulse dot (used by Harness view) */
   showStateBadge?: boolean
+  /** Handler for expanding a CLI terminal session into a full dockview panel. */
+  onExpandCliSession?: (sessionId: string) => void
 }
 
 export function SessionCard({
@@ -318,6 +321,7 @@ export function SessionCard({
   onClickOverride,
   hideProjectBranch,
   showStateBadge,
+  onExpandCliSession,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
@@ -496,6 +500,16 @@ export function SessionCard({
               )}
             </span>
           )}
+        </div>
+      )}
+
+      {/* ── CLI Terminal compact view ── */}
+      {session.id.startsWith('cv-') && (
+        <div className="border-t border-gray-100 dark:border-gray-800 mt-2.5 pt-2">
+          <CliTerminalCompact
+            tmuxSessionId={session.id}
+            onExpand={onExpandCliSession ? () => onExpandCliSession(session.id) : undefined}
+          />
         </div>
       )}
 

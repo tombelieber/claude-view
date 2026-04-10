@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   dispatchKeys,
   translateSelectOption,
@@ -16,6 +16,13 @@ interface UseCardDelegationOptions {
 
 export function useCardDelegation({ sendKeys, isConnected }: UseCardDelegationOptions) {
   const [state, setState] = useState<CardDelegationState>('idle')
+  const timeoutIds = useRef<ReturnType<typeof setTimeout>[]>([])
+
+  useEffect(() => {
+    return () => {
+      for (const id of timeoutIds.current) clearTimeout(id)
+    }
+  }, [])
 
   const delegateSelectOption = useCallback(
     async (index: number) => {
@@ -24,7 +31,7 @@ export function useCardDelegation({ sendKeys, isConnected }: UseCardDelegationOp
       const keys = translateSelectOption(index)
       await dispatchKeys(sendKeys, keys)
       setState('sent')
-      setTimeout(() => setState('resolved'), 2000)
+      timeoutIds.current.push(setTimeout(() => setState('resolved'), 2000))
     },
     [sendKeys, isConnected, state],
   )
@@ -36,7 +43,7 @@ export function useCardDelegation({ sendKeys, isConnected }: UseCardDelegationOp
       const keys = translateMultiSelect(indices)
       await dispatchKeys(sendKeys, keys)
       setState('sent')
-      setTimeout(() => setState('resolved'), 2000)
+      timeoutIds.current.push(setTimeout(() => setState('resolved'), 2000))
     },
     [sendKeys, isConnected, state],
   )
@@ -48,7 +55,7 @@ export function useCardDelegation({ sendKeys, isConnected }: UseCardDelegationOp
       const keys = translateFreeText(text)
       await dispatchKeys(sendKeys, keys)
       setState('sent')
-      setTimeout(() => setState('resolved'), 2000)
+      timeoutIds.current.push(setTimeout(() => setState('resolved'), 2000))
     },
     [sendKeys, isConnected, state],
   )
@@ -60,7 +67,7 @@ export function useCardDelegation({ sendKeys, isConnected }: UseCardDelegationOp
       const keys = translatePlanApproval(approved)
       await dispatchKeys(sendKeys, keys)
       setState('sent')
-      setTimeout(() => setState('resolved'), 2000)
+      timeoutIds.current.push(setTimeout(() => setState('resolved'), 2000))
     },
     [sendKeys, isConnected, state],
   )

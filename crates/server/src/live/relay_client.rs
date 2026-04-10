@@ -242,6 +242,11 @@ async fn connect_and_stream(
                     Ok(SessionEvent::Summary { .. }) => {
                         // Skip summary events for mobile (phone computes locally)
                     }
+                    Ok(SessionEvent::CliSessionCreated { .. }
+                     | SessionEvent::CliSessionUpdated { .. }
+                     | SessionEvent::CliSessionRemoved { .. }) => {
+                        // CLI terminal sessions are local-only — not relayed to mobile
+                    }
                     Err(broadcast::error::RecvError::Lagged(n)) => {
                         warn!(skipped = n, "relay client lagged, will resync");
                         let sessions_map = sessions.read().await;

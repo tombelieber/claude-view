@@ -425,6 +425,7 @@ pub fn create_app_full(
     crate::routes::cli_sessions::health::spawn_health_check(
         state.cli_sessions.clone(),
         state.tmux.clone(),
+        state.live_tx.clone(),
         state.shutdown.clone(),
     );
 

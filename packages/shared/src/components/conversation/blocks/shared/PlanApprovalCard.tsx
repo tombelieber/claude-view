@@ -7,6 +7,8 @@ export interface PlanApprovalCardProps {
   plan: PlanApproval
   onApprove?: (requestId: string, approved: boolean, feedback?: string) => void
   resolved?: { approved: boolean }
+  /** CLI terminal delegation — when present, sends keystrokes instead of SDK approval. */
+  onTerminalDelegate?: (keys: string[]) => Promise<void>
 }
 
 function extractPlanContent(planData: unknown): string {
@@ -21,7 +23,7 @@ function extractPlanContent(planData: unknown): string {
   return JSON.stringify(planData, null, 2)
 }
 
-export function PlanApprovalCard({ plan, onApprove, resolved }: PlanApprovalCardProps) {
+export function PlanApprovalCard({ plan, onApprove, resolved, onTerminalDelegate }: PlanApprovalCardProps) {
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
 
@@ -29,16 +31,24 @@ export function PlanApprovalCard({ plan, onApprove, resolved }: PlanApprovalCard
   const requestId = plan?.requestId ?? ''
 
   const handleApprove = useCallback(() => {
+    if (onTerminalDelegate) {
+      onTerminalDelegate(['y', 'Enter'])
+      return
+    }
     onApprove?.(requestId, true)
-  }, [onApprove, requestId])
+  }, [onApprove, onTerminalDelegate, requestId])
 
   const handleRequestChanges = useCallback(() => {
+    if (onTerminalDelegate) {
+      onTerminalDelegate(['n', 'Enter'])
+      return
+    }
     if (!showFeedback) {
       setShowFeedback(true)
       return
     }
     onApprove?.(requestId, false, feedback.trim() || undefined)
-  }, [showFeedback, onApprove, requestId, feedback])
+  }, [showFeedback, onApprove, onTerminalDelegate, requestId, feedback])
 
   const resolvedState = resolved
     ? resolved.approved

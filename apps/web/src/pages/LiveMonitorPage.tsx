@@ -1,5 +1,7 @@
+import type { DockviewApi } from 'dockview-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
+import { NewCliSessionButton } from '../components/cli-terminal'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
 import { CostTokenPopover } from '../components/live/CostTokenPopover'
 import { HarnessKanbanView } from '../components/live/HarnessKanbanView'
@@ -75,6 +77,7 @@ export function LiveMonitorPage() {
   const [showHelp, setShowHelp] = useState(false)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const setLiveContext = useLiveCommandStore((s) => s.setContext)
+  const dockviewApiRef = useRef<DockviewApi | null>(null)
 
   // ?focus=<sessionId> handler — deep-link from HistoryView resume
   const selectPane = useMonitorStore((s) => s.selectPane)
@@ -256,6 +259,30 @@ export function LiveMonitorPage() {
     [searchParams, setSearchParams],
   )
 
+  // CLI session creation — opens a terminal panel in monitor mode
+  const handleCliSessionCreated = useCallback(
+    (sessionId: string) => {
+      if (viewMode !== 'monitor') {
+        handleViewModeChange('monitor')
+      }
+      const addPanel = () => {
+        dockviewApiRef.current?.addPanel({
+          id: `cli-${sessionId}`,
+          component: 'cliTerminal',
+          title: `CLI: ${sessionId.slice(0, 11)}`,
+          tabComponent: 'cliTerminal',
+          params: { tmuxSessionId: sessionId },
+        })
+      }
+      if (dockviewApiRef.current) {
+        addPanel()
+      } else {
+        setTimeout(addPanel, 300)
+      }
+    },
+    [viewMode, handleViewModeChange],
+  )
+
   // Session selection
   const handleSelectSession = useCallback((id: string) => {
     setSelectedId((prev) => (prev === id ? null : id))
@@ -399,8 +426,9 @@ export function LiveMonitorPage() {
               )}
             </div>
 
-            {/* Right: cost, tokens, stale indicator, usage — stays right-aligned */}
+            {/* Right: CLI session, cost, tokens, stale indicator, usage — stays right-aligned */}
             <div className="flex items-center gap-3 ml-auto text-xs shrink-0">
+              <NewCliSessionButton onSessionCreated={handleCliSessionCreated} />
               {isStale && lastUpdate && (
                 <span className="text-amber-500/80 tabular-nums">
                   {formatRelativeTime(lastUpdate)}
@@ -467,6 +495,7 @@ export function LiveMonitorPage() {
                     stalledSessions={stalledSessions}
                     currentTime={currentTime}
                     onClickOverride={() => handleSelectSession(session.id)}
+                    onExpandCliSession={handleCliSessionCreated}
                   />
                 </div>
               ))}
@@ -501,7 +530,13 @@ export function LiveMonitorPage() {
           )}
 
           {viewMode === 'monitor' && (
-            <MonitorView sessions={filteredSessions} onSelectSession={handleMonitorExpand} />
+            <MonitorView
+              sessions={filteredSessions}
+              onSelectSession={handleMonitorExpand}
+              onDockApiReady={(api) => {
+                dockviewApiRef.current = api
+              }}
+            />
           )}
 
           {viewMode === 'harness' && (

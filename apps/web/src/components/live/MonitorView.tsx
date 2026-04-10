@@ -18,6 +18,8 @@ import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
 interface MonitorViewProps {
   sessions: LiveSession[]
   onSelectSession?: (id: string) => void
+  /** Callback when dockview API becomes available — allows parent to add panels. */
+  onDockApiReady?: (api: DockviewApi) => void
 }
 
 /**
@@ -26,7 +28,7 @@ interface MonitorViewProps {
  * Wires together: MonitorGrid, GridControls, MonitorPane, BlockTerminalPane,
  * PaneContextMenu, keyboard shortcuts, and auto-fill.
  */
-export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
+export function MonitorView({ sessions, onSelectSession, onDockApiReady }: MonitorViewProps) {
   // Store state
   const gridOverride = useMonitorStore((s) => s.gridOverride)
   const compactHeaders = useMonitorStore((s) => s.compactHeaders)
@@ -279,6 +281,7 @@ export function MonitorView({ sessions, onSelectSession }: MonitorViewProps) {
             onLayoutChange={setSavedLayout}
             onApiReady={(api) => {
               dockviewApiRef.current = api
+              onDockApiReady?.(api)
             }}
             compactHeaders={compactHeaders}
             displayMode={displayMode}

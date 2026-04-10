@@ -191,6 +191,21 @@ export function useLiveSessions(): UseLiveSessionsResult {
         }
       })
 
+      // Forward CLI session events as window CustomEvents so useCliSessions
+      // can update its React Query cache without opening a second EventSource.
+      for (const eventName of [
+        'cli_session_created',
+        'cli_session_updated',
+        'cli_session_removed',
+      ] as const) {
+        es.addEventListener(eventName, (e: MessageEvent) => {
+          try {
+            const detail = JSON.parse(e.data)
+            window.dispatchEvent(new CustomEvent(`cv:${eventName}`, { detail }))
+          } catch { /* malformed */ }
+        })
+      }
+
       es.onerror = () => {
         if (unmounted) return
         setIsConnected(false)
