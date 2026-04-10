@@ -99,7 +99,7 @@ pub fn save_store(store: &ApiKeyStore, path: &PathBuf) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let content = serde_json::to_string_pretty(store).map_err(|e| std::io::Error::other(e))?;
+    let content = serde_json::to_string_pretty(store).map_err(std::io::Error::other)?;
     std::fs::write(path, content)
 }
 
