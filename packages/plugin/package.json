@@ -21,7 +21,7 @@
     "prepublishOnly": "bun run codegen && bun run gen:skills && tsc",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
-    "test": "bun test src/__tests__/ && bash scripts/validate-plugin.sh"
+    "test": "bun test src/__tests__/ scripts/__tests__/ && bash scripts/validate-plugin.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

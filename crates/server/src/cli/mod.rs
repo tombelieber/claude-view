@@ -200,7 +200,10 @@ where
                 // Clear screen
                 print!("\x1B[2J\x1B[H");
                 f().await?;
-                tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+                tokio::select! {
+                    () = tokio::time::sleep(std::time::Duration::from_secs(interval)) => {}
+                    _ = tokio::signal::ctrl_c() => { return Ok(()); }
+                }
             }
         }
     }
@@ -352,35 +355,63 @@ mod tests {
     }
 
     #[test]
-    fn resolve_port_file_priority() {
-        // Verify that when a port file exists, it takes priority.
-        // We use a temp dir to avoid interfering with real data.
+    fn resolve_port_reads_file_when_present() {
+        // Use CLAUDE_VIEW_DATA_DIR to point resolve_port at a temp dir
         let tmp = tempfile::tempdir().unwrap();
         let port_file = tmp.path().join("port");
         std::fs::write(&port_file, "12345").unwrap();
 
-        // Read it back the same way resolve_port does internally
-        let contents = std::fs::read_to_string(&port_file).unwrap();
-        let parsed: u16 = contents.trim().parse().unwrap();
-        assert_eq!(parsed, 12345);
+        // Temporarily set DATA_DIR so resolve_port reads our temp port file
+        let prev = std::env::var("CLAUDE_VIEW_DATA_DIR").ok();
+        std::env::set_var("CLAUDE_VIEW_DATA_DIR", tmp.path());
+        let (port, from_file) = resolve_port();
+        match prev {
+            Some(v) => std::env::set_var("CLAUDE_VIEW_DATA_DIR", v),
+            None => std::env::remove_var("CLAUDE_VIEW_DATA_DIR"),
+        }
+
+        assert_eq!(port, 12345);
+        assert!(from_file, "port from file should set from_file=true");
     }
 
     #[test]
-    fn resolve_port_file_bad_content_skipped() {
+    fn resolve_port_skips_bad_file_content() {
         let tmp = tempfile::tempdir().unwrap();
         let port_file = tmp.path().join("port");
         std::fs::write(&port_file, "not-a-number").unwrap();
 
-        // Bad content should fail to parse
-        let contents = std::fs::read_to_string(&port_file).unwrap();
-        assert!(contents.trim().parse::<u16>().is_err());
+        let prev = std::env::var("CLAUDE_VIEW_DATA_DIR").ok();
+        std::env::set_var("CLAUDE_VIEW_DATA_DIR", tmp.path());
+        let (port, from_file) = resolve_port();
+        match prev {
+            Some(v) => std::env::set_var("CLAUDE_VIEW_DATA_DIR", v),
+            None => std::env::remove_var("CLAUDE_VIEW_DATA_DIR"),
+        }
+
+        // Bad content skipped — falls through to env or default
+        assert!(!from_file || port != 0, "should not return invalid port");
     }
 
     #[test]
-    fn resolve_port_default_is_47892() {
-        // The hardcoded default in the function is 47892
-        // This is a property test: if no file and no env, we get the default.
-        // We can't safely clear env in parallel tests, but we verify the constant.
-        assert_eq!(47892_u16, 47892);
+    fn resolve_port_defaults_when_no_file() {
+        let tmp = tempfile::tempdir().unwrap();
+        // No port file written — should fall through to env or default
+
+        let prev = std::env::var("CLAUDE_VIEW_DATA_DIR").ok();
+        let prev_port = std::env::var("CLAUDE_VIEW_PORT").ok();
+        std::env::set_var("CLAUDE_VIEW_DATA_DIR", tmp.path());
+        std::env::remove_var("CLAUDE_VIEW_PORT");
+        let (port, from_file) = resolve_port();
+        match prev {
+            Some(v) => std::env::set_var("CLAUDE_VIEW_DATA_DIR", v),
+            None => std::env::remove_var("CLAUDE_VIEW_DATA_DIR"),
+        }
+        match prev_port {
+            Some(v) => std::env::set_var("CLAUDE_VIEW_PORT", v),
+            None => {}
+        }
+
+        assert_eq!(port, 47892, "should return default port");
+        assert!(!from_file, "should not be from file");
     }
 }
