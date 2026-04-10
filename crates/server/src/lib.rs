@@ -30,6 +30,7 @@ pub use claude_view_server_teams as teams;
 pub mod telemetry;
 pub use claude_view_server_types::terminal_state;
 pub mod time_range;
+pub mod webhook_engine;
 
 #[cfg(test)]
 mod tests;
