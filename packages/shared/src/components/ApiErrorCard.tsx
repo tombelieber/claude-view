@@ -31,6 +31,7 @@ export function ApiErrorCard({
     <div className="py-0.5 border-l-2 border-l-red-400 pl-1 my-1">
       {/* Status line */}
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 mb-0.5 w-full text-left"
         aria-expanded={expanded}

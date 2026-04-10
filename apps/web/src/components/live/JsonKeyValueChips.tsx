@@ -10,7 +10,7 @@ interface JsonKeyValueChipsProps {
 
 function formatChipValue(value: unknown, maxLen: number): string {
   if (typeof value === 'string') {
-    return value.length > maxLen ? value.slice(0, maxLen) + '\u2026' : value
+    return value.length > maxLen ? `${value.slice(0, maxLen)}\u2026` : value
   }
   if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value)
@@ -78,6 +78,7 @@ export function JsonKeyValueChips({
         })}
         {remaining > 0 && (
           <button
+            type="button"
             onClick={onExpand}
             className="inline-flex items-center px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-xs font-mono text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >

@@ -172,6 +172,7 @@ function JsonCollapsible({
     return (
       <span className="inline-flex items-center gap-0.5">
         <button
+          type="button"
           onClick={toggle}
           className="inline-flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
@@ -187,6 +188,7 @@ function JsonCollapsible({
   return (
     <span>
       <button
+        type="button"
         onClick={toggle}
         className="inline-flex items-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
       >
@@ -270,6 +272,7 @@ export function JsonTree({
           Large object ({nodeCount} nodes) —{' '}
         </span>
         <button
+          type="button"
           onClick={() => setShowFallback(true)}
           className="text-sky-600 dark:text-sky-400 hover:underline"
         >
@@ -283,6 +286,7 @@ export function JsonTree({
     return (
       <div>
         <button
+          type="button"
           onClick={() => setShowFallback(false)}
           className="text-xs text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 mb-1 transition-colors"
         >
@@ -297,6 +301,7 @@ export function JsonTree({
     <Tooltip.Provider delayDuration={200}>
       <div className="text-xs font-mono leading-relaxed relative">
         <button
+          type="button"
           onClick={handleCopy}
           className="absolute top-0 right-0 p-1 rounded text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors z-10"
           title="Copy JSON"
