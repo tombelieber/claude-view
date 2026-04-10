@@ -428,6 +428,15 @@ pub fn create_app_full(
         webhook_secrets_path,
     });
 
+    // Spawn webhook notification engine.
+    let _webhook_engine = crate::webhook_engine::spawn_engine(
+        &state.live_tx,
+        state.shutdown.clone(),
+        state.webhook_config_path.clone(),
+        state.webhook_secrets_path.clone(),
+        None, // base_url: auto-detect later
+    );
+
     // Spawn the plugin operation worker (processes queued installs/updates serially).
     {
         let queue = state.plugin_op_queue.clone();
