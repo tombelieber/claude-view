@@ -285,17 +285,17 @@ async fn main() -> Result<()> {
 
     let startup_start = Instant::now();
 
-    // Platform gate: macOS is first-class. Linux is supported but less tested.
-    // WHY this gate remains after cross-platform hardening:
-    //   - macOS is the primary dev/test platform; Linux has less CI coverage
-    //   - Some features (process tree, keychain) have platform-specific codepaths
-    //   - Docker/WSL/CI users can bypass via env var
-    // Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to run on Linux (Docker, WSL, native).
-    if std::env::consts::OS != "macos"
-        && std::env::var("CLAUDE_VIEW_SKIP_PLATFORM_CHECK").as_deref() != Ok("1")
-    {
-        eprintln!("\n\u{26a0}\u{fe0f}  claude-view is optimized for macOS. Linux support is available but less tested.");
-        eprintln!("   Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to run on Linux.");
+    // Platform gate: macOS and Linux are supported. Other platforms require opt-in.
+    if !is_platform_supported(
+        std::env::consts::OS,
+        std::env::var("CLAUDE_VIEW_SKIP_PLATFORM_CHECK").as_deref() == Ok("1"),
+    ) {
+        eprintln!(
+            "\n\u{26a0}\u{fe0f}  claude-view supports macOS and Linux. \
+             Your platform ({}) is not officially supported.",
+            std::env::consts::OS
+        );
+        eprintln!("   Set CLAUDE_VIEW_SKIP_PLATFORM_CHECK=1 to try anyway.");
         eprintln!("   Report issues: https://github.com/tombelieber/claude-view/issues\n");
         std::process::exit(1);
     }
@@ -1179,4 +1179,44 @@ async fn main() -> Result<()> {
     // If any SSE stream missed the shutdown signal, the process would hang.
     // Force exit to guarantee the process terminates.
     std::process::exit(0);
+}
+
+/// Returns true if the given platform is supported or the check is bypassed.
+fn is_platform_supported(os: &str, skip_check: bool) -> bool {
+    os == "macos" || os == "linux" || skip_check
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_macos_allowed() {
+        assert!(is_platform_supported("macos", false));
+    }
+
+    #[test]
+    fn platform_linux_allowed() {
+        assert!(is_platform_supported("linux", false));
+    }
+
+    #[test]
+    fn platform_windows_blocked() {
+        assert!(!is_platform_supported("windows", false));
+    }
+
+    #[test]
+    fn platform_unknown_blocked() {
+        assert!(!is_platform_supported("freebsd", false));
+    }
+
+    #[test]
+    fn platform_windows_allowed_with_skip() {
+        assert!(is_platform_supported("windows", true));
+    }
+
+    #[test]
+    fn platform_unknown_allowed_with_skip() {
+        assert!(is_platform_supported("freebsd", true));
+    }
 }
