@@ -67,7 +67,7 @@ export const insightsGeneratedTools: ToolDef[] = [
     description: 'List all invocables with their usage counts.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/invocables')
       return JSON.stringify(result, null, 2)
     },

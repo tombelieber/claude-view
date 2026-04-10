@@ -10,7 +10,7 @@ export const ideGeneratedTools: ToolDef[] = [
     description: '`GET /api/ide/detect` — return cached list of installed IDEs.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/ide/detect')
       return JSON.stringify(result, null, 2)
     },

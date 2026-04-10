@@ -10,7 +10,7 @@ export const settingsGeneratedTools: ToolDef[] = [
     description: 'Read current app settings.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/settings')
       return JSON.stringify(result, null, 2)
     },

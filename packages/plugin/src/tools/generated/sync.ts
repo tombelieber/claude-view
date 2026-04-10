@@ -10,7 +10,7 @@ export const syncGeneratedTools: ToolDef[] = [
     description: '- lightweight JSON snapshot of indexing progress.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/indexing/status')
       return JSON.stringify(result, null, 2)
     },
@@ -20,7 +20,7 @@ export const syncGeneratedTools: ToolDef[] = [
     description: 'Trigger a full deep index rebuild.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/sync/deep-index')
       return JSON.stringify(result, null, 2)
     },
@@ -30,9 +30,9 @@ export const syncGeneratedTools: ToolDef[] = [
     description: 'Trigger git commit scanning (A8.5).',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/sync/git')
       return JSON.stringify(result, null, 2)
     },
-  },
+  }
 ]

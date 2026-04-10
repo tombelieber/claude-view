@@ -10,7 +10,7 @@ export const oauthGeneratedTools: ToolDef[] = [
     description: 'Get Auth Identity',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/oauth/identity')
       return JSON.stringify(result, null, 2)
     },
@@ -20,7 +20,7 @@ export const oauthGeneratedTools: ToolDef[] = [
     description: 'Get Oauth Usage',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/oauth/usage')
       return JSON.stringify(result, null, 2)
     },
@@ -30,7 +30,7 @@ export const oauthGeneratedTools: ToolDef[] = [
     description: 'Post Oauth Usage Refresh',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/oauth/usage/refresh')
       return JSON.stringify(result, null, 2)
     },

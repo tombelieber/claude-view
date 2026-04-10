@@ -10,7 +10,7 @@ export const healthGeneratedTools: ToolDef[] = [
     description: 'Config (GET /api/config)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/config')
       return JSON.stringify(result, null, 2)
     },
@@ -20,7 +20,7 @@ export const healthGeneratedTools: ToolDef[] = [
     description: 'Health check endpoint.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/health')
       return JSON.stringify(result, null, 2)
     },
@@ -30,7 +30,7 @@ export const healthGeneratedTools: ToolDef[] = [
     description: 'Get index metadata and data freshness info.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/status')
       return JSON.stringify(result, null, 2)
     },

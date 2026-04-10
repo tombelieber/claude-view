@@ -10,7 +10,7 @@ export const monitorGeneratedTools: ToolDef[] = [
     description: '- One-shot JSON snapshot of current resources.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/monitor/snapshot')
       return JSON.stringify(result, null, 2)
     },

@@ -10,7 +10,7 @@ export const classifyGeneratedTools: ToolDef[] = [
     description: 'Trigger a classification job.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/classify')
       return JSON.stringify(result, null, 2)
     },
@@ -20,7 +20,7 @@ export const classifyGeneratedTools: ToolDef[] = [
     description: 'Cancel a running classification job.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/classify/cancel')
       return JSON.stringify(result, null, 2)
     },
@@ -42,7 +42,7 @@ export const classifyGeneratedTools: ToolDef[] = [
     description: 'Get classification status.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/classify/status')
       return JSON.stringify(result, null, 2)
     },

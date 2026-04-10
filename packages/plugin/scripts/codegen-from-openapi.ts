@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { HAND_WRITTEN_TAGS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
+import { HAND_WRITTEN_TAGS, SKIP_OPERATION_IDS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -19,12 +19,6 @@ import { HAND_WRITTEN_TAGS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
 const ROOT = dirname(dirname(new URL(import.meta.url).pathname))
 const SPEC_PATH = join(ROOT, 'scripts', 'openapi.json')
 const GEN_DIR = join(ROOT, 'src', 'tools', 'generated')
-
-// operationIds that duplicate hand-written tools — skip generation
-const SKIP_OPERATION_IDS = new Set([
-  'get_fluency_score', // duplicates hand-written get_fluency_score in stats.ts
-  'search_handler', // duplicates hand-written search_sessions in sessions.ts
-])
 
 // POST/PUT operations that are destructive despite not being DELETE
 const FORCE_DESTRUCTIVE_OPS = new Set([
@@ -337,12 +331,15 @@ function generateToolCode(tag: string, endpoint: EndpointInfo): string {
   if (bodyObj) optsParts.push(`body: ${bodyObj}`)
   const optsStr = optsParts.length > 0 ? `, { ${optsParts.join(', ')} }` : ''
 
+  // Use _args when no params are referenced in the handler body
+  const argsParam = allParams.length > 0 ? 'args' : '_args'
+
   return `  {
     name: '${toolName}',
     description: '${desc}',
     inputSchema: ${schemaStr},
     annotations: { readOnlyHint: ${isReadOnly}, destructiveHint: ${isDestructive}, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, ${argsParam}) => {
       const result = await client.request('${endpoint.method.toUpperCase()}', ${pathExpr}${optsStr})
       return JSON.stringify(result, null, 2)
     },
@@ -446,6 +443,28 @@ function main() {
   // Generate index
   const indexContent = generateIndex(tagExports)
   writeFileSync(join(GEN_DIR, 'index.ts'), indexContent)
+
+  // Path-collision assertion: warn if generated tools cover same endpoint as hand-written
+  const handWrittenPaths = new Set([
+    '/api/sessions',
+    '/api/sessions/{id}',
+    '/api/search',
+    '/api/stats/dashboard',
+    '/api/score',
+    '/api/stats/tokens',
+    '/api/live/sessions',
+    '/api/live/summary',
+  ])
+  for (const [, endpoints] of byTag) {
+    for (const ep of endpoints) {
+      if (handWrittenPaths.has(ep.path)) {
+        console.warn(
+          `WARNING: Generated tool for ${ep.path} (${ep.operationId}) collides with hand-written tool. ` +
+            `Add '${ep.operationId}' to SKIP_OPERATION_IDS.`,
+        )
+      }
+    }
+  }
 }
 
 main()
