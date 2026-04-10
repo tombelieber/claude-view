@@ -80,10 +80,6 @@ similar = "2"
 ts-rs = { version = "12", features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
 uuid = { version = "1", features = ["v4"] }
 
-# Apple Silicon IOKit FFI (GPU memory)
-core-foundation = "0.10"
-core-foundation-sys = "0.8"
-
 # Testing
 mockito = "1"
 tempfile = "3"
