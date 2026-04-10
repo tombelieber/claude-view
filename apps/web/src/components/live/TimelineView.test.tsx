@@ -70,7 +70,7 @@ describe('TimelineView', () => {
   })
 
   it('renders time axis with appropriate intervals for short sessions (<30s)', () => {
-    const agents = [createAgent()]
+    const agents = [createAgent({ completedAt: baseSessionStart + 20, durationMs: 15000 })]
     render(
       <TimelineView
         subAgents={agents}
@@ -87,7 +87,7 @@ describe('TimelineView', () => {
   })
 
   it('renders time axis with appropriate intervals for medium sessions (30-60s)', () => {
-    const agents = [createAgent()]
+    const agents = [createAgent({ completedAt: baseSessionStart + 45, durationMs: 40000 })]
     render(
       <TimelineView
         subAgents={agents}
@@ -104,7 +104,7 @@ describe('TimelineView', () => {
   })
 
   it('renders time axis with minute labels for longer sessions', () => {
-    const agents = [createAgent()]
+    const agents = [createAgent({ completedAt: baseSessionStart + 120, durationMs: 115000 })]
     render(
       <TimelineView
         subAgents={agents}
@@ -372,6 +372,42 @@ describe('TimelineView', () => {
     // Description shown when available, falls back to agentType
     expect(screen.getByText('Find timeline code')).toBeDefined()
     expect(screen.getByText('Agent')).toBeDefined()
+  })
+
+  it('freezes timeline at last agent end time when all agents are done', () => {
+    // Session is 60s long, but all agents finished at 15s.
+    // Timeline should cap at ~16.5s (15s * 1.1), NOT stretch to 60s.
+    const agents = [
+      createAgent({
+        toolUseId: '1',
+        startedAt: baseSessionStart + 2,
+        completedAt: baseSessionStart + 10,
+        durationMs: 8000,
+      }),
+      createAgent({
+        toolUseId: '2',
+        startedAt: baseSessionStart + 5,
+        completedAt: baseSessionStart + 15,
+        durationMs: 10000,
+      }),
+    ]
+    render(
+      <TimelineView
+        subAgents={agents}
+        sessionStartedAt={baseSessionStart}
+        sessionDurationMs={60000}
+      />,
+    )
+    // Effective duration = 15000 * 1.1 = 16500ms = 16.5s
+    // 5s intervals: 0s, 5s, 10s, 15s (+ final ~16.5s)
+    expect(screen.getByText('0s')).toBeDefined()
+    expect(screen.getByText('5s')).toBeDefined()
+    expect(screen.getByText('10s')).toBeDefined()
+    expect(screen.getByText('15s')).toBeDefined()
+    // Should NOT show 30s, 45s, 60s — timeline is frozen
+    expect(screen.queryByText('30s')).toBeNull()
+    expect(screen.queryByText('45s')).toBeNull()
+    expect(screen.queryByText('60s')).toBeNull()
   })
 
   it('makes timeline bars keyboard accessible', () => {

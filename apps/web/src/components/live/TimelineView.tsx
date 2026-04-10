@@ -88,28 +88,46 @@ export function TimelineView({
   sessionStartedAt,
   sessionDurationMs,
 }: TimelineViewProps) {
-  const timeIntervals = useMemo(
-    () => calculateTimeIntervals(sessionDurationMs),
-    [sessionDurationMs],
-  )
-
   const sortedAgents = useMemo(
     () => [...subAgents].filter((a) => a.startedAt > 0).sort((a, b) => a.startedAt - b.startedAt),
     [subAgents],
   )
 
+  const hasRunning = useMemo(() => sortedAgents.some((a) => a.status === 'running'), [sortedAgents])
+
+  // When all agents are done, freeze timeline at last agent's end time
+  // instead of letting it grow with Date.now() from the parent.
+  const effectiveDurationMs = useMemo(() => {
+    if (hasRunning || sortedAgents.length === 0) return sessionDurationMs
+
+    const lastEndMs = Math.max(
+      ...sortedAgents.map((a) => {
+        if (a.completedAt) return (a.completedAt - sessionStartedAt) * 1000
+        if (a.durationMs != null) return (a.startedAt - sessionStartedAt) * 1000 + a.durationMs
+        return (a.startedAt - sessionStartedAt) * 1000
+      }),
+    )
+
+    // 10% padding for breathing room, but never exceed session duration
+    return Math.min(sessionDurationMs, lastEndMs * 1.1)
+  }, [hasRunning, sortedAgents, sessionStartedAt, sessionDurationMs])
+
+  const timeIntervals = useMemo(
+    () => calculateTimeIntervals(effectiveDurationMs),
+    [effectiveDurationMs],
+  )
+
   // Tick every 2 s while any agent is still running
   const [, setTick] = useState(0)
   useEffect(() => {
-    const hasRunning = sortedAgents.some((a) => a.status === 'running')
     if (!hasRunning) return
     const id = setInterval(() => setTick((p) => p + 1), 2000)
     return () => clearInterval(id)
-  }, [sortedAgents])
+  }, [hasRunning])
 
   if (subAgents.length === 0) return null
 
-  const durationSec = sessionDurationMs / 1000
+  const durationSec = effectiveDurationMs / 1000
 
   return (
     <div className="flex flex-col gap-1.5 overflow-hidden">
@@ -150,17 +168,17 @@ export function TimelineView({
       <div className="flex flex-col gap-0.5">
         {sortedAgents.map((agent) => {
           const startOffsetMs = (agent.startedAt - sessionStartedAt) * 1000
-          const startPct = Math.max(0, (startOffsetMs / sessionDurationMs) * 100)
+          const startPct = Math.max(0, (startOffsetMs / effectiveDurationMs) * 100)
 
           let widthPct: number
           let isRunning = false
 
           if (agent.status === 'running') {
             const elapsedMs = Date.now() - agent.startedAt * 1000
-            widthPct = Math.min(100 - startPct, (elapsedMs / sessionDurationMs) * 100)
+            widthPct = Math.min(100 - startPct, (elapsedMs / effectiveDurationMs) * 100)
             isRunning = true
           } else if (agent.durationMs != null) {
-            widthPct = Math.min(100 - startPct, (agent.durationMs / sessionDurationMs) * 100)
+            widthPct = Math.min(100 - startPct, (agent.durationMs / effectiveDurationMs) * 100)
           } else {
             widthPct = 1
           }
