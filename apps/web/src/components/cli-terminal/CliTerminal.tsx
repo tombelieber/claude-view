@@ -10,7 +10,7 @@ interface CliTerminalProps {
 
 export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { isConnected, error, sendKeys, reconnect, focus } = useCliTerminal({
+  const { status, sendKeys, reconnect, focus } = useCliTerminal({
     tmuxSessionId,
     containerRef,
   })
@@ -20,6 +20,17 @@ export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTermina
     onSendKeys?.(sendKeys)
   }, [sendKeys, onSendKeys])
 
+  const isConnected = status.state === 'connected'
+
+  const statusLabel =
+    status.state === 'connected'
+      ? 'Connected'
+      : status.state === 'exited'
+        ? `Process exited (code ${status.code ?? '?'})`
+        : status.state === 'disconnected'
+          ? status.reason
+          : 'Connecting...'
+
   return (
     <div className={`relative ${className ?? ''}`}>
       {/* Status bar */}
@@ -27,9 +38,7 @@ export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTermina
         <div
           className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
         />
-        <span className="text-gray-400">
-          {isConnected ? 'Connected' : (error ?? 'Connecting...')}
-        </span>
+        <span className="text-gray-400">{statusLabel}</span>
       </div>
       {/* Terminal container — mousedown stops propagation to prevent dockview's
           focus management from stealing focus away from xterm's textarea */}
@@ -41,20 +50,18 @@ export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTermina
           requestAnimationFrame(focus)
         }}
       />
-      {/* Error overlay with reconnect button */}
-      {error && (
+      {/* Connection-lost overlay — only when WS dropped, never for process exit */}
+      {status.state === 'disconnected' && (
         <div className="absolute inset-0 flex items-center justify-center bg-gray-900/90">
           <div className="text-center space-y-2">
-            <div className="text-sm text-gray-400">{error}</div>
-            {!isConnected && (
-              <button
-                type="button"
-                onClick={reconnect}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors"
-              >
-                Reconnect
-              </button>
-            )}
+            <div className="text-sm text-gray-400">{status.reason}</div>
+            <button
+              type="button"
+              onClick={reconnect}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 rounded-md hover:bg-emerald-700 transition-colors"
+            >
+              Reconnect
+            </button>
           </div>
         </div>
       )}

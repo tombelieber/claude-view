@@ -3,10 +3,10 @@ import { describe, expect, it, vi } from 'vitest'
 
 // Mock useCliTerminal — avoids xterm.js DOM requirements in happy-dom
 const mockUseCliTerminal = vi.fn(() => ({
-  isConnected: false,
-  error: null,
+  status: { state: 'connecting' },
   sendKeys: vi.fn(),
   reconnect: vi.fn(),
+  focus: vi.fn(),
 }))
 
 vi.mock('../useCliTerminal', () => ({

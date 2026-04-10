@@ -40,8 +40,7 @@ describe('useCliTerminal', () => {
     const containerRef = { current: document.createElement('div') }
     const { result } = renderHook(() => useCliTerminal({ tmuxSessionId: null, containerRef }))
 
-    expect(result.current.isConnected).toBe(false)
-    expect(result.current.error).toBeNull()
+    expect(result.current.status).toEqual({ state: 'connecting' })
   })
 
   it('returns a callable sendKeys function even when disconnected', () => {
@@ -59,7 +58,6 @@ describe('useCliTerminal', () => {
       useCliTerminal({ tmuxSessionId: 'test-session', containerRef }),
     )
 
-    expect(result.current.isConnected).toBe(false)
-    expect(result.current.error).toBeNull()
+    expect(result.current.status).toEqual({ state: 'connecting' })
   })
 })

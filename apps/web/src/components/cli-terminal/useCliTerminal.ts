@@ -8,9 +8,14 @@ interface UseCliTerminalOptions {
   containerRef: React.RefObject<HTMLDivElement | null>
 }
 
+export type TerminalStatus =
+  | { state: 'connecting' }
+  | { state: 'connected' }
+  | { state: 'exited'; code: number | null }
+  | { state: 'disconnected'; reason: string }
+
 interface UseCliTerminalResult {
-  isConnected: boolean
-  error: string | null
+  status: TerminalStatus
   /** Send raw key data to the terminal (used by card delegation) */
   sendKeys: (data: string) => void
   /** Manually retry connection after exhausting auto-reconnect attempts. */
@@ -41,8 +46,7 @@ export function useCliTerminal({
   tmuxSessionId,
   containerRef,
 }: UseCliTerminalOptions): UseCliTerminalResult {
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [status, setStatus] = useState<TerminalStatus>({ state: 'connecting' })
 
   const terminalRef = useRef<Terminal | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
@@ -70,8 +74,7 @@ export function useCliTerminal({
       wsRef.current = ws
 
       ws.addEventListener('open', () => {
-        setIsConnected(true)
-        setError(null)
+        setStatus({ state: 'connected' })
         reconnectAttempts.current = 0
         const { cols, rows } = terminal
         ws.send(JSON.stringify({ type: 'resize', cols, rows }))
@@ -90,11 +93,9 @@ export function useCliTerminal({
               message?: string
             }
             if (msg.type === 'exit') {
-              setError(`Process exited (code ${msg.code ?? '?'})`)
-              setIsConnected(false)
+              setStatus({ state: 'exited', code: msg.code ?? null })
             } else if (msg.type === 'error') {
-              setError(msg.message ?? 'Terminal error')
-              setIsConnected(false)
+              setStatus({ state: 'disconnected', reason: msg.message ?? 'Terminal error' })
             }
           } catch {
             terminal.write(event.data)
@@ -103,20 +104,23 @@ export function useCliTerminal({
       })
 
       ws.addEventListener('close', () => {
-        setIsConnected(false)
-        if (!intentionalClose.current && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
-          reconnectAttempts.current++
-          reconnectTimer.current = setTimeout(() => connectWs(terminal), RECONNECT_DELAY_MS)
-        } else if (
-          !intentionalClose.current &&
-          reconnectAttempts.current >= MAX_RECONNECT_ATTEMPTS
-        ) {
-          setError('Connection lost. Click Reconnect to try again.')
-        }
+        setStatus((prev) => {
+          // Don't overwrite 'exited' — process exit already set the terminal state
+          if (prev.state === 'exited') return prev
+          if (!intentionalClose.current && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+            reconnectAttempts.current++
+            reconnectTimer.current = setTimeout(() => connectWs(terminal), RECONNECT_DELAY_MS)
+            return { state: 'connecting' }
+          }
+          if (!intentionalClose.current) {
+            return { state: 'disconnected', reason: 'Connection lost' }
+          }
+          return prev
+        })
       })
 
       ws.addEventListener('error', () => {
-        setIsConnected(false)
+        // Let the 'close' handler decide the final state
       })
 
       const dataDisposable = terminal.onData((data) => {
@@ -132,11 +136,11 @@ export function useCliTerminal({
     [tmuxSessionId],
   )
 
-  // Manual reconnect — resets attempt counter and retries
+  // Manual reconnect — only meaningful when disconnected (not exited)
   const reconnect = useCallback(() => {
     if (!terminalRef.current) return
     reconnectAttempts.current = 0
-    setError(null)
+    setStatus({ state: 'connecting' })
     const oldWs = wsRef.current
     if (
       oldWs &&
@@ -153,8 +157,7 @@ export function useCliTerminal({
     if (!tmuxSessionId || !containerRef.current) return
 
     const container = containerRef.current
-    setError(null)
-    setIsConnected(false)
+    setStatus({ state: 'connecting' })
     intentionalClose.current = false
     reconnectAttempts.current = 0
 
@@ -234,5 +237,5 @@ export function useCliTerminal({
     terminalRef.current?.focus()
   }, [])
 
-  return { isConnected, error, sendKeys, reconnect, focus }
+  return { status, sendKeys, reconnect, focus }
 }
