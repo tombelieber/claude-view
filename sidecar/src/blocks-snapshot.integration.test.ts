@@ -11,6 +11,7 @@ import type { ServerEvent } from './protocol.js'
 import type { ControlSession } from './session-registry.js'
 import { SessionRegistry } from './session-registry.js'
 import { StreamAccumulator } from './stream-accumulator.js'
+import type { AssistantBlock, ConversationBlock } from './stream-accumulator.js'
 import { handleWebSocket } from './ws-handler.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -138,15 +139,15 @@ describe('IT-01: Full pipeline — blocks_snapshot on WS connect', () => {
     const snapshot = messages.find((m) => m.type === 'blocks_snapshot')
     expect(snapshot).toBeDefined()
 
-    const blocks = snapshot?.blocks as { type: string }[]
+    const blocks = snapshot?.blocks as ConversationBlock[]
     // Should have: system(session_init) + assistant(streaming)
     const systemBlocks = blocks.filter((b) => b.type === 'system')
-    const assistantBlocks = blocks.filter((b) => b.type === 'assistant')
+    const assistantBlocks = blocks.filter((b): b is AssistantBlock => b.type === 'assistant')
     expect(systemBlocks.length).toBeGreaterThanOrEqual(1)
     expect(assistantBlocks).toHaveLength(1)
 
     // Verify assistant block has the text
-    const assistant = assistantBlocks[0] as { segments: { kind: string; text?: string }[] }
+    const assistant = assistantBlocks[0]
     const textSeg = assistant.segments.find((s) => s.kind === 'text')
     expect(textSeg).toBeDefined()
     expect(textSeg?.text).toBe('Hello world')

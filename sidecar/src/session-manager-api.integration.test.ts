@@ -5,6 +5,7 @@
 
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionInit } from './protocol.js'
 import type { ControlSession } from './session-registry.js'
 import { SessionRegistry } from './session-registry.js'
 
@@ -50,6 +51,23 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     lastSessionInit: null,
     // biome-ignore lint/suspicious/noExplicitAny: stub
     accumulator: { push: vi.fn(), getBlocks: vi.fn().mockReturnValue([]) } as any,
+    ...overrides,
+  }
+}
+
+function makeSessionInit(overrides: Partial<SessionInit> = {}): SessionInit {
+  return {
+    type: 'session_init',
+    model: 'claude-haiku-4-5-20251001',
+    tools: [],
+    mcpServers: [],
+    permissionMode: 'default',
+    slashCommands: [],
+    claudeCodeVersion: '1.0.0',
+    cwd: '/tmp',
+    agents: [],
+    skills: [],
+    outputStyle: 'text',
     ...overrides,
   }
 }
@@ -121,7 +139,7 @@ describe('SessionManager REST API', () => {
   })
 
   describe('GET /sessions', () => {
-    it('returns 200 with { active: [], available: [] } when no sessions', async () => {
+    it('returns 200 with { active: [] } when no sessions', async () => {
       const app = createRoutes(registry)
 
       const res = await app.request('/sessions')
@@ -129,9 +147,7 @@ describe('SessionManager REST API', () => {
       expect(res.status).toBe(200)
       const body = await res.json()
       expect(body).toHaveProperty('active')
-      expect(body).toHaveProperty('available')
       expect(Array.isArray(body.active)).toBe(true)
-      expect(Array.isArray(body.available)).toBe(true)
     })
 
     it('returns active sessions with correct shape', async () => {
@@ -186,6 +202,7 @@ describe('SessionManager REST API', () => {
       const cs = makeStubCs({
         controlId: 'ctrl-existing',
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
+        lastSessionInit: makeSessionInit(),
       })
       registry.register(cs)
 
@@ -248,43 +265,6 @@ describe('SessionManager REST API', () => {
       expect(body.status).toBe('terminated')
       // Should not call closeSession if session not found
       expect(sdkSession.closeSession).not.toHaveBeenCalled()
-    })
-  })
-
-  describe('GET /sessions/:id/status', () => {
-    it('returns 200 with model, state, permissionMode, cost for existing session', async () => {
-      const app = createRoutes(registry)
-      const cs = makeStubCs({
-        controlId: 'ctrl-status',
-        sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-        model: 'claude-sonnet-4-20250514',
-        state: 'active',
-        permissionMode: 'acceptEdits',
-        turnCount: 5,
-        totalCostUsd: 2.5,
-      })
-      registry.register(cs)
-
-      const res = await app.request('/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status')
-
-      expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.sessionId).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
-      expect(body.model).toBe('claude-sonnet-4-20250514')
-      expect(body.state).toBe('active')
-      expect(body.permissionMode).toBe('acceptEdits')
-      expect(body.turnCount).toBe(5)
-      expect(body.totalCostUsd).toBe(2.5)
-    })
-
-    it('returns 404 when session not found', async () => {
-      const app = createRoutes(registry)
-
-      const res = await app.request('/sessions/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/status')
-
-      expect(res.status).toBe(404)
-      const body = await res.json()
-      expect(body.error).toContain('not found')
     })
   })
 })

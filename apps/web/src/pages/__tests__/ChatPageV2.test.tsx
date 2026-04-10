@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen } from '@testing-library/react'
 import { createElement } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -54,7 +54,9 @@ describe('ChatPageV2', () => {
       panels: [],
       addPanel: vi.fn(),
     }
-    capturedOnReady?.(mockApi)
+    act(() => {
+      capturedOnReady?.(mockApi)
+    })
 
     expect(screen.getByTestId('chat-dock-layout')).toBeDefined()
   })

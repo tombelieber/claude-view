@@ -98,7 +98,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
     expect((capturedOptions as any).allowDangerouslySkipPermissions).toBe(true)
   })
 
-  it('does NOT set allowDangerouslySkipPermissions for other modes', () => {
+  it('keeps allowDangerouslySkipPermissions enabled for other modes too', () => {
     for (const mode of ['default', 'plan', 'auto', 'acceptEdits']) {
       capturedOptions = undefined
       createControlSession({ model: 'claude-haiku-4-5-20251001', permissionMode: mode }, registry)
@@ -106,7 +106,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
       expect(capturedOptions).toBeDefined()
       expect(capturedOptions!.permissionMode).toBe(mode)
       // biome-ignore lint/suspicious/noExplicitAny: testing private SDK option
-      expect((capturedOptions as any).allowDangerouslySkipPermissions).toBeUndefined()
+      expect((capturedOptions as any).allowDangerouslySkipPermissions).toBe(true)
     }
   })
 

@@ -105,12 +105,15 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
     })
 
     expect(tooltipContent).not.toBeNull()
+    if (!tooltipContent) {
+      throw new Error('Expected tooltip content after hovering a heatmap cell')
+    }
     // Date format: "Mon, Jan 1, 2026" - weekday abbreviation, month, day, year
-    expect(tooltipContent!.dateText).toMatch(/\w{3}, \w{3} \d{1,2}, \d{4}/)
+    expect(tooltipContent.dateText).toMatch(/\w{3}, \w{3} \d{1,2}, \d{4}/)
     // Session count: "8 sessions" or "1 session"
-    expect(tooltipContent!.sessionText).toMatch(/\d+ sessions?/)
+    expect(tooltipContent.sessionText).toMatch(/\d+ sessions?/)
     // Click hint
-    expect(tooltipContent!.hintText).toBe('Click to filter')
+    expect(tooltipContent.hintText).toBe('Click to filter')
 
     await page.screenshot({ path: 'e2e/screenshots/heatmap-tooltip-hover.png' })
   })
@@ -307,7 +310,7 @@ test.describe('Feature 2B: Heatmap Hover Tooltips', () => {
         for (let i = 0; i < gridCellCount; i++) {
           const cell = gridCells.nth(i)
           const label = await cell.getAttribute('aria-label')
-          if (label && label.endsWith(': 0 sessions')) {
+          if (label?.endsWith(': 0 sessions')) {
             zeroCellFound = true
             // Verify the cell has gray styling (bg-gray-50 class)
             await expect(cell).toHaveClass(/bg-gray-50/)

@@ -4,8 +4,10 @@
 
 import { EventEmitter } from 'node:events'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { SessionInit } from './protocol.js'
 import type { ControlSession } from './session-registry.js'
 import { SessionRegistry } from './session-registry.js'
+import { StreamAccumulator } from './stream-accumulator.js'
 
 // --- Mocks ---
 
@@ -48,6 +50,24 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     permissionMode: 'default',
     wsClients: new Set(),
     lastSessionInit: null,
+    accumulator: new StreamAccumulator(),
+    ...overrides,
+  }
+}
+
+function makeSessionInit(overrides: Partial<SessionInit> = {}): SessionInit {
+  return {
+    type: 'session_init',
+    model: 'claude-haiku-4-5-20251001',
+    tools: [],
+    mcpServers: [],
+    permissionMode: 'default',
+    slashCommands: [],
+    claudeCodeVersion: '1.0.0',
+    cwd: '/tmp',
+    agents: [],
+    skills: [],
+    outputStyle: 'text',
     ...overrides,
   }
 }
@@ -112,7 +132,7 @@ describe('routes', () => {
       const cs = makeStubCs({
         controlId: 'existing-ctrl',
         sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee',
-        lastSessionInit: { type: 'session_init', model: 'test', permissionMode: 'default' },
+        lastSessionInit: makeSessionInit({ model: 'test' }),
       })
       registry.register(cs)
 

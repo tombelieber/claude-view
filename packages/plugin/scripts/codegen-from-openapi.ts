@@ -101,9 +101,12 @@ interface ParamInfo {
 
 function resolveRef(spec: OpenAPISpec, ref: string): SchemaObject {
   const parts = ref.replace('#/', '').split('/')
-  let current: any = spec
+  let current: unknown = spec
   for (const part of parts) {
-    current = current?.[part]
+    if (!current || typeof current !== 'object') {
+      return {}
+    }
+    current = (current as Record<string, unknown>)[part]
   }
   return (current as SchemaObject) ?? {}
 }
@@ -206,7 +209,7 @@ function parseOperation(
       if (bodySchema.properties) {
         hasBody = true
         const requiredFields = new Set(bodySchema.required ?? [])
-        for (const [propName, propSchema] of Object.entries(bodySchema.properties)) {
+        for (const [propName, propSchema] of Object.entries(bodySchema.properties ?? {})) {
           let resolved = propSchema
           if (resolved.$ref) {
             resolved = resolveRef(spec, resolved.$ref)
@@ -391,7 +394,7 @@ function main() {
   // Group endpoints by tag
   const byTag = new Map<string, EndpointInfo[]>()
 
-  for (const [path, methods] of Object.entries(spec.paths)) {
+  for (const [path, methods] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(methods)) {
       if (!['get', 'post', 'put', 'delete', 'patch'].includes(method)) continue
 

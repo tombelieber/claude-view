@@ -1,11 +1,13 @@
 import { type LiveSession, formatUsd } from '@claude-view/shared'
 import { FileText } from 'lucide-react-native'
 import { Pressable } from 'react-native'
-import { Circle, Text, XStack, YStack } from 'tamagui'
+import { Circle, type GetProps, Text, XStack, YStack } from 'tamagui'
+
+type CircleBackground = GetProps<typeof Circle>['bg']
 
 // NOTE (audit fix B1): Rust status is 'working'|'paused'|'done', not 'active'|'waiting'|'idle'
 // Audit gap #20: Use Tamagui tokens, not hardcoded hex
-const STATUS_COLORS: Record<string, string> = {
+const STATUS_COLORS: Record<string, CircleBackground> = {
   working: '$statusActive',
   paused: '$statusWarning',
   done: '$gray500',
@@ -27,8 +29,7 @@ export function SessionCard({ session, onPress }: Props) {
           {session.projectDisplayName}
         </Text>
         <XStack items="center" gap="$2" mt="$1">
-          {/* biome-ignore lint/suspicious/noExplicitAny: Tamagui token string not assignable to bg prop type */}
-          <Circle size={6} bg={statusColor as any} />
+          <Circle size={6} bg={statusColor} />
           <Text color="$gray400" fontSize="$sm">
             {session.status}
           </Text>

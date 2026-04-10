@@ -8,14 +8,6 @@ async function sendMessage(page: import('@playwright/test').Page, text: string) 
   await page.keyboard.press('Enter')
 }
 
-async function getPanelMode(page: import('@playwright/test').Page) {
-  const panel = page.locator('[data-panel-mode]').first()
-  return {
-    mode: await panel.getAttribute('data-panel-mode'),
-    substate: await panel.getAttribute('data-panel-substate'),
-  }
-}
-
 test.describe('Chat Panel FSM Modes', () => {
   let sidecarReady = false
 

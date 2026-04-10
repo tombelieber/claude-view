@@ -32,7 +32,7 @@
     "vitest": "^2.1.9"
   },
   "scripts": {
-    "build": "echo 'No build step — consumed as TypeScript source'",
+    "build": "mkdir -p dist && printf 'source-consumed workspace package\\n' > dist/build-stamp.txt && echo 'No build step — consumed as TypeScript source'",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "test": "vitest run"

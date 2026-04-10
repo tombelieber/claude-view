@@ -38,7 +38,7 @@ describe('isValidEmail', () => {
   })
 
   it('rejects emails longer than 254 characters', () => {
-    const long = 'a'.repeat(245) + '@test.com'
+    const long = `${'a'.repeat(245)}@test.com`
     expect(isValidEmail(long)).toBe(false)
   })
 })

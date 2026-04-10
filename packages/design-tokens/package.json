@@ -9,7 +9,7 @@
     "./*": "./src/*.ts"
   },
   "scripts": {
-    "build": "echo 'No build step — consumed as TypeScript source'",
+    "build": "mkdir -p dist && printf 'source-consumed workspace package\\n' > dist/build-stamp.txt && echo 'No build step — consumed as TypeScript source'",
     "lint": "biome check .",
     "typecheck": "tsc --noEmit"
   }

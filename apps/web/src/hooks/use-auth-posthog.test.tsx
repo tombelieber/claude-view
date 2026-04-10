@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, waitFor } from '@testing-library/react'
+import { act, render, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -38,8 +38,10 @@ describe('Auth + PostHog identify', () => {
         </AuthProvider>
       </QueryClientProvider>,
     )
-    authCallback?.('SIGNED_IN', {
-      user: { id: 'user-123', email: 'test@example.com', user_metadata: {} },
+    act(() => {
+      authCallback?.('SIGNED_IN', {
+        user: { id: 'user-123', email: 'test@example.com', user_metadata: {} },
+      })
     })
     await waitFor(() => {
       expect(mockIdentify).toHaveBeenCalledWith('user-123', { email: 'test@example.com' })

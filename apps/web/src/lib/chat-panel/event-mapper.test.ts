@@ -75,13 +75,13 @@ describe('mapWsEvent', () => {
   test('turn_error → TURN_ERROR', () => {
     const raw = {
       type: 'turn_error',
-      blocks: [{ id: 'b3' }],
+      blocks: [{ id: 'b3', type: 'notice', variant: 'error', data: {} }],
       totalInputTokens: 500,
       contextWindowSize: 200000,
     }
     expect(mapWsEvent(raw)).toEqual({
       type: 'TURN_ERROR',
-      blocks: [{ id: 'b3' }],
+      blocks: [{ id: 'b3', type: 'notice', variant: 'error', data: {} }],
       totalInputTokens: 500,
       contextWindowSize: 200000,
     })

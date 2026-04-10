@@ -64,14 +64,19 @@ vi.mock('@radix-ui/react-popover', async () => {
 
   const Portal = ({ children }: { children: RNode }) => <>{children}</>
 
-  const Content = R.forwardRef(({ children, ...props }: any, ref: any) => {
-    if (!ctx.open) return null
-    return (
-      <div ref={ref} {...props}>
-        {children}
-      </div>
-    )
-  })
+  const Content = R.forwardRef(
+    (
+      { children, align: _align, side: _side, sideOffset: _sideOffset, ...props }: any,
+      ref: any,
+    ) => {
+      if (!ctx.open) return null
+      return (
+        <div ref={ref} {...props}>
+          {children}
+        </div>
+      )
+    },
+  )
   Content.displayName = 'Content'
 
   const Close = R.forwardRef(({ asChild, children, ...props }: any, ref: any) => {

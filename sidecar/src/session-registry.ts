@@ -4,7 +4,7 @@ import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
 import type { MessageBridge } from './message-bridge.js'
 import type { PermissionHandler } from './permission-handler.js'
-import type { ActiveSession, ServerEvent, SessionInit } from './protocol.js'
+import type { ActiveSession, SequencedEvent, ServerEvent, SessionInit } from './protocol.js'
 import type { StreamAccumulator } from './stream-accumulator.js'
 
 export type SessionState =
@@ -91,7 +91,7 @@ export class SessionRegistry {
 
   emitSequenced(
     cs: ControlSession,
-    event: ServerEvent,
+    event: ServerEvent | SequencedEvent,
     rawSdkMessage?: Record<string, unknown>,
   ): void {
     // Cache session_init for late-joining WS clients

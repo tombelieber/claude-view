@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import type { SessionInfo } from '../hooks/use-projects'
 import { ActivityCalendar } from './ActivityCalendar'
@@ -165,22 +165,27 @@ describe('ActivityCalendar', () => {
     })
 
     // A11Y-2: Keyboard navigation handler is attached
-    it('should have onKeyDown handler for arrow key navigation', () => {
+    it('should have onKeyDown handler for arrow key navigation', async () => {
       const sessions = createSessionsForDate(new Date(), 1)
       render(<ActivityCalendar sessions={sessions} />)
 
       const ourCells = getOurCalendarCells()
       const firstCell = ourCells[0]
 
-      // Focus the cell
-      firstCell.focus()
+      await act(async () => {
+        firstCell.focus()
+        await Promise.resolve()
+      })
       expect(document.activeElement).toBe(firstCell)
 
       // Verify keydown events can be dispatched (handler exists)
       // The actual navigation is handled by state updates
-      expect(() => {
+      await act(async () => {
         fireEvent.keyDown(firstCell, { key: 'ArrowRight' })
-      }).not.toThrow()
+        await Promise.resolve()
+      })
+      expect(document.querySelector('.activity-calendar')).toBeInTheDocument()
+      expect(getOurCalendarCells().length).toBeGreaterThan(0)
     })
 
     // A11Y-3: Screen reader announces date and session count

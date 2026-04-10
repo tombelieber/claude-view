@@ -121,7 +121,7 @@ function capitalizeTag(tag: string): string {
 function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
   const byTag = new Map<string, ToolEntry[]>()
 
-  for (const [path, methods] of Object.entries(spec.paths)) {
+  for (const [path, methods] of Object.entries(spec.paths ?? {})) {
     for (const [method, op] of Object.entries(methods)) {
       if (!['get', 'post', 'put', 'delete', 'patch'].includes(method)) continue
 
@@ -150,10 +150,12 @@ function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
 
   for (let i = 0; i < sortedTags.length; i++) {
     const tag = sortedTags[i]
+    const tools = byTag.get(tag)
+    if (!tools) continue
     groups.push({
       label: `${capitalizeTag(tag)} Tools`,
       sortOrder: 100 + i,
-      tools: byTag.get(tag)!,
+      tools,
     })
   }
 

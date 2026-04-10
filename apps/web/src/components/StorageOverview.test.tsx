@@ -1,11 +1,29 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { StorageOverview } from './StorageOverview'
 
+vi.mock('recharts', async () => {
+  const React = await import('react')
+  const actual = await vi.importActual<typeof import('recharts')>('recharts')
+
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: ReactNode }) => {
+      if (React.isValidElement(children)) {
+        return React.cloneElement(
+          children as React.ReactElement<{ width?: number; height?: number }>,
+          { width: 320, height: 320 },
+        )
+      }
+      return <div style={{ width: 320, height: 320 }}>{children}</div>
+    },
+  }
+})
+
 // Mock fetch globally
 const mockFetch = vi.fn()
-globalThis.fetch = mockFetch
 
 // Create a wrapper with QueryClient
 function createWrapper() {
@@ -24,6 +42,7 @@ function createWrapper() {
 describe('StorageOverview', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.stubGlobal('fetch', mockFetch)
   })
 
   afterEach(() => {

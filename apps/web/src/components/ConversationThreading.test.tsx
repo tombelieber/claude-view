@@ -1,5 +1,5 @@
 import { render } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { INDENT_PX, MAX_INDENT_LEVEL, MessageTyped } from './MessageTyped'
 
 /** Helper to create a minimal message for testing */
@@ -35,9 +35,15 @@ describe('ConversationThreading', () => {
     })
 
     it('maximum indent is capped at MAX_INDENT_LEVEL', () => {
-      const { container } = render(<MessageTyped message={makeMessage()} indent={10} />)
-      const article = container.querySelector('[role="article"]')!
-      expect(article).toHaveStyle({ paddingLeft: `${MAX_INDENT_LEVEL * INDENT_PX}px` })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { container } = render(<MessageTyped message={makeMessage()} indent={10} />)
+        const article = container.querySelector('[role="article"]')!
+        expect(article).toHaveStyle({ paddingLeft: `${MAX_INDENT_LEVEL * INDENT_PX}px` })
+        expect(warn).toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('negative indent is clamped to 0', () => {
@@ -92,10 +98,16 @@ describe('ConversationThreading', () => {
     })
 
     it('deeply nested message has capped aria-level', () => {
-      const { container } = render(<MessageTyped message={makeMessage()} indent={10} />)
-      const article = container.querySelector('[role="article"]')!
-      // Capped at MAX_INDENT_LEVEL, so aria-level = MAX_INDENT_LEVEL + 1
-      expect(article.getAttribute('aria-level')).toBe(String(MAX_INDENT_LEVEL + 1))
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const { container } = render(<MessageTyped message={makeMessage()} indent={10} />)
+        const article = container.querySelector('[role="article"]')!
+        // Capped at MAX_INDENT_LEVEL, so aria-level = MAX_INDENT_LEVEL + 1
+        expect(article.getAttribute('aria-level')).toBe(String(MAX_INDENT_LEVEL + 1))
+        expect(warn).toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
     })
 
     it('all messages have role="article"', () => {

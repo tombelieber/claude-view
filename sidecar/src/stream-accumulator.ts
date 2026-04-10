@@ -21,6 +21,7 @@ import type {
   PromptSuggestion,
   RateLimit,
   ServerEvent,
+  SequencedEvent,
   SessionClosed,
   SessionInit,
   StreamDelta,
@@ -232,11 +233,11 @@ export class StreamAccumulator {
   private currentAssistant: AssistantBlock | null = null
   private pushCounter = 0
   private initialized = false
-  private buffer: { event: ServerEvent; raw?: Record<string, unknown> }[] = []
+  private buffer: { event: ServerEvent | SequencedEvent; raw?: Record<string, unknown> }[] = []
   /** Raw SDK message for the current push — available during handleEvent. */
   private currentRaw: Record<string, unknown> | undefined = undefined
 
-  push(event: ServerEvent, rawSdkMessage?: Record<string, unknown>): void {
+  push(event: ServerEvent | SequencedEvent, rawSdkMessage?: Record<string, unknown>): void {
     this.pushCounter++
 
     // user_message_echo bypasses init gate — render immediately
@@ -280,7 +281,7 @@ export class StreamAccumulator {
     this.buffer = []
   }
 
-  private handleEvent(event: ServerEvent): void {
+  private handleEvent(event: ServerEvent | SequencedEvent): void {
     switch (event.type) {
       case 'user_message_echo':
         this.handleUserMessageEcho(event as UserMessageEcho)

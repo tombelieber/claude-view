@@ -10,7 +10,7 @@ describe('bundle integrity', () => {
   beforeAll(() => {
     execFileSync('bun', ['run', 'build'], { cwd: sidecarRoot, stdio: 'pipe' })
     if (!existsSync(resolve(sidecarRoot, 'dist', 'index.js'))) {
-      throw new Error('Build did not produce dist/index.js — check tsup config')
+      throw new Error('Build did not produce dist/index.js')
     }
   })
 

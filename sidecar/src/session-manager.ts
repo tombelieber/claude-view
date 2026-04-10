@@ -3,14 +3,14 @@
 // Single responsibility: coordinate create/resume/end lifecycle on top of
 // the registry, hiding the raw SDK wiring from callers.
 
-import type { CreateSessionRequest, ResumeSessionRequest } from './protocol.js'
+import type { ActiveSession, CreateSessionRequest, ResumeSessionRequest } from './protocol.js'
 import {
   closeSession,
   createControlSession,
   resumeControlSession,
   waitForSessionInit,
 } from './sdk-session.js'
-import type { ActiveSession, ControlSession, SessionRegistry } from './session-registry.js'
+import type { ControlSession, SessionRegistry } from './session-registry.js'
 
 export class SessionManager {
   constructor(private registry: SessionRegistry) {}

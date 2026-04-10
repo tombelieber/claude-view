@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ToolCallCard } from './ToolCallCard'
 
@@ -217,7 +217,7 @@ describe('ToolCallCard', () => {
       })
     })
 
-    it('has a copy button that copies input to clipboard', () => {
+    it('has a copy button that copies input to clipboard', async () => {
       render(
         <ToolCallCard name="Bash" input={{ command: 'npm install' }} description="Install deps" />,
       )
@@ -229,9 +229,11 @@ describe('ToolCallCard', () => {
       expect(copyButton).toBeInTheDocument()
 
       fireEvent.click(copyButton)
-      expect(mockWriteText).toHaveBeenCalledWith(
-        JSON.stringify({ command: 'npm install' }, null, 2),
-      )
+      await waitFor(() => {
+        expect(mockWriteText).toHaveBeenCalledWith(
+          JSON.stringify({ command: 'npm install' }, null, 2),
+        )
+      })
     })
   })
 

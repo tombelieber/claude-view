@@ -106,6 +106,15 @@ const isCompact = variant === 'compact'
 </style>
 
 <script>
+  function selectNodeContents(node: Node) {
+    const selection = window.getSelection()
+    if (!selection) return
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    selection.removeAllRanges()
+    selection.addRange(range)
+  }
+
   function initWaitlistForms() {
     const forms = document.querySelectorAll<HTMLDivElement>('.waitlist-form')
     const refParam = new URLSearchParams(window.location.search).get('ref')
@@ -279,17 +288,12 @@ const isCompact = variant === 'compact'
           copyBtn.textContent = 'Copied!'
           setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
         } catch {
-          // Fallback
-          const textarea = document.createElement('textarea')
-          textarea.value = link
-          textarea.style.position = 'fixed'
-          textarea.style.opacity = '0'
-          document.body.appendChild(textarea)
-          textarea.select()
-          document.execCommand('copy')
-          document.body.removeChild(textarea)
-          copyBtn.textContent = 'Copied!'
-          setTimeout(() => { copyBtn.textContent = 'Copy' }, 2000)
+          selectNodeContents(linkEl)
+          copyBtn.textContent = 'Press Cmd+C'
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy'
+            window.getSelection()?.removeAllRanges()
+          }, 2000)
         }
       })
     })

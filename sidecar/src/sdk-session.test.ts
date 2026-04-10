@@ -505,10 +505,11 @@ describe('setSessionMode', () => {
     registry.register(cs)
 
     const modes = ['plan', 'auto', 'default', 'acceptEdits', 'dontAsk'] as const
+    const setPermissionMode = mockQuery.setPermissionMode as ReturnType<typeof vi.fn>
     for (const mode of modes) {
-      mockQuery.setPermissionMode.mockClear()
+      setPermissionMode.mockClear()
       const result = await setSessionMode(cs, mode, registry)
-      expect(mockQuery.setPermissionMode).toHaveBeenCalledWith(mode)
+      expect(setPermissionMode).toHaveBeenCalledWith(mode)
       expect(result.ok).toBe(true)
       expect(result.currentMode).toBe(mode)
     }

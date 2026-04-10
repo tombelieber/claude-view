@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "bash scripts/dev-watch.sh",
-    "build": "tsup",
+    "build": "node ./scripts/build.mjs",
     "start": "node dist/index.js",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
