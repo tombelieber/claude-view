@@ -1,13 +1,16 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ConversationBlock } from '../types/blocks'
 import { normalizeBlock, normalizeBlocks } from './normalize-block'
+
+// Helper: cast to access normalized fields without triggering noExplicitAny
+const raw = (b: ConversationBlock) => b as Record<string, unknown>
 
 describe('normalizeBlock', () => {
   it('defaults missing segments on assistant block to empty array', () => {
     const block = { type: 'assistant', id: 'a1' } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).segments).toEqual([])
-    expect((block as any).streaming).toBe(false)
+    expect(raw(block).segments).toEqual([])
+    expect(raw(block).streaming).toBe(false)
   })
 
   it('preserves existing segments on assistant block', () => {
@@ -19,28 +22,20 @@ describe('normalizeBlock', () => {
       streaming: true,
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).segments).toBe(segs)
-    expect((block as any).streaming).toBe(true)
+    expect(raw(block).segments).toBe(segs)
+    expect(raw(block).streaming).toBe(true)
   })
 
-  it('defaults missing requestId on interaction block with unique fallback', () => {
-    const block1 = {
+  it('defaults missing requestId to empty string (historical blocks are resolved)', () => {
+    const block = {
       type: 'interaction',
       id: 'i1',
       variant: 'permission',
     } as unknown as ConversationBlock
-    const block2 = {
-      type: 'interaction',
-      id: 'i2',
-      variant: 'question',
-    } as unknown as ConversationBlock
-    normalizeBlock(block1)
-    normalizeBlock(block2)
-    // Each gets a unique requestId, not shared ''
-    expect((block1 as any).requestId).toMatch(/^req-/)
-    expect((block2 as any).requestId).toMatch(/^req-/)
-    expect((block1 as any).requestId).not.toBe((block2 as any).requestId)
-    expect((block1 as any).resolved).toBe(false)
+    normalizeBlock(block)
+    // '' is truthful: no active request exists for historical blocks
+    expect(raw(block).requestId).toBe('')
+    expect(raw(block).resolved).toBe(false)
   })
 
   it('preserves existing requestId on interaction block', () => {
@@ -53,8 +48,8 @@ describe('normalizeBlock', () => {
       data: {},
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).requestId).toBe('req-abc')
-    expect((block as any).resolved).toBe(true)
+    expect(raw(block).requestId).toBe('req-abc')
+    expect(raw(block).resolved).toBe(true)
   })
 
   it('defaults missing arrays on turn_boundary block', () => {
@@ -64,9 +59,9 @@ describe('normalizeBlock', () => {
       success: true,
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).usage).toEqual({})
-    expect((block as any).modelUsage).toEqual({})
-    expect((block as any).permissionDenials).toEqual([])
+    expect(raw(block).usage).toEqual({})
+    expect(raw(block).modelUsage).toEqual({})
+    expect(raw(block).permissionDenials).toEqual([])
   })
 
   it('normalizes turn_boundary error.messages to array', () => {
@@ -77,7 +72,7 @@ describe('normalizeBlock', () => {
       error: { subtype: 'error_during_execution' },
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).error.messages).toEqual([])
+    expect((raw(block).error as Record<string, unknown>).messages).toEqual([])
   })
 
   it('defaults missing tools/agents on session_init system block', () => {
@@ -88,8 +83,8 @@ describe('normalizeBlock', () => {
       data: { model: 'claude-3' },
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).data.tools).toEqual([])
-    expect((block as any).data.agents).toEqual([])
+    expect((raw(block).data as Record<string, unknown>).tools).toEqual([])
+    expect((raw(block).data as Record<string, unknown>).agents).toEqual([])
   })
 
   it('defaults missing taskId on task_started system block', () => {
@@ -100,7 +95,7 @@ describe('normalizeBlock', () => {
       data: {},
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).data.taskId).toBe('')
+    expect((raw(block).data as Record<string, unknown>).taskId).toBe('')
   })
 
   it('defaults missing messageId on stream_delta system block', () => {
@@ -111,7 +106,7 @@ describe('normalizeBlock', () => {
       data: {},
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).data.messageId).toBe('')
+    expect((raw(block).data as Record<string, unknown>).messageId).toBe('')
   })
 
   it('defaults missing output on auth_status notice block', () => {
@@ -122,7 +117,7 @@ describe('normalizeBlock', () => {
       data: {},
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).data.output).toEqual([])
+    expect((raw(block).data as Record<string, unknown>).output).toEqual([])
   })
 
   it('defaults missing suggestion on prompt_suggestion notice block', () => {
@@ -133,7 +128,7 @@ describe('normalizeBlock', () => {
       data: {},
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).data.suggestion).toBe('')
+    expect((raw(block).data as Record<string, unknown>).suggestion).toBe('')
   })
 
   it('defaults missing speakers/entries on team_transcript block', () => {
@@ -142,18 +137,8 @@ describe('normalizeBlock', () => {
       id: 'tt1',
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).speakers).toEqual([])
-    expect((block as any).entries).toEqual([])
-  })
-
-  it('generates collision-free ids for blocks missing one', () => {
-    const block1 = { type: 'user' } as unknown as ConversationBlock
-    const block2 = { type: 'user' } as unknown as ConversationBlock
-    normalizeBlock(block1)
-    normalizeBlock(block2)
-    expect((block1 as any).id).toMatch(/^block-/)
-    expect((block2 as any).id).toMatch(/^block-/)
-    expect((block1 as any).id).not.toBe((block2 as any).id)
+    expect(raw(block).speakers).toEqual([])
+    expect(raw(block).entries).toEqual([])
   })
 })
 
@@ -165,7 +150,7 @@ describe('normalizeBlocks', () => {
       42,
       'string',
       { type: 'user', id: 'u1', text: 'hi' },
-    ] as any)
+    ] as unknown[])
     expect(result).toHaveLength(1)
     expect(result[0].type).toBe('user')
   })
@@ -174,9 +159,21 @@ describe('normalizeBlocks', () => {
     const result = normalizeBlocks([
       { id: 'x', foo: 'bar' },
       { type: 'assistant', id: 'a1' },
-    ] as any)
+    ] as unknown[])
     expect(result).toHaveLength(1)
     expect(result[0].type).toBe('assistant')
+  })
+
+  it('drops blocks with missing id and logs error', () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const result = normalizeBlocks([{ type: 'user' }, { type: 'assistant', id: 'a1' }] as unknown[])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe('a1')
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[normalizeBlocks] dropped block with missing id — upstream bug:',
+      expect.objectContaining({ type: 'user' }),
+    )
+    errorSpy.mockRestore()
   })
 
   it('normalizes all blocks in array', () => {
@@ -184,13 +181,13 @@ describe('normalizeBlocks', () => {
       { type: 'assistant', id: 'a1' },
       { type: 'interaction', id: 'i1', variant: 'question' },
     ]
-    const result = normalizeBlocks(blocks as any)
-    expect((result[0] as any).segments).toEqual([])
-    expect((result[1] as any).requestId).toMatch(/^req-/)
+    const result = normalizeBlocks(blocks as unknown[])
+    expect(raw(result[0]).segments).toEqual([])
+    expect(raw(result[1]).requestId).toBe('')
   })
 
   it('handles undefined input', () => {
-    const result = normalizeBlocks(undefined as any)
+    const result = normalizeBlocks(undefined as unknown[])
     expect(result).toEqual([])
   })
 
@@ -202,7 +199,7 @@ describe('normalizeBlocks', () => {
       data: {},
     } as unknown as ConversationBlock
     normalizeBlock(block)
-    expect((block as any).data.files).toEqual([])
-    expect((block as any).data.failed).toEqual([])
+    expect((raw(block).data as Record<string, unknown>).files).toEqual([])
+    expect((raw(block).data as Record<string, unknown>).failed).toEqual([])
   })
 })

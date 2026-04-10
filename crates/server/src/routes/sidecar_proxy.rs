@@ -9,8 +9,9 @@
 //! Workers, and API gateways all use this same pattern.
 //!
 //! Routes:
-//!   - ANY /api/sidecar/*  → HTTP proxy to sidecar
-//!   - WS  /ws/chat/*      → WebSocket relay to sidecar
+//!   - ANY /api/sidecar/*     → HTTP proxy to sidecar
+//!   - WS  /ws/chat/*         → WebSocket relay to sidecar (SDK chat)
+//!   - WS  /ws/terminal/*     → WebSocket relay to sidecar (tmux pty)
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -47,6 +48,7 @@ fn shared_client() -> &'static reqwest::Client {
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/ws/chat/{session_id}", get(ws_proxy_handler))
+        .route("/ws/terminal/{session_id}", get(ws_terminal_proxy_handler))
         .route("/api/sidecar/{*rest}", any(http_proxy_handler))
 }
 
@@ -182,6 +184,42 @@ async fn ws_proxy_handler(
         .replace("http://", "ws://")
         .replace("https://", "wss://");
     let target = format!("{ws_url}/ws/chat/{session_id}");
+
+    ws.on_upgrade(move |client_ws| relay_websocket(client_ws, target))
+}
+
+/// Upgrade to WebSocket and relay to sidecar's `/ws/terminal/:session_id`.
+///
+/// Validates session ID format (`cv-{8 hex chars}`) to prevent injection
+/// into the tmux `-t` argument on the sidecar side.
+async fn ws_terminal_proxy_handler(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(session_id): axum::extract::Path<String>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    // Validate session ID format: cv-{8 hex chars}
+    if !session_id.starts_with("cv-")
+        || session_id.len() != 11
+        || !session_id[3..].chars().all(|c| c.is_ascii_hexdigit())
+    {
+        return error_response(StatusCode::BAD_REQUEST, "Invalid session ID format");
+    }
+
+    let sidecar_base = match state.sidecar.ensure_running().await {
+        Ok(url) => url,
+        Err(e) => {
+            tracing::error!(error = %e, "Sidecar not available for terminal WS proxy");
+            return error_response(
+                StatusCode::SERVICE_UNAVAILABLE,
+                &format!("Sidecar not available: {e}"),
+            );
+        }
+    };
+
+    let ws_url = sidecar_base
+        .replace("http://", "ws://")
+        .replace("https://", "wss://");
+    let target = format!("{ws_url}/ws/terminal/{session_id}");
 
     ws.on_upgrade(move |client_ws| relay_websocket(client_ws, target))
 }

@@ -27,6 +27,11 @@ export default defineConfig({
         ws: true,
         rewriteWsOrigin: true,
       },
+      '/ws/terminal': {
+        target: 'ws://localhost:3001',
+        ws: true,
+        rewriteWsOrigin: true,
+      },
       '/api/sidecar': {
         target: 'http://localhost:3001',
       },

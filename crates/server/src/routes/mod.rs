@@ -4,6 +4,7 @@ pub mod active_sessions;
 pub mod auth_keys;
 pub mod classify;
 pub mod claude_code_settings;
+pub mod cli_sessions;
 pub mod coaching;
 pub mod config;
 pub mod contributions;
@@ -140,6 +141,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", system::router())
         .nest("/api", classify::router())
         .nest("/api", claude_code_settings::router())
+        .nest("/api", cli_sessions::router())
         .nest("/api", coaching::router())
         .nest("/api", control::router())
         .nest("/api", insights::router())

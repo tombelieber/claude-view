@@ -15,6 +15,7 @@ const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import type { DisplayMode } from '../../store/monitor-store'
 import { useMonitorStore } from '../../store/monitor-store'
+import { CliTerminalPanel } from '../cli-terminal/CliTerminalPanel'
 import { BlockTerminalPane } from './BlockTerminalPane'
 import { MonitorPane } from './MonitorPane'
 import type { LiveSession } from './use-live-sessions'
@@ -103,7 +104,7 @@ function SessionPanel({
 
 // Component registry + watermark — defined outside the component to avoid
 // re-creating on every render (React reconciler uses referential equality).
-const components = { session: SessionPanel }
+const components = { session: SessionPanel, cliTerminal: CliTerminalPanel }
 
 function EmptyWatermark(_props: IWatermarkPanelProps) {
   return (
@@ -152,6 +153,15 @@ function SessionTabRenderer({
         className="w-1.5 h-1.5 rounded-full flex-shrink-0"
         style={{ backgroundColor: statusColor }}
       />
+      <span className="truncate">{api.title}</span>
+    </div>
+  )
+}
+
+function CliTerminalTabRenderer({ api }: IDockviewPanelHeaderProps) {
+  return (
+    <div className="flex items-center gap-1.5 px-3 h-full text-xs">
+      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
       <span className="truncate">{api.title}</span>
     </div>
   )
@@ -306,7 +316,7 @@ export function DockLayout({
         <DockviewReact
           theme={cvTheme}
           components={components}
-          tabComponents={{ session: SessionTabRenderer }}
+          tabComponents={{ session: SessionTabRenderer, cliTerminal: CliTerminalTabRenderer }}
           defaultTabComponent={SessionTabRenderer}
           onReady={onReady}
           watermarkComponent={EmptyWatermark}

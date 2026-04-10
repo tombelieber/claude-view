@@ -112,7 +112,11 @@ async fn handle_event(
             types.push(WebhookEventType::SessionUpdated);
             (types, session)
         }
-        SessionEvent::SessionCompleted { .. } | SessionEvent::Summary { .. } => return,
+        SessionEvent::SessionCompleted { .. }
+        | SessionEvent::Summary { .. }
+        | SessionEvent::CliSessionCreated { .. }
+        | SessionEvent::CliSessionUpdated { .. }
+        | SessionEvent::CliSessionRemoved { .. } => return,
     };
 
     // Load config (file-backed, re-read each time for hot reload).

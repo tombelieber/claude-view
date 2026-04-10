@@ -201,6 +201,10 @@ pub struct AppState {
     pub webhook_config_path: std::path::PathBuf,
     /// Path to webhook signing secrets file (~/.claude-view/webhook-secrets.json).
     pub webhook_secrets_path: std::path::PathBuf,
+    /// In-memory store for tmux-backed CLI sessions.
+    pub cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+    /// Tmux command abstraction (real in prod, mock in tests).
+    pub tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
 }
 
 /// Builder for constructing `AppState` with optional overrides.
@@ -311,6 +315,8 @@ impl AppStateBuilder {
             webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
             webhook_secrets_path: claude_view_core::paths::config_dir()
                 .join("webhook-secrets.json"),
+            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         })
     }
 }

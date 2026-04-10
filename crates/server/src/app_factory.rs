@@ -146,6 +146,8 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
+        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
     routes::api_routes(state)
 }
@@ -254,6 +256,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
+        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
     routes::api_routes(state)
 }
@@ -426,6 +430,8 @@ pub fn create_app_full(
         api_key_store_path,
         webhook_config_path,
         webhook_secrets_path,
+        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
 
     // Spawn webhook notification engine.
@@ -447,6 +453,14 @@ pub fn create_app_full(
             async move { routes::plugin_ops::execute_plugin_op(&st, op).await }
         });
     }
+
+    // Spawn CLI session health check (marks dead tmux sessions as Exited every 30s).
+    crate::routes::cli_sessions::health::spawn_health_check(
+        state.cli_sessions.clone(),
+        state.tmux.clone(),
+        state.live_tx.clone(),
+        state.shutdown.clone(),
+    );
 
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();

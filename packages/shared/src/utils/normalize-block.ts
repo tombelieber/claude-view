@@ -10,17 +10,13 @@
  * and paginated older blocks pass through it. Renderers can then trust
  * the TS types without per-field null checks.
  *
- * Rule: fix the TYPE GAP at the boundary, not in the consumer.
+ * Policy: truthful defaults only. Arrays default to []. Objects default
+ * to {}. Missing IDs are NOT invented — blocks without id are dropped
+ * with a console.error so the upstream bug is visible, not hidden.
  */
 import type { ConversationBlock } from '../types/blocks'
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-let _idCounter = 0
-
-function uniqueFallbackId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${++_idCounter}`
-}
 
 function ensureArray<T>(val: unknown): T[] {
   return Array.isArray(val) ? val : []
@@ -44,10 +40,10 @@ function normalizeAssistant(block: Record<string, unknown>): void {
 }
 
 function normalizeInteraction(block: Record<string, unknown>): void {
-  // Rust: request_id is Option<String> — can be None/omitted
-  // Each interaction needs a unique requestId because useInteractionHandlers()
-  // keys response state by requestId — shared '' would cross-contaminate cards
-  if (block.requestId == null) block.requestId = uniqueFallbackId('req')
+  // Rust synthesizer sets request_id: None for historical blocks (70 across
+  // 5,970 real sessions). These are always resolved: true, so requestId is
+  // display-only — '' is truthful (no active request exists).
+  if (block.requestId == null) block.requestId = ''
   block.resolved = block.resolved ?? false
   block.data = block.data ?? {}
 }
@@ -66,7 +62,6 @@ function normalizeTurnBoundary(block: Record<string, unknown>): void {
 
 function normalizeNotice(block: Record<string, unknown>): void {
   block.data = block.data ?? {}
-  // Variant-specific data normalization
   const data = block.data as Record<string, unknown>
   switch (block.variant) {
     case 'auth_status':
@@ -122,9 +117,7 @@ function normalizeTeamTranscript(block: Record<string, unknown>): void {
  * Call at the fetch boundary before blocks enter the store.
  */
 export function normalizeBlock(block: ConversationBlock): ConversationBlock {
-  // All blocks must have an id
   const raw = block as Record<string, unknown>
-  if (!raw.id || typeof raw.id !== 'string') raw.id = uniqueFallbackId('block')
 
   switch (block.type) {
     case 'assistant':
@@ -154,17 +147,26 @@ export function normalizeBlock(block: ConversationBlock): ConversationBlock {
 }
 
 /**
- * Normalize an array of blocks. Filters out any entries that aren't
- * objects with a `type` field (malformed data from API).
+ * Normalize an array of blocks. Filters out malformed entries:
+ * - Non-objects, missing `type` field
+ * - Missing `id` field (logs error — don't hide upstream bugs)
  */
 export function normalizeBlocks(blocks: unknown[]): ConversationBlock[] {
   return (blocks ?? [])
-    .filter(
-      (b): b is ConversationBlock =>
-        b != null &&
-        typeof b === 'object' &&
-        'type' in b &&
-        typeof (b as Record<string, unknown>).type === 'string',
-    )
+    .filter((b): b is ConversationBlock => {
+      if (b == null || typeof b !== 'object') return false
+      const obj = b as Record<string, unknown>
+      if (typeof obj.type !== 'string') return false
+      // Missing id = upstream bug. Drop and surface the error.
+      if (!obj.id || typeof obj.id !== 'string') {
+        console.error('[normalizeBlocks] dropped block with missing id — upstream bug:', {
+          type: obj.type,
+          variant: obj.variant,
+          keys: Object.keys(obj),
+        })
+        return false
+      }
+      return true
+    })
     .map(normalizeBlock)
 }

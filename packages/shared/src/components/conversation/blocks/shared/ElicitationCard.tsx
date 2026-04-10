@@ -7,16 +7,28 @@ export interface ElicitationCardProps {
   elicitation: Elicitation
   onSubmit?: (requestId: string, response: string) => void
   resolved?: boolean
+  /** CLI terminal delegation — when present, sends keystrokes instead of SDK submit. */
+  onTerminalDelegate?: (keys: string[]) => Promise<void>
 }
 
-export function ElicitationCard({ elicitation, onSubmit, resolved }: ElicitationCardProps) {
+export function ElicitationCard({
+  elicitation,
+  onSubmit,
+  resolved,
+  onTerminalDelegate,
+}: ElicitationCardProps) {
   const [response, setResponse] = useState('')
   const requestId = elicitation.requestId
 
   const handleSubmit = useCallback(() => {
-    if (!response.trim() || !onSubmit) return
+    if (!response.trim()) return
+    if (onTerminalDelegate) {
+      onTerminalDelegate([response.trim(), 'Enter'])
+      return
+    }
+    if (!onSubmit) return
     onSubmit(requestId, response.trim())
-  }, [onSubmit, requestId, response])
+  }, [onSubmit, onTerminalDelegate, requestId, response])
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

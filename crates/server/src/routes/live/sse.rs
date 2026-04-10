@@ -79,6 +79,9 @@ pub async fn live_stream(
                                 SessionEvent::SessionClosed { .. } => "session_closed",
                                 SessionEvent::SessionCompleted { .. } => "session_completed",
                                 SessionEvent::Summary { .. } => "summary",
+                                SessionEvent::CliSessionCreated { .. } => "cli_session_created",
+                                SessionEvent::CliSessionUpdated { .. } => "cli_session_updated",
+                                SessionEvent::CliSessionRemoved { .. } => "cli_session_removed",
                             };
                             match serde_json::to_string(&session_event) {
                                 Ok(data) => yield Ok(Event::default().event(event_name).data(data)),

@@ -13,6 +13,7 @@ import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
 import type { WorkflowEvent } from './workflow-runner.js'
+import { closeAllTerminals, handleTerminalWebSocket } from './terminal-relay.js'
 import { handleWebSocket } from './ws-handler.js'
 
 const SIDECAR_PORT = Number(process.env.SIDECAR_PORT ?? '3001')
@@ -71,29 +72,39 @@ server.listen(SIDECAR_PORT, () => {
   startModelCacheRefresh()
 })
 
-// WS upgrade — /ws/chat/:sessionId
+// WS upgrade — /ws/chat/:sessionId and /ws/terminal/:tmuxSessionId
 const wss = new WebSocketServer({ noServer: true })
 server.on('upgrade', (request, socket, head) => {
-  const match = request.url?.match(/\/ws\/chat\/([^/?]+)/)
-  if (!match?.[1]) {
-    socket.destroy()
+  // Chat WS — SDK interactive chat
+  const chatMatch = request.url?.match(/\/ws\/chat\/([^/?]+)/)
+  if (chatMatch?.[1]) {
+    const sessionId = chatMatch[1]
+    const cs = registry.getBySessionId(sessionId)
+    if (!cs) {
+      socket.destroy()
+      return
+    }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      handleWebSocket(ws, cs.controlId, registry)
+    })
     return
   }
 
-  const sessionId = match[1]
-  const cs = registry.getBySessionId(sessionId)
-  if (!cs) {
-    socket.destroy()
+  // Terminal WS — tmux pty relay
+  const terminalMatch = request.url?.match(/\/ws\/terminal\/([^/?]+)/)
+  if (terminalMatch?.[1]) {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      handleTerminalWebSocket(ws, terminalMatch[1])
+    })
     return
   }
 
-  wss.handleUpgrade(request, socket, head, (ws) => {
-    handleWebSocket(ws, cs.controlId, registry)
-  })
+  socket.destroy()
 })
 
 async function shutdown() {
   stopModelCacheRefresh()
+  closeAllTerminals()
   wss.close()
   await registry.closeAll()
   server.close()
