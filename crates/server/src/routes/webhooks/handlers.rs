@@ -2,14 +2,12 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
-    response::IntoResponse,
     Json,
 };
 use std::sync::Arc;
 
 use crate::{
-    error::{ApiError, ApiResult, ErrorResponse},
+    error::{ApiError, ApiResult},
     state::AppState,
     webhook_engine::config::{
         generate_signing_secret, generate_webhook_id, load_config, load_secrets, save_config,
@@ -179,13 +177,51 @@ pub async fn delete_webhook(
     Ok(Json(DeleteWebhookResponse { deleted: true, id }))
 }
 
-/// POST /api/webhooks/{id}/test — placeholder (Task 11 implements this).
+/// POST /api/webhooks/{id}/test — send a synthetic test payload.
 pub async fn test_send(
-    State(_state): State<Arc<AppState>>,
-    Path(_id): Path<String>,
-) -> impl IntoResponse {
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse::new("Test send not yet implemented")),
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<super::types::TestSendResponse>> {
+    let config = load_config(&state.webhook_config_path);
+    let webhook = config
+        .webhooks
+        .iter()
+        .find(|w| w.id == id)
+        .ok_or_else(|| ApiError::NotFound(format!("Webhook not found: {id}")))?
+        .clone();
+
+    let secrets = load_secrets(&state.webhook_secrets_path);
+    let secret = secrets
+        .secrets
+        .get(&id)
+        .ok_or_else(|| ApiError::Internal("Signing secret not found".into()))?
+        .clone();
+
+    // Build a synthetic session.started test payload.
+    let test_session = claude_view_server_live_state::core::test_live_session("test-send");
+    let payload = crate::webhook_engine::formatters::build_payload(
+        &crate::webhook_engine::config::WebhookEventType::SessionStarted,
+        &test_session,
+        config.base_url.as_deref(),
+    );
+    let formatted = crate::webhook_engine::formatters::format_payload(&payload, &webhook.format);
+    let body = serde_json::to_string(&formatted).unwrap_or_default();
+
+    let client = reqwest::Client::new();
+    let result = crate::webhook_engine::delivery::deliver(
+        &client,
+        &webhook.url,
+        &payload.id,
+        body,
+        &secret,
+        1,
     )
+    .await;
+
+    Ok(Json(super::types::TestSendResponse {
+        success: result.success,
+        status_code: result.status_code,
+        response_body: None,
+        error: result.error,
+    }))
 }

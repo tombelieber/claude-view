@@ -50,3 +50,12 @@ pub struct DeleteWebhookResponse {
     pub deleted: bool,
     pub id: String,
 }
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestSendResponse {
+    pub success: bool,
+    pub status_code: Option<u16>,
+    pub response_body: Option<String>,
+    pub error: Option<String>,
+}
