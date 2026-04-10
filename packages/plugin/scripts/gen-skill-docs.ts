@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { HAND_WRITTEN_TAGS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
+import { HAND_WRITTEN_TAGS, SKIP_OPERATION_IDS, SSE_OPERATION_IDS, makeToolName } from './shared.js'
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -41,12 +41,12 @@ interface OpenAPIOperation {
   operationId?: string
 }
 
-interface ToolEntry {
+export interface ToolEntry {
   name: string
   description: string
 }
 
-interface ToolGroup {
+export interface ToolGroup {
   label: string
   sortOrder: number
   tools: ToolEntry[]
@@ -56,7 +56,7 @@ interface ToolGroup {
 // Hand-written tool definitions (mirror of src/tools/*.ts)
 // ---------------------------------------------------------------------------
 
-const HAND_WRITTEN_GROUPS: ToolGroup[] = [
+export const HAND_WRITTEN_GROUPS: ToolGroup[] = [
   {
     label: 'Session Tools',
     sortOrder: 0,
@@ -118,7 +118,7 @@ function capitalizeTag(tag: string): string {
     .join(' ')
 }
 
-function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
+export function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
   const byTag = new Map<string, ToolEntry[]>()
 
   for (const [path, methods] of Object.entries(spec.paths ?? {})) {
@@ -130,6 +130,7 @@ function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
       const operationId = operation.operationId ?? ''
 
       if (SSE_OPERATION_IDS.has(operationId)) continue
+      if (SKIP_OPERATION_IDS.has(operationId)) continue
       if (HAND_WRITTEN_TAGS.has(tag)) continue
 
       const toolName = makeToolName(tag, operationId)
@@ -166,7 +167,7 @@ function extractGeneratedToolGroups(spec: OpenAPISpec): ToolGroup[] {
 // Build the tool table markdown
 // ---------------------------------------------------------------------------
 
-function buildToolTable(groups: ToolGroup[]): string {
+export function buildToolTable(groups: ToolGroup[]): string {
   const sorted = [...groups].sort((a, b) => a.sortOrder - b.sortOrder)
 
   const lines: string[] = [
