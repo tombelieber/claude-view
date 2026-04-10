@@ -197,6 +197,10 @@ pub struct AppState {
     pub api_key_store: Arc<tokio::sync::RwLock<crate::auth::api_key::ApiKeyStore>>,
     /// Path to the API key store file (allows tests to use temp dirs).
     pub api_key_store_path: std::path::PathBuf,
+    /// Path to webhook notifications config file (~/.claude-view/notifications.json).
+    pub webhook_config_path: std::path::PathBuf,
+    /// Path to webhook signing secrets file (~/.claude-view/webhook-secrets.json).
+    pub webhook_secrets_path: std::path::PathBuf,
 }
 
 /// Builder for constructing `AppState` with optional overrides.
@@ -304,6 +308,9 @@ impl AppStateBuilder {
                 crate::auth::api_key::ApiKeyStore::default(),
             )),
             api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
+            webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
+            webhook_secrets_path: claude_view_core::paths::config_dir()
+                .join("webhook-secrets.json"),
         })
     }
 }

@@ -144,6 +144,8 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
             crate::auth::api_key::ApiKeyStore::default(),
         )),
         api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
+        webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
+        webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
     });
     routes::api_routes(state)
 }
@@ -250,6 +252,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
             crate::auth::api_key::ApiKeyStore::default(),
         )),
         api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
+        webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
+        webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
     });
     routes::api_routes(state)
 }
@@ -336,6 +340,8 @@ pub fn create_app_full(
     let api_key_store = Arc::new(tokio::sync::RwLock::new(crate::auth::api_key::load_store(
         &api_key_store_path,
     )));
+    let webhook_config_path = claude_view_core::paths::config_dir().join("notifications.json");
+    let webhook_secrets_path = claude_view_core::paths::config_dir().join("webhook-secrets.json");
 
     // Detect installed IDEs (runs `which` for each known command).
     let available_ides = routes::ide::detect_installed_ides();
@@ -418,6 +424,8 @@ pub fn create_app_full(
         ),
         api_key_store,
         api_key_store_path,
+        webhook_config_path,
+        webhook_secrets_path,
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).
