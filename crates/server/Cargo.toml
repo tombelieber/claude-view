@@ -81,8 +81,6 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 libc = "0.2"
 nix = { version = "0.29", features = ["signal"] }
-core-foundation = { workspace = true }
-core-foundation-sys = { workspace = true }
 crypto_box = "0.9"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
@@ -118,3 +116,7 @@ futures-util = { workspace = true }
 sysinfo = { workspace = true }
 mockito = { workspace = true }
 serial_test = "3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.10"
+core-foundation-sys = "0.8"
