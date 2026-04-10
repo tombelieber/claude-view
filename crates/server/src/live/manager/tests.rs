@@ -1276,6 +1276,104 @@ fn test_edit_count_defaults_to_zero_for_new_session() {
     );
 }
 
+// =============================================================================
+// Reconciler backfill logic tests
+// =============================================================================
+
+/// Verifies the backfill logic: an alive session NOT in the sessions map
+/// should be detected and inserted. This tests the algorithm extracted from
+/// detect_and_clean_crashed_sessions without needing full async LiveSessionManager.
+#[test]
+fn test_reconciler_backfill_detects_alive_unknown_session() {
+    use claude_view_core::session_files::ActiveSession;
+
+    // Simulate: sessions dir returns one alive session
+    let dir_sessions = vec![ActiveSession {
+        pid: std::process::id(), // Use our own PID — guaranteed alive
+        session_id: "sess-backfill-test".to_string(),
+        cwd: "/tmp/project".to_string(),
+        started_at: 1700000000000,
+        kind: "interactive".to_string(),
+        entrypoint: "cli".to_string(),
+    }];
+
+    // Simulate: empty sessions map (watcher missed the Birth)
+    let known_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let mut backfilled: Vec<String> = Vec::new();
+
+    for session in &dir_sessions {
+        let alive = crate::live::process::is_pid_alive(session.pid);
+        if alive && !known_ids.contains(&session.session_id) {
+            backfilled.push(session.session_id.clone());
+        }
+    }
+
+    assert_eq!(backfilled.len(), 1);
+    assert_eq!(backfilled[0], "sess-backfill-test");
+}
+
+/// Verifies that the backfill logic does NOT insert a session that is already known.
+#[test]
+fn test_reconciler_backfill_skips_known_session() {
+    use claude_view_core::session_files::ActiveSession;
+
+    let dir_sessions = vec![ActiveSession {
+        pid: std::process::id(),
+        session_id: "sess-already-known".to_string(),
+        cwd: "/tmp/project".to_string(),
+        started_at: 1700000000000,
+        kind: "interactive".to_string(),
+        entrypoint: "cli".to_string(),
+    }];
+
+    // This session IS already in the map
+    let known_ids: std::collections::HashSet<String> =
+        ["sess-already-known".to_string()].into_iter().collect();
+
+    let mut backfilled: Vec<String> = Vec::new();
+
+    for session in &dir_sessions {
+        let alive = crate::live::process::is_pid_alive(session.pid);
+        if alive && !known_ids.contains(&session.session_id) {
+            backfilled.push(session.session_id.clone());
+        }
+    }
+
+    assert!(
+        backfilled.is_empty(),
+        "Already-known sessions must not be backfilled"
+    );
+}
+
+/// Verifies that dead PIDs are NOT backfilled (they go to crash cleanup path).
+#[test]
+fn test_reconciler_backfill_skips_dead_pid() {
+    use claude_view_core::session_files::ActiveSession;
+
+    let dir_sessions = vec![ActiveSession {
+        pid: 4_000_000, // Almost certainly dead
+        session_id: "sess-dead".to_string(),
+        cwd: "/tmp/project".to_string(),
+        started_at: 1700000000000,
+        kind: "interactive".to_string(),
+        entrypoint: "cli".to_string(),
+    }];
+
+    let known_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let mut backfilled: Vec<String> = Vec::new();
+
+    for session in &dir_sessions {
+        let alive = crate::live::process::is_pid_alive(session.pid);
+        if alive && !known_ids.contains(&session.session_id) {
+            backfilled.push(session.session_id.clone());
+        }
+    }
+
+    assert!(backfilled.is_empty(), "Dead PIDs must not be backfilled");
+}
+
 #[test]
 fn test_team_members_and_inbox_count_default_to_empty_for_non_team_session() {
     let session = minimal_live_session_for_branch_tests("test-no-team");

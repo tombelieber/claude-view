@@ -129,20 +129,217 @@ fn handle_notify_event(
             EventKind::Create(_) => {
                 // Parse the session file
                 if let Some(session) = session_files::parse_session_file(path) {
-                    let _ = tx.try_send(SessionLifecycleEvent::Born { pid, session });
+                    if session.pid != pid {
+                        warn!(
+                            filename_pid = pid,
+                            json_pid = session.pid,
+                            "Session file PID mismatch — skipping"
+                        );
+                        continue;
+                    }
+                    if let Err(e) = tx.try_send(SessionLifecycleEvent::Born { pid, session }) {
+                        warn!(
+                            pid,
+                            "Sessions watcher: channel full, dropped Born event: {e}"
+                        );
+                    }
                 }
             }
             EventKind::Remove(_) => {
-                let _ = tx.try_send(SessionLifecycleEvent::Exited { pid });
+                if let Err(e) = tx.try_send(SessionLifecycleEvent::Exited { pid }) {
+                    warn!(
+                        pid,
+                        "Sessions watcher: channel full, dropped Exited event: {e}"
+                    );
+                }
             }
             EventKind::Modify(_) => {
                 // Session files are write-once, but some FSes report Create as Modify
                 if let Some(session) = session_files::parse_session_file(path) {
-                    let _ = tx.try_send(SessionLifecycleEvent::Born { pid, session });
+                    if session.pid != pid {
+                        warn!(
+                            filename_pid = pid,
+                            json_pid = session.pid,
+                            "Session file PID mismatch (Modify) — skipping"
+                        );
+                        continue;
+                    }
+                    if let Err(e) = tx.try_send(SessionLifecycleEvent::Born { pid, session }) {
+                        warn!(
+                            pid,
+                            "Sessions watcher: channel full, dropped Born (Modify) event: {e}"
+                        );
+                    }
                 }
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use notify::event::{CreateKind, ModifyKind, RemoveKind};
+    use std::io::Write;
+
+    /// Helper: create a temp session JSON file and return (dir, path).
+    fn write_session_file(dir: &Path, filename: &str, pid: u32) -> std::path::PathBuf {
+        let path = dir.join(filename);
+        let json = format!(
+            r#"{{"pid":{},"sessionId":"sess-{}","cwd":"/tmp","startedAt":1700000000000,"kind":"interactive","entrypoint":"cli"}}"#,
+            pid, pid
+        );
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(json.as_bytes()).unwrap();
+        f.flush().unwrap();
+        path
+    }
+
+    #[test]
+    fn test_pid_mismatch_skips_create_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        // Filename says PID 99999, but JSON says PID 11111
+        let path = tmp.path().join("99999.json");
+        let json = r#"{"pid":11111,"sessionId":"sess-mismatch","cwd":"/tmp","startedAt":1700000000000,"kind":"interactive","entrypoint":"cli"}"#;
+        std::fs::write(&path, json).unwrap();
+
+        let (tx, mut rx) = mpsc::channel::<SessionLifecycleEvent>(64);
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+
+        // Channel should be empty — mismatched PID is skipped
+        assert!(
+            rx.try_recv().is_err(),
+            "PID mismatch must cause event to be skipped"
+        );
+    }
+
+    #[test]
+    fn test_pid_mismatch_skips_modify_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("99999.json");
+        let json = r#"{"pid":11111,"sessionId":"sess-mismatch","cwd":"/tmp","startedAt":1700000000000,"kind":"interactive","entrypoint":"cli"}"#;
+        std::fs::write(&path, json).unwrap();
+
+        let (tx, mut rx) = mpsc::channel::<SessionLifecycleEvent>(64);
+        let event = Event {
+            kind: EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Content)),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+
+        assert!(
+            rx.try_recv().is_err(),
+            "PID mismatch on Modify must skip event"
+        );
+    }
+
+    #[test]
+    fn test_matching_pid_sends_born_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_session_file(tmp.path(), "12345.json", 12345);
+
+        let (tx, mut rx) = mpsc::channel::<SessionLifecycleEvent>(64);
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+
+        match rx.try_recv() {
+            Ok(SessionLifecycleEvent::Born { pid, session }) => {
+                assert_eq!(pid, 12345);
+                assert_eq!(session.pid, 12345);
+                assert_eq!(session.session_id, "sess-12345");
+            }
+            other => panic!("Expected Born event, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_remove_event_sends_exited() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("12345.json");
+        // File doesn't need to exist for Remove events
+
+        let (tx, mut rx) = mpsc::channel::<SessionLifecycleEvent>(64);
+        let event = Event {
+            kind: EventKind::Remove(RemoveKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+
+        match rx.try_recv() {
+            Ok(SessionLifecycleEvent::Exited { pid }) => {
+                assert_eq!(pid, 12345);
+            }
+            other => panic!("Expected Exited event, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_channel_full_does_not_panic() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_session_file(tmp.path(), "12345.json", 12345);
+
+        // Channel with capacity 1 — fill it first, then overflow
+        let (tx, _rx) = mpsc::channel::<SessionLifecycleEvent>(1);
+        // Fill the channel
+        let _ = tx.try_send(SessionLifecycleEvent::Exited { pid: 0 });
+
+        // This should log a warning but NOT panic
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+        // If we get here without panic, the test passes
+    }
+
+    #[test]
+    fn test_non_json_files_ignored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("12345.txt");
+        std::fs::write(&path, "not json").unwrap();
+
+        let (tx, mut rx) = mpsc::channel::<SessionLifecycleEvent>(64);
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+
+        assert!(rx.try_recv().is_err(), "Non-.json files must be ignored");
+    }
+
+    #[test]
+    fn test_non_numeric_filename_ignored() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("not-a-pid.json");
+        std::fs::write(&path, r#"{"pid":123,"sessionId":"s","cwd":"/","startedAt":0,"kind":"interactive","entrypoint":"cli"}"#).unwrap();
+
+        let (tx, mut rx) = mpsc::channel::<SessionLifecycleEvent>(64);
+        let event = Event {
+            kind: EventKind::Create(CreateKind::File),
+            paths: vec![path],
+            attrs: Default::default(),
+        };
+        handle_notify_event(&tx, tmp.path(), event);
+
+        assert!(
+            rx.try_recv().is_err(),
+            "Non-numeric filenames must be ignored"
+        );
     }
 }
 

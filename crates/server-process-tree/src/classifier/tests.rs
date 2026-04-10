@@ -162,7 +162,7 @@ fn staleness_likely_stale() {
         "/usr/local/bin/claude",
         0.0,
         10_000_000,
-        now - 600,
+        now - 1200,
     )];
     let snap = classify_process_list(&processes, 9999);
     let proc = &snap.ecosystem[0];

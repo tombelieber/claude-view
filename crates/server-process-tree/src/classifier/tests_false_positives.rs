@@ -1,5 +1,5 @@
 use super::pipeline::classify_process_list;
-use super::rules::{is_anthropic_claude, is_claude_view_binary};
+use super::rules::{is_anthropic_claude, is_claude_view_binary, is_node_running_claude};
 use crate::types::{EcosystemTag, RawProcessInfo};
 
 fn make_raw(
@@ -85,8 +85,10 @@ fn claude_binary_at_standard_path_classified() {
 }
 
 #[test]
-fn claude_with_empty_command_accepted_as_fallback() {
-    // macOS SIP restriction: sysinfo returns empty cmd
+fn claude_with_empty_command_rejected() {
+    // macOS SIP restriction: sysinfo returns empty cmd.
+    // Empty command must NOT classify — it was a false-positive source
+    // for any process named "claude" when sysctl fails.
     let processes = vec![make_raw(
         903,
         99,
@@ -97,11 +99,10 @@ fn claude_with_empty_command_accepted_as_fallback() {
         1_700_000_000,
     )];
     let snap = classify_process_list(&processes, 9999);
-    assert_eq!(snap.ecosystem.len(), 1);
-    assert!(matches!(
-        snap.ecosystem[0].ecosystem_tag,
-        Some(EcosystemTag::Cli)
-    ));
+    assert!(
+        snap.ecosystem.is_empty(),
+        "empty command must not be classified as CLI ecosystem"
+    );
 }
 
 #[test]
@@ -133,8 +134,8 @@ fn is_anthropic_claude_helper_cases() {
     assert!(is_anthropic_claude("/usr/local/bin/claude --verbose"));
     // Bare command
     assert!(is_anthropic_claude("claude chat"));
-    // Empty (SIP fallback)
-    assert!(is_anthropic_claude(""));
+    // Empty command — sysctl failed, do not classify (was a false-positive source)
+    assert!(!is_anthropic_claude(""));
     // Binary with different basename (e.g. claude-wrapper, claude-game)
     assert!(!is_anthropic_claude(
         "/opt/tools/claude-wrapper --mode=chatbot"
@@ -157,5 +158,72 @@ fn is_claude_view_binary_helper_cases() {
     assert!(!is_claude_view_binary(
         "node",
         "node /path/to/claude-view/sidecar/dist/index.js"
+    ));
+}
+
+#[test]
+fn is_anthropic_claude_empty_command_returns_false() {
+    assert!(
+        !is_anthropic_claude(""),
+        "empty command must return false — sysctl failure is not evidence of Claude"
+    );
+}
+
+#[test]
+fn is_node_running_claude_npx_case() {
+    assert!(is_node_running_claude(
+        "node",
+        "node /path/.bin/claude --version"
+    ));
+}
+
+#[test]
+fn is_node_running_claude_shebang_env_case() {
+    assert!(is_node_running_claude(
+        "env",
+        "/usr/bin/env node /path/.bin/claude"
+    ));
+}
+
+#[test]
+fn is_node_running_claude_npm_global() {
+    assert!(is_node_running_claude(
+        "node",
+        "node /path/@anthropic-ai/claude-code/cli.js"
+    ));
+}
+
+#[test]
+fn is_node_running_claude_unrelated_node_app() {
+    assert!(!is_node_running_claude("node", "node /path/to/my-app.js"));
+}
+
+#[test]
+fn is_node_running_claude_wrong_process_name() {
+    assert!(!is_node_running_claude("python", "python claude.py"));
+}
+
+#[test]
+fn is_node_running_claude_empty_command() {
+    assert!(!is_node_running_claude("node", ""));
+}
+
+#[test]
+fn npx_claude_classified_as_cli_in_pipeline() {
+    // npm/npx-installed Claude Code: process name is "node", not "claude"
+    let processes = vec![make_raw(
+        84064,
+        99,
+        "node",
+        "node /Users/test/.npm/_npx/abc123/node_modules/.bin/claude --version",
+        1.0,
+        100_000_000,
+        1_700_000_000,
+    )];
+    let snap = classify_process_list(&processes, 9999);
+    assert_eq!(snap.ecosystem.len(), 1);
+    assert!(matches!(
+        snap.ecosystem[0].ecosystem_tag,
+        Some(EcosystemTag::Cli)
     ));
 }

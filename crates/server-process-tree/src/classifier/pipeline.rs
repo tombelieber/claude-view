@@ -5,7 +5,7 @@ use super::super::types::{
     ClassifiedProcess, EcosystemTag, ProcessCategory, ProcessTreeSnapshot, ProcessTreeTotals,
     RawProcessInfo,
 };
-use super::rules::{is_anthropic_claude, is_claude_view_binary};
+use super::rules::{is_anthropic_claude, is_claude_view_binary, is_node_running_claude};
 
 // =============================================================================
 // Pass 2 + 3: Classify and aggregate
@@ -30,7 +30,9 @@ pub fn classify_process_list(processes: &[RawProcessInfo], own_pid: u32) -> Proc
             Some(EcosystemTag::Desktop)
         } else if proc.pid == own_pid || is_claude_view_binary(name, cmd) {
             Some(EcosystemTag::Self_)
-        } else if name == "claude" && is_anthropic_claude(cmd) {
+        } else if (name == "claude" && is_anthropic_claude(cmd))
+            || is_node_running_claude(name, cmd)
+        {
             Some(EcosystemTag::Cli)
         } else {
             None

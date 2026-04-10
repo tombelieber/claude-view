@@ -95,18 +95,29 @@ impl LiveSessionManager {
         });
     }
 
-    /// Detect crashed sessions from ~/.claude/sessions/ dir.
+    /// Detect crashed sessions from ~/.claude/sessions/ dir and backfill
+    /// alive sessions that the watcher missed.
     ///
     /// Scans session files, checks PID liveness, removes stale files.
     /// Complements the existing PID liveness check in Phase 1 — this catches
     /// sessions that exist in the sessions dir but aren't tracked in our map yet.
+    ///
+    /// Also performs **birth backfill**: if a session file has an alive PID but
+    /// is NOT in our live sessions map (watcher missed the Birth event due to
+    /// partial JSON during file creation), insert it as a new session.
     async fn detect_and_clean_crashed_sessions(&self) {
-        let sessions =
+        let dir_sessions =
             tokio::task::spawn_blocking(crate::live::sessions_watcher::scan_sessions_dir)
                 .await
                 .unwrap_or_default();
 
-        for session in sessions {
+        // Collect session IDs we already know about (read lock, released quickly).
+        let known_ids: std::collections::HashSet<String> = {
+            let sessions = self.sessions.read().await;
+            sessions.keys().cloned().collect()
+        };
+
+        for session in dir_sessions {
             if !crate::live::process::is_pid_alive(session.pid) {
                 // PID dead but file still exists → crashed without cleanup
                 if let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() {
@@ -119,6 +130,40 @@ impl LiveSessionManager {
                         );
                         let _ = std::fs::remove_file(&stale_path);
                     }
+                }
+            } else if !known_ids.contains(&session.session_id) {
+                // PID alive but NOT in our sessions map → watcher missed
+                // the Birth event. Backfill by inserting a minimal session
+                // so it becomes visible to SSE clients. The file watcher and
+                // coordinator will enrich it with JSONL data on the next tick.
+                tracing::info!(
+                    pid = session.pid,
+                    session_id = %session.session_id,
+                    "Backfill: discovered alive session missed by watcher"
+                );
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
+                let mut live = crate::live::state::test_live_session(&session.session_id);
+                live.hook.pid = Some(session.pid);
+                live.started_at = Some(session.started_at / 1000); // ms → s
+                live.hook.last_activity_at = now;
+                live.session_kind = Some(session.kind);
+                live.entrypoint = Some(session.entrypoint);
+                live.status = SessionStatus::Working;
+
+                let mut sessions = self.sessions.write().await;
+                // Double-check under write lock to avoid TOCTOU race.
+                if !sessions.contains_key(&session.session_id) {
+                    sessions.insert(session.session_id.clone(), live.clone());
+                    let _ = self
+                        .tx
+                        .send(super::super::state::SessionEvent::SessionDiscovered {
+                            session: live,
+                        });
                 }
             }
         }

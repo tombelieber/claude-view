@@ -16,7 +16,7 @@ pub(super) fn is_anthropic_claude(cmd: &str) -> bool {
     // Empty command (SIP-restricted on macOS) — accept name-only match as fallback
     // because the sysctl resolution already ran and couldn't resolve it.
     if cmd.is_empty() {
-        return true;
+        return false;
     }
     // High-confidence: known Anthropic package paths
     if cmd.contains("@anthropic-ai/claude")
@@ -30,4 +30,17 @@ pub(super) fn is_anthropic_claude(cmd: &str) -> bool {
     let first_token = cmd.split_whitespace().next().unwrap_or("");
     let basename = first_token.rsplit('/').next().unwrap_or(first_token);
     basename == "claude"
+}
+
+/// Check if a `node` (or `env`) process is running Claude Code via npm/npx.
+///
+/// npm-installed Claude Code runs as `node .../cli.js` where the path
+/// contains either `@anthropic-ai/claude` (npm global) or `.bin/claude` (npx symlink).
+pub(super) fn is_node_running_claude(name: &str, cmd: &str) -> bool {
+    if name != "node" && name != "env" {
+        return false;
+    }
+    cmd.split_whitespace().any(|token| {
+        token.contains("@anthropic-ai/claude") || token.rsplit('/').next().unwrap_or("") == "claude"
+    })
 }

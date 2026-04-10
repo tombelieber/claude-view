@@ -11,7 +11,7 @@ pub(super) fn compute_staleness(cpu_percent: f32, ppid: u32, uptime_secs: u64) -
     if ppid != 1 {
         return Staleness::Idle;
     }
-    if uptime_secs < 300 {
+    if uptime_secs < 900 {
         return Staleness::Idle;
     }
     Staleness::LikelyStale
@@ -36,7 +36,8 @@ pub(super) fn truncate_command(cmd: &str) -> String {
     if cmd.len() <= 512 {
         cmd.to_string()
     } else {
-        format!("{}…", &cmd[..509])
+        let end = cmd.floor_char_boundary(509);
+        format!("{}…", &cmd[..end])
     }
 }
 
@@ -96,7 +97,7 @@ mod tests {
     #[test]
     fn staleness_likely_stale() {
         assert!(matches!(
-            compute_staleness(0.0, 1, 600),
+            compute_staleness(0.0, 1, 1200),
             Staleness::LikelyStale
         ));
     }
@@ -172,14 +173,14 @@ mod tests {
     }
 
     #[test]
-    fn test_staleness_boundary_299s_orphan_idle() {
-        let staleness = compute_staleness(0.0, 1, 299);
+    fn test_staleness_boundary_899s_orphan_idle() {
+        let staleness = compute_staleness(0.0, 1, 899);
         assert!(matches!(staleness, Staleness::Idle));
     }
 
     #[test]
-    fn test_staleness_boundary_300s_orphan_stale() {
-        let staleness = compute_staleness(0.0, 1, 300);
+    fn test_staleness_boundary_900s_orphan_stale() {
+        let staleness = compute_staleness(0.0, 1, 900);
         assert!(matches!(staleness, Staleness::LikelyStale));
     }
 
@@ -187,5 +188,21 @@ mod tests {
     fn test_staleness_high_cpu_overrides_orphan() {
         let staleness = compute_staleness(0.2, 1, 7200);
         assert!(matches!(staleness, Staleness::Active));
+    }
+
+    #[test]
+    fn truncate_cjk_at_boundary_does_not_panic() {
+        // Build a string where a 3-byte CJK character spans the 509 boundary.
+        // 507 ASCII bytes + U+4E16 (世, 3 bytes) = 510 bytes total, then pad to exceed 512.
+        let mut cmd = "x".repeat(507);
+        cmd.push('世'); // bytes 507-509 (3 bytes)
+        cmd.push_str("yyy"); // pad to 513 bytes total
+        assert!(cmd.len() > 512);
+
+        let result = truncate_command(&cmd);
+        // Must not panic, must produce valid UTF-8, and must end with ellipsis
+        assert!(result.ends_with('…'), "must end with ellipsis");
+        // The CJK char at 507-509 cannot be split, so truncation backs up to 507
+        assert_eq!(&result[..507], &"x".repeat(507));
     }
 }
