@@ -18,7 +18,6 @@ interface InteractionBlockProps {
 export function ChatInteractionBlock({ block }: InteractionBlockProps) {
   const {
     localResponse,
-    isPending,
     respondPermission,
     alwaysAllow,
     answerQuestion,
@@ -37,7 +36,6 @@ export function ChatInteractionBlock({ block }: InteractionBlockProps) {
           onRespond={responded ? undefined : respondPermission}
           onAlwaysAllow={responded ? undefined : alwaysAllow}
           resolved={responded ? { allowed } : undefined}
-          isPending={isPending}
         />
       )
     }

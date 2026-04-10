@@ -53,11 +53,3 @@ export const Denied: Story = {
     resolved: { allowed: false },
   },
 }
-
-export const Pending: Story = {
-  args: {
-    permission: permissionRequests.bash,
-    onRespond: () => {},
-    isPending: true,
-  },
-}

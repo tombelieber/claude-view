@@ -6,7 +6,7 @@ interface FileSnapshotCardProps {
   timestamp: string
   files: string[]
   isIncremental: boolean
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }
 
 export function FileSnapshotCard({
@@ -14,10 +14,10 @@ export function FileSnapshotCard({
   timestamp,
   files,
   isIncremental,
-  verboseMode,
+  isDeveloperMode,
 }: FileSnapshotCardProps) {
   const isEmpty = fileCount === 0 && files.length === 0
-  const defaultExpanded = verboseMode || (files.length > 0 && files.length <= 10)
+  const defaultExpanded = isDeveloperMode || (files.length > 0 && files.length <= 10)
   const [expanded, setExpanded] = useState(defaultExpanded)
 
   if (isEmpty) {
@@ -38,6 +38,7 @@ export function FileSnapshotCard({
   return (
     <div className="py-0.5 border-l-2 border-l-blue-400 pl-1 my-1" aria-label="File snapshot">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 mb-0.5 w-full text-left"
         aria-expanded={expanded}
@@ -56,8 +57,8 @@ export function FileSnapshotCard({
 
       {expanded && (
         <ul className="ml-4 mt-0.5 space-y-0.5">
-          {files.map((file, i) => (
-            <li key={i} className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">
+          {files.map((file) => (
+            <li key={file} className="text-xs font-mono text-gray-400 dark:text-gray-500 truncate">
               {file}
             </li>
           ))}

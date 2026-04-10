@@ -45,7 +45,6 @@ const VARIANT_CONFIG: Record<
 export function DevInteractionBlock({ block }: InteractionBlockProps) {
   const {
     localResponse,
-    isPending,
     respondPermission,
     alwaysAllow,
     answerQuestion,
@@ -70,7 +69,6 @@ export function DevInteractionBlock({ block }: InteractionBlockProps) {
             onRespond={responded ? undefined : respondPermission}
             onAlwaysAllow={responded ? undefined : alwaysAllow}
             resolved={responded ? { allowed } : undefined}
-            isPending={isPending}
           />
         )
       }

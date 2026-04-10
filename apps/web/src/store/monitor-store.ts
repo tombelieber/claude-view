@@ -37,8 +37,6 @@ interface MonitorState {
   expandedPaneId: string | null
   pinnedPaneIds: Set<string>
   hiddenPaneIds: Set<string>
-  /** @deprecated Use `displayMode` instead. Kept for files pending deletion. */
-  verboseMode: boolean
   verboseFilter: VerboseFilter
   richRenderMode: 'rich' | 'json'
   displayMode: DisplayMode
@@ -54,8 +52,6 @@ interface MonitorState {
   unpinPane: (id: string) => void
   hidePane: (id: string) => void
   showPane: (id: string) => void
-  /** @deprecated Use `setDisplayMode` instead. Kept for files pending deletion. */
-  toggleVerbose: () => void
   setVerboseFilter: (category: ActionCategory | 'all') => void
   setRichRenderMode: (mode: 'rich' | 'json') => void
   setDisplayMode: (mode: DisplayMode) => void
@@ -71,7 +67,6 @@ export const useMonitorStore = create<MonitorState>()(
       expandedPaneId: null,
       pinnedPaneIds: new Set<string>(),
       hiddenPaneIds: new Set<string>(),
-      verboseMode: false,
       verboseFilter: 'all' as VerboseFilter,
       richRenderMode: 'rich',
       displayMode: 'chat' as DisplayMode,
@@ -111,12 +106,7 @@ export const useMonitorStore = create<MonitorState>()(
           return { hiddenPaneIds: next }
         }),
 
-      toggleVerbose: () =>
-        set((state) => ({
-          verboseMode: !state.verboseMode,
-          displayMode: state.verboseMode ? 'chat' : 'developer',
-        })),
-      setDisplayMode: (mode) => set({ displayMode: mode, verboseMode: mode === 'developer' }),
+      setDisplayMode: (mode) => set({ displayMode: mode }),
       setVerboseFilter: (category) => {
         if (category === 'all') {
           set({ verboseFilter: 'all' })
@@ -145,7 +135,6 @@ export const useMonitorStore = create<MonitorState>()(
         compactHeaders: state.compactHeaders,
         pinnedPaneIds: state.pinnedPaneIds,
         hiddenPaneIds: state.hiddenPaneIds,
-        verboseMode: state.verboseMode,
         verboseFilter: state.verboseFilter,
         richRenderMode: state.richRenderMode,
         displayMode: state.displayMode,
@@ -170,13 +159,15 @@ export const useMonitorStore = create<MonitorState>()(
             if (Array.isArray(parsed.state.hiddenPaneIds)) {
               parsed.state.hiddenPaneIds = new Set(parsed.state.hiddenPaneIds as string[])
             }
-            // Migrate old verboseMode → displayMode
+            // Migrate old verboseMode → displayMode (localStorage backward compat)
             if (
               parsed.state.displayMode === undefined &&
               typeof parsed.state.verboseMode === 'boolean'
             ) {
               parsed.state.displayMode = parsed.state.verboseMode ? 'developer' : 'chat'
             }
+            // Clean up legacy verboseMode from persisted state
+            parsed.state.verboseMode = undefined
             // Migrate old single-string verboseFilter to new format
             const vf = parsed.state.verboseFilter
             if (typeof vf === 'string' && vf !== 'all') {

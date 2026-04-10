@@ -10,7 +10,7 @@ import { createContext, useContext, type ComponentType, type ReactNode } from 'r
 export interface JsonTreeProps {
   data: unknown
   defaultExpandDepth?: number
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }
 
 export interface ToolRendererProps {

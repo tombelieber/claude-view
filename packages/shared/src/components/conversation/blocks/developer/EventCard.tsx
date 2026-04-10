@@ -170,7 +170,7 @@ export function EventCard({
           <div className="border-t border-gray-200/20 dark:border-gray-700/20 px-3 py-2">
             {showJsonBody &&
               (JsonTree ? (
-                <JsonTree data={rawData} defaultExpandDepth={3} verboseMode />
+                <JsonTree data={rawData} defaultExpandDepth={3} isDeveloperMode />
               ) : (
                 <SimpleJsonView data={rawData} />
               ))}

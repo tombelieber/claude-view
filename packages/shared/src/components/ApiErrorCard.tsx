@@ -6,7 +6,7 @@ interface ApiErrorCardProps {
   retryAttempt: number
   maxRetries: number
   retryInMs?: number
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }
 
 export function ApiErrorCard({
@@ -14,9 +14,9 @@ export function ApiErrorCard({
   retryAttempt,
   maxRetries,
   retryInMs,
-  verboseMode,
+  isDeveloperMode,
 }: ApiErrorCardProps) {
-  const [expanded, setExpanded] = useState(verboseMode ?? false)
+  const [expanded, setExpanded] = useState(isDeveloperMode ?? false)
 
   const errorCode = error.code ?? null
   const errorMessage = error.message ?? null

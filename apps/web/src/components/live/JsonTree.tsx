@@ -8,7 +8,7 @@ interface JsonTreeProps {
   data: unknown
   defaultExpandDepth?: number
   maxNodes?: number
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }
 
 const MAX_STRING_INLINE = 120
@@ -33,7 +33,7 @@ function JsonValue({
   defaultExpandDepth,
   expandedPaths,
   togglePath,
-  verboseMode,
+  isDeveloperMode,
 }: {
   value: unknown
   path: string
@@ -41,7 +41,7 @@ function JsonValue({
   defaultExpandDepth: number
   expandedPaths: Set<string>
   togglePath: (p: string) => void
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }) {
   if (value === null) return <span className="text-gray-500">null</span>
   if (value === undefined) return <span className="text-gray-500">undefined</span>
@@ -93,7 +93,7 @@ function JsonValue({
         expandedPaths={expandedPaths}
         togglePath={togglePath}
         isArray
-        verboseMode={verboseMode}
+        isDeveloperMode={isDeveloperMode}
       />
     )
   }
@@ -111,7 +111,7 @@ function JsonValue({
         defaultExpandDepth={defaultExpandDepth}
         expandedPaths={expandedPaths}
         togglePath={togglePath}
-        verboseMode={verboseMode}
+        isDeveloperMode={isDeveloperMode}
       />
     )
   }
@@ -130,7 +130,7 @@ function JsonCollapsible({
   expandedPaths,
   togglePath,
   isArray,
-  verboseMode,
+  isDeveloperMode,
 }: {
   entries: [string, unknown][]
   bracketOpen: string
@@ -142,9 +142,9 @@ function JsonCollapsible({
   expandedPaths: Set<string>
   togglePath: (p: string) => void
   isArray?: boolean
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }) {
-  const autoExpand = verboseMode
+  const autoExpand = isDeveloperMode
     ? depth < defaultExpandDepth
     : depth < defaultExpandDepth && entries.length <= 5
   const isExpanded = expandedPaths.has(path) ? true : !expandedPaths.has(`~${path}`) && autoExpand
@@ -210,7 +210,7 @@ function JsonCollapsible({
               defaultExpandDepth={defaultExpandDepth}
               expandedPaths={expandedPaths}
               togglePath={togglePath}
-              verboseMode={verboseMode}
+              isDeveloperMode={isDeveloperMode}
             />
             {i < entries.length - 1 && <span className="text-gray-400 dark:text-gray-500">,</span>}
           </div>
@@ -225,15 +225,15 @@ export function JsonTree({
   data,
   defaultExpandDepth = 2,
   maxNodes = DEFAULT_MAX_NODES,
-  verboseMode: verboseModeProp,
+  isDeveloperMode: isDeveloperModeProp,
 }: JsonTreeProps) {
   const storeIsDeveloper = useMonitorStore((s) => s.displayMode === 'developer')
-  const verboseMode = verboseModeProp ?? storeIsDeveloper
+  const isDeveloperMode = isDeveloperModeProp ?? storeIsDeveloper
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
   const [showFallback, setShowFallback] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const effectiveExpandDepth = verboseMode ? 100 : defaultExpandDepth
+  const effectiveExpandDepth = isDeveloperMode ? 100 : defaultExpandDepth
 
   const nodeCount = useMemo(() => countNodes(data), [data])
   const isLarge = nodeCount > maxNodes
@@ -310,7 +310,7 @@ export function JsonTree({
           defaultExpandDepth={effectiveExpandDepth}
           expandedPaths={expandedPaths}
           togglePath={togglePath}
-          verboseMode={verboseMode}
+          isDeveloperMode={isDeveloperMode}
         />
       </div>
     </Tooltip.Provider>

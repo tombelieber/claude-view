@@ -1,8 +1,8 @@
 import { cn } from '../utils/cn'
 
 interface ViewModeToggleProps {
-  verboseMode: boolean
-  onToggleVerbose: () => void
+  isDeveloperMode: boolean
+  onToggleDeveloperMode: () => void
   richRenderMode?: 'rich' | 'json'
   onSetRichRenderMode?: (mode: 'rich' | 'json') => void
   className?: string
@@ -18,8 +18,8 @@ interface ViewModeToggleProps {
  * - JSON = raw JSON view (Debug only)
  */
 export function ViewModeToggle({
-  verboseMode,
-  onToggleVerbose,
+  isDeveloperMode,
+  onToggleDeveloperMode,
   richRenderMode,
   onSetRichRenderMode,
   className,
@@ -30,10 +30,10 @@ export function ViewModeToggle({
       <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
         <button
           type="button"
-          onClick={() => verboseMode && onToggleVerbose()}
+          onClick={() => isDeveloperMode && onToggleDeveloperMode()}
           className={cn(
             'text-xs font-medium px-2 py-1 transition-colors cursor-pointer',
-            !verboseMode
+            !isDeveloperMode
               ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
               : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
           )}
@@ -42,10 +42,10 @@ export function ViewModeToggle({
         </button>
         <button
           type="button"
-          onClick={() => !verboseMode && onToggleVerbose()}
+          onClick={() => !isDeveloperMode && onToggleDeveloperMode()}
           className={cn(
             'text-xs font-medium px-2 py-1 transition-colors cursor-pointer',
-            verboseMode
+            isDeveloperMode
               ? 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100'
               : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300',
           )}
@@ -55,7 +55,7 @@ export function ViewModeToggle({
       </div>
 
       {/* Rich / JSON toggle — only visible in Debug mode */}
-      {verboseMode && onSetRichRenderMode && (
+      {isDeveloperMode && onSetRichRenderMode && (
         <div className="flex items-center rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
           <button
             type="button"

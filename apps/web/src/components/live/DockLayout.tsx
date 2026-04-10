@@ -51,17 +51,11 @@ function SessionPanel({
 }: IDockviewPanelProps<{
   sessionId: string
   displayMode?: DisplayMode
-  /** @deprecated Kept for localStorage migration — old layouts stored verboseMode. */
-  verboseMode?: boolean
   status: string
 }>) {
   const sessionId = params.sessionId
   const { sessions, onExpandSession } = useContext(DockPaneContext)
   const session = sessions.find((s) => s.id === sessionId)
-
-  // Note: old serialized layouts may have `verboseMode` instead of `displayMode`.
-  // The param type accepts both for backward compat. BlockTerminalPane reads
-  // displayMode from the monitor store directly, so no local conversion needed.
 
   // Store state + actions — read directly so panels stay in sync
   const compactHeaders = useMonitorStore((s) => s.compactHeaders)

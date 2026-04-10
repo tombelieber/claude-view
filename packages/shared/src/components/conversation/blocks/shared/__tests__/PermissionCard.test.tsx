@@ -72,16 +72,6 @@ describe('PermissionCard — hardening fixes', () => {
     expect(mockToastError).not.toHaveBeenCalled()
   })
 
-  it('disables buttons and shows spinner when isPending (Fix 2)', () => {
-    render(<PermissionCard permission={makePermission()} onRespond={vi.fn()} isPending />)
-
-    const allowBtn = screen.getByRole('button', { name: /allow/i })
-    const denyBtn = screen.getByRole('button', { name: /deny/i })
-
-    expect(allowBtn).toBeDisabled()
-    expect(denyBtn).toBeDisabled()
-  })
-
   it('renders "Always Allow" button when suggestions present (Fix 5)', () => {
     const perm = makePermission({
       suggestions: [{ type: 'allow_tool', toolName: 'Bash' }],

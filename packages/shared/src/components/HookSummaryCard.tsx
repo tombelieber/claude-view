@@ -7,7 +7,7 @@ interface HookSummaryCardProps {
   hookErrors?: string[]
   durationMs?: number
   preventedContinuation?: boolean
-  verboseMode?: boolean
+  isDeveloperMode?: boolean
 }
 
 export function HookSummaryCard({
@@ -16,9 +16,9 @@ export function HookSummaryCard({
   hookErrors,
   durationMs,
   preventedContinuation,
-  verboseMode,
+  isDeveloperMode,
 }: HookSummaryCardProps) {
-  const [expanded, setExpanded] = useState(verboseMode ?? false)
+  const [expanded, setExpanded] = useState(isDeveloperMode ?? false)
 
   const errorCount = hookErrors?.length ?? 0
   const isEmpty = hookInfos.length === 0
@@ -39,6 +39,7 @@ export function HookSummaryCard({
   return (
     <div className="py-0.5 border-l-2 border-l-amber-400 pl-1 my-1">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 mb-0.5 w-full text-left"
         aria-expanded={expanded}
@@ -63,8 +64,8 @@ export function HookSummaryCard({
         <div className="ml-4 mt-0.5 space-y-0.5">
           {hookInfos.length > 0 && (
             <ul className="space-y-0.5">
-              {hookInfos.map((hook, i) => (
-                <li key={i} className="text-xs font-mono text-gray-500 dark:text-gray-400">
+              {hookInfos.map((hook) => (
+                <li key={hook} className="text-xs font-mono text-gray-500 dark:text-gray-400">
                   {hook}
                 </li>
               ))}
@@ -72,8 +73,8 @@ export function HookSummaryCard({
           )}
           {hookErrors && hookErrors.length > 0 && (
             <ul className="space-y-0.5">
-              {hookErrors.map((err, i) => (
-                <li key={i} className="text-xs font-mono text-red-500 dark:text-red-400">
+              {hookErrors.map((err) => (
+                <li key={err} className="text-xs font-mono text-red-500 dark:text-red-400">
                   {err}
                 </li>
               ))}

@@ -295,7 +295,7 @@ function FileHistorySnapshotDetail({ data }: { data: FileHistorySnapshot }) {
         timestamp={data.snapshot?.timestamp ?? ''}
         files={files}
         isIncremental={data.isIncremental ?? false}
-        verboseMode
+        isDeveloperMode
       />
     </EventCard>
   )

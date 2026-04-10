@@ -31,7 +31,6 @@ export interface PermissionCardProps {
   onRespond?: (requestId: string, allowed: boolean) => void
   onAlwaysAllow?: (requestId: string, allowed: boolean, updatedPermissions: unknown[]) => void
   resolved?: { allowed: boolean }
-  isPending?: boolean
 }
 
 export function PermissionCard({
@@ -39,7 +38,6 @@ export function PermissionCard({
   onRespond,
   onAlwaysAllow,
   resolved,
-  isPending,
 }: PermissionCardProps) {
   const totalSeconds = Math.ceil(permission.timeoutMs / 1000)
   const [countdown, setCountdown] = useState(totalSeconds)
@@ -119,8 +117,7 @@ export function PermissionCard({
             <button
               type="button"
               onClick={handleDeny}
-              disabled={isPending}
-              className="px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-wait"
+              className="px-3 py-1.5 text-xs font-medium text-red-700 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 rounded-md hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
             >
               Deny
             </button>
@@ -128,8 +125,7 @@ export function PermissionCard({
               <button
                 type="button"
                 onClick={handleAlwaysAllow}
-                disabled={isPending}
-                className="px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors disabled:opacity-50 disabled:cursor-wait"
+                className="px-3 py-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
               >
                 Always Allow
               </button>
@@ -137,8 +133,7 @@ export function PermissionCard({
             <button
               type="button"
               onClick={handleAllow}
-              disabled={isPending}
-              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-wait"
+              className="px-3 py-1.5 text-xs font-medium text-white bg-green-600 rounded-md hover:bg-green-700 transition-colors"
             >
               Allow
             </button>

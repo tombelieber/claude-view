@@ -142,14 +142,6 @@ describe('PermissionCard', () => {
     expect(screen.queryByText('30s')).not.toBeInTheDocument()
   })
 
-  it('disables buttons when isPending', () => {
-    const onRespond = vi.fn()
-    render(<PermissionCard permission={makePermission()} onRespond={onRespond} isPending />)
-
-    expect(screen.getByText('Allow')).toBeDisabled()
-    expect(screen.getByText('Deny')).toBeDisabled()
-  })
-
   it('displays file path for Edit tool', () => {
     render(
       <PermissionCard

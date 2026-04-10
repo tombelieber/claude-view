@@ -32,10 +32,10 @@ interface ColdStartOverlayProps {
  *  3. Enforces a minimum display time so fast indexing doesn't just flash
  *  4. Respects prefers-reduced-motion
  */
+type OverlayPhase = 'showing' | 'fading' | 'gone'
+
 export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
-  const [dismissed, setDismissed] = useState(false)
-  const [visible, setVisible] = useState(true) // controls the CSS transition
-  const [gone, setGone] = useState(false) // true after animation completes — removes from DOM
+  const [phase, setPhase] = useState<OverlayPhase>('showing')
   const firstShownAt = useRef<number | null>(null)
   const lingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -61,27 +61,20 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
       progress.phase === 'finalizing'
 
     if (wasTerminal && isActive) {
-      setDismissed(false)
-      setVisible(true)
-      setGone(false)
+      setPhase('showing')
       firstShownAt.current = Date.now()
     }
   }, [progress.phase])
 
   // Animate-out helper: fade + collapse, then remove from DOM
   const animateOut = useCallback(() => {
-    setVisible(false)
-    setTimeout(() => setGone(true), ANIMATE_OUT_MS)
+    setPhase('fading')
+    setTimeout(() => setPhase('gone'), ANIMATE_OUT_MS)
   }, [])
 
-  // When indexing completes (or user dismisses), linger then animate out
+  // When indexing completes, linger then animate out
   useEffect(() => {
-    if (dismissed) {
-      animateOut()
-      return
-    }
-
-    if (progress.phase !== 'done') return
+    if (progress.phase !== 'done' || phase !== 'showing') return
 
     // Ensure we've been visible for at least MIN_DISPLAY_MS
     const shownFor = firstShownAt.current ? Date.now() - firstShownAt.current : MIN_DISPLAY_MS
@@ -92,10 +85,10 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
     return () => {
       if (lingerTimer.current) clearTimeout(lingerTimer.current)
     }
-  }, [progress.phase, dismissed, animateOut])
+  }, [progress.phase, phase, animateOut])
 
   // Nothing to show yet, or already fully gone
-  if (progress.phase === 'idle' || gone) return null
+  if (progress.phase === 'idle' || phase === 'gone') return null
 
   // Prefer byte-based progress; fall back to session-count-based progress
   // when the backend doesn't report byte totals (e.g. unified single-pass pipeline).
@@ -120,7 +113,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
         // Smooth collapse + fade
         'overflow-hidden transition-all ease-out',
         'motion-reduce:transition-none',
-        visible ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0',
+        phase === 'showing' ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0',
       ].join(' ')}
       style={{ transitionDuration: `${ANIMATE_OUT_MS}ms` }}
     >
@@ -248,7 +241,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
           {canDismiss && (
             <button
               type="button"
-              onClick={() => setDismissed(true)}
+              onClick={animateOut}
               className={[
                 'flex-shrink-0 p-1 rounded transition-colors duration-150',
                 'focus-visible:outline-none focus-visible:ring-2 cursor-pointer',
