@@ -140,6 +140,10 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        api_key_store: Arc::new(tokio::sync::RwLock::new(
+            crate::auth::api_key::ApiKeyStore::default(),
+        )),
+        api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
     });
     routes::api_routes(state)
 }
@@ -242,6 +246,10 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        api_key_store: Arc::new(tokio::sync::RwLock::new(
+            crate::auth::api_key::ApiKeyStore::default(),
+        )),
+        api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
     });
     routes::api_routes(state)
 }
@@ -323,6 +331,12 @@ pub fn create_app_full(
     // Hook registration deferred — caller must invoke register_hooks()
     // AFTER binding the actual port (which may auto-increment on conflict).
 
+    // Load API key store for webhook auth.
+    let api_key_store_path = claude_view_core::paths::config_dir().join("api-keys.json");
+    let api_key_store = Arc::new(tokio::sync::RwLock::new(crate::auth::api_key::load_store(
+        &api_key_store_path,
+    )));
+
     // Detect installed IDEs (runs `which` for each known command).
     let available_ides = routes::ide::detect_installed_ides();
     if available_ides.is_empty() {
@@ -402,6 +416,8 @@ pub fn create_app_full(
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        api_key_store,
+        api_key_store_path,
     });
 
     // Spawn the plugin operation worker (processes queued installs/updates serially).

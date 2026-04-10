@@ -148,6 +148,10 @@ mod tests {
             session_channels: Arc::new(
                 crate::live::session_ws::registry::SessionChannelRegistry::new(),
             ),
+            api_key_store: Arc::new(tokio::sync::RwLock::new(
+                crate::auth::api_key::ApiKeyStore::default(),
+            )),
+            api_key_store_path: std::env::temp_dir().join("api-keys.json"),
         });
 
         let app = Router::new()
