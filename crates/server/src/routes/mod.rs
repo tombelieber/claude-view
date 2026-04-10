@@ -1,6 +1,7 @@
 //! API route handlers for the claude-view server.
 
 pub mod active_sessions;
+pub mod auth_keys;
 pub mod classify;
 pub mod claude_code_settings;
 pub mod coaching;
@@ -171,6 +172,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", processes::router())
         .nest("/api", telemetry::router())
         .nest("/api/local-llm", crate::local_llm::local_llm_routes())
+        .nest("/api", auth_keys::router())
         // Swagger UI + OpenAPI spec
         .merge(docs::router())
         // Metrics endpoint at root level (Prometheus convention)

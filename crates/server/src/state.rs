@@ -193,6 +193,10 @@ pub struct AppState {
     pub local_llm: Arc<crate::local_llm::LocalLlmService>,
     /// Connection registry for multiplexed session WebSockets (Stage 1+4).
     pub session_channels: Arc<crate::live::session_ws::registry::SessionChannelRegistry>,
+    /// API key store for external auth. Loaded from ~/.claude-view/api-keys.json.
+    pub api_key_store: Arc<tokio::sync::RwLock<crate::auth::api_key::ApiKeyStore>>,
+    /// Path to the API key store file (allows tests to use temp dirs).
+    pub api_key_store_path: std::path::PathBuf,
 }
 
 /// Builder for constructing `AppState` with optional overrides.
@@ -296,6 +300,10 @@ impl AppStateBuilder {
             session_channels: Arc::new(
                 crate::live::session_ws::registry::SessionChannelRegistry::new(),
             ),
+            api_key_store: Arc::new(tokio::sync::RwLock::new(
+                crate::auth::api_key::ApiKeyStore::default(),
+            )),
+            api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
         })
     }
 }

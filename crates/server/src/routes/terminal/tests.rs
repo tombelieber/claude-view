@@ -73,6 +73,10 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        api_key_store: Arc::new(tokio::sync::RwLock::new(
+            crate::auth::api_key::ApiKeyStore::default(),
+        )),
+        api_key_store_path: std::env::temp_dir().join("api-keys.json"),
     });
 
     // Register the session in the live sessions map
@@ -295,6 +299,10 @@ async fn ws_unknown_session_returns_error() {
         session_channels: Arc::new(
             crate::live::session_ws::registry::SessionChannelRegistry::new(),
         ),
+        api_key_store: Arc::new(tokio::sync::RwLock::new(
+            crate::auth::api_key::ApiKeyStore::default(),
+        )),
+        api_key_store_path: std::env::temp_dir().join("api-keys.json"),
     });
 
     let (addr, server_handle) = start_test_server(state).await;
