@@ -9,6 +9,7 @@ pub mod hook_registrar;
 pub mod manager;
 pub mod monitor;
 pub mod mutation;
+pub mod ownership;
 pub mod process;
 pub mod process_death;
 pub mod process_oracle;

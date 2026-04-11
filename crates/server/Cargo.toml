@@ -41,6 +41,7 @@ storage-overview = []
 
 [dependencies]
 claude-view-core = { workspace = true }
+claude-view-types = { workspace = true }
 claude-view-db = { workspace = true }
 claude-view-search = { workspace = true }
 claude-view-server-sidecar = { workspace = true }

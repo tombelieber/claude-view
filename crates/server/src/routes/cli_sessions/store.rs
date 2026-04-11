@@ -24,6 +24,15 @@ impl CliSessionStore {
         }
     }
 
+    /// Create a store pre-populated with existing sessions.
+    pub fn from_sessions(sessions: Vec<CliSession>) -> Self {
+        let map: HashMap<String, CliSession> =
+            sessions.into_iter().map(|s| (s.id.clone(), s)).collect();
+        Self {
+            inner: RwLock::new(map),
+        }
+    }
+
     /// Insert a session into the store.
     pub async fn insert(&self, session: CliSession) {
         let mut map = self.inner.write().await;
@@ -60,5 +69,94 @@ impl CliSessionStore {
         } else {
             false
         }
+    }
+
+    /// Find a running CLI session whose `claude_session_id` matches the given UUID.
+    pub async fn find_by_claude_session_id(&self, session_id: &str) -> Option<CliSession> {
+        let map = self.inner.read().await;
+        map.values()
+            .find(|s| {
+                s.status == CliSessionStatus::Running
+                    && s.claude_session_id.as_deref() == Some(session_id)
+            })
+            .cloned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create a CliSession with specified fields.
+    fn make_cli_session(
+        id: &str,
+        status: CliSessionStatus,
+        claude_session_id: Option<&str>,
+    ) -> CliSession {
+        CliSession {
+            id: id.to_string(),
+            created_at: 1000,
+            status,
+            project_dir: None,
+            args: vec![],
+            claude_session_id: claude_session_id.map(String::from),
+        }
+    }
+
+    #[tokio::test]
+    async fn find_by_claude_session_id_returns_matching_running_session() {
+        let store = CliSessionStore::new();
+        store
+            .insert(make_cli_session(
+                "cli-1",
+                CliSessionStatus::Running,
+                Some("uuid-abc"),
+            ))
+            .await;
+
+        let result = store.find_by_claude_session_id("uuid-abc").await;
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, "cli-1");
+    }
+
+    #[tokio::test]
+    async fn find_by_claude_session_id_returns_none_when_no_match() {
+        let store = CliSessionStore::new();
+        store
+            .insert(make_cli_session(
+                "cli-1",
+                CliSessionStatus::Running,
+                Some("uuid-abc"),
+            ))
+            .await;
+
+        let result = store.find_by_claude_session_id("uuid-does-not-exist").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_by_claude_session_id_returns_none_when_exited() {
+        let store = CliSessionStore::new();
+        store
+            .insert(make_cli_session(
+                "cli-1",
+                CliSessionStatus::Exited,
+                Some("uuid-abc"),
+            ))
+            .await;
+
+        let result = store.find_by_claude_session_id("uuid-abc").await;
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn find_by_claude_session_id_returns_none_when_claude_session_id_is_none() {
+        let store = CliSessionStore::new();
+        store
+            .insert(make_cli_session("cli-1", CliSessionStatus::Running, None))
+            .await;
+
+        let result = store.find_by_claude_session_id("uuid-abc").await;
+        assert!(result.is_none());
     }
 }
