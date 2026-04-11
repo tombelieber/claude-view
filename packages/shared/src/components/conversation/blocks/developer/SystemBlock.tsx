@@ -424,27 +424,74 @@ function PlanContentDetail({ data }: { data: Record<string, unknown> }) {
 // ── Zero-gap pipeline: attachment, permission_mode_change, scheduled_task_fire ──
 
 function AttachmentDetail({ data }: { data: Record<string, unknown> }) {
-  const att = data.attachment as Record<string, unknown> | undefined
-  const addedNames = (att?.addedNames ?? []) as string[]
-  const removedNames = (att?.removedNames ?? []) as string[]
-  const label = `${addedNames.length} added, ${removedNames.length} removed`
+  const att = (data.attachment as Record<string, unknown>) ?? null
+  const attType = (att?.type as string) ?? 'unknown'
+
+  if (attType === 'async_hook_response') {
+    const hookName = att?.hookName as string | undefined
+    const hookEvent = att?.hookEvent as string | undefined
+    const exitCode = att?.exitCode as number | undefined
+    return (
+      <EventCard
+        dot="amber"
+        chip="Attach"
+        label={hookName ?? 'hook'}
+        rawData={data}
+        meta={
+          <div className="flex items-center gap-1.5">
+            {hookEvent && (
+              <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                {hookEvent}
+              </span>
+            )}
+            {exitCode != null && exitCode !== 0 && (
+              <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400">
+                exit {exitCode}
+              </span>
+            )}
+          </div>
+        }
+      />
+    )
+  }
+
+  if (attType === 'file') {
+    const addedNames = (att?.addedNames ?? []) as string[]
+    const removedNames = (att?.removedNames ?? []) as string[]
+    const label = `${addedNames.length} added, ${removedNames.length} removed`
+    return (
+      <EventCard dot="blue" chip="Attach" label={label} rawData={data}>
+        {addedNames.length > 0 && (
+          <div className="text-xs font-mono text-gray-500 dark:text-gray-400 space-y-0.5">
+            {addedNames.map((n) => (
+              <div key={n}>+ {n}</div>
+            ))}
+          </div>
+        )}
+        {removedNames.length > 0 && (
+          <div className="text-xs font-mono text-red-500/70 dark:text-red-400/70 space-y-0.5">
+            {removedNames.map((n) => (
+              <div key={n}>− {n}</div>
+            ))}
+          </div>
+        )}
+      </EventCard>
+    )
+  }
+
+  // All other attachment types
   return (
-    <EventCard dot="blue" chip="Attach" label={label} rawData={data}>
-      {addedNames.length > 0 && (
-        <div className="text-xs font-mono text-gray-500 dark:text-gray-400 space-y-0.5">
-          {addedNames.map((n) => (
-            <div key={n}>+ {n}</div>
-          ))}
-        </div>
-      )}
-      {removedNames.length > 0 && (
-        <div className="text-xs font-mono text-red-500/70 dark:text-red-400/70 space-y-0.5">
-          {removedNames.map((n) => (
-            <div key={n}>− {n}</div>
-          ))}
-        </div>
-      )}
-    </EventCard>
+    <EventCard
+      dot="blue"
+      chip="Attach"
+      label={attType}
+      rawData={data}
+      meta={
+        <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400">
+          {attType}
+        </span>
+      }
+    />
   )
 }
 
