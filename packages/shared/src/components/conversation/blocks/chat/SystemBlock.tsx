@@ -91,5 +91,10 @@ export function ChatSystemBlock({ block }: SystemBlockProps) {
       return <ScheduledTaskFirePill data={block.data as Record<string, unknown>} />
     case 'unknown':
       return <UnknownSystemPill data={block.data as Record<string, unknown>} />
+    default: {
+      const _exhaustive: never = block.variant
+      void _exhaustive
+      return null
+    }
   }
 }
