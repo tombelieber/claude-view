@@ -122,6 +122,11 @@ pub async fn create_session(
 }
 
 /// GET /api/cli-sessions -- List all CLI sessions, with health check.
+#[utoipa::path(get, path = "/api/cli-sessions", tag = "cli",
+    responses(
+        (status = 200, description = "All CLI sessions with live health status", body = ListResponse),
+    )
+)]
 pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListResponse>> {
     let sessions = state.cli_sessions.list().await;
 
@@ -155,6 +160,13 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
 }
 
 /// DELETE /api/cli-sessions/{id} -- Kill a CLI session.
+#[utoipa::path(delete, path = "/api/cli-sessions/{id}", tag = "cli",
+    params(("id" = String, Path, description = "CLI session ID")),
+    responses(
+        (status = 200, description = "Session killed and removed"),
+        (status = 404, description = "CLI session not found"),
+    )
+)]
 pub async fn kill_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,

@@ -52,7 +52,7 @@ pub struct CreateResponse {
 }
 
 /// Response for GET /api/cli-sessions.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct ListResponse {
