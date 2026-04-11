@@ -32,4 +32,9 @@ export type ActiveSession = {
    * Entrypoint: "cli", "claude-vscode", "claude-desktop", "claude-web", etc.
    */
   entrypoint: string
+  /**
+   * Optional session name (from `claude --name "foo"`).
+   * Present when user starts session with explicit name.
+   */
+  name: string | null
 }
