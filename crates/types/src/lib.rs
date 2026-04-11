@@ -6,9 +6,13 @@
 pub mod block_types;
 pub mod category;
 pub mod error;
+pub mod interact;
+pub mod ownership;
 pub mod types;
 
 pub use block_types::*;
 pub use category::*;
 pub use error::*;
+pub use interact::*;
+pub use ownership::*;
 pub use types::*;
