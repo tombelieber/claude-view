@@ -148,6 +148,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
     routes::api_routes(state)
@@ -259,6 +260,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
     routes::api_routes(state)
@@ -321,6 +323,25 @@ pub fn create_app_full(
         None
     };
     let llm_client = Arc::new(local_llm_service.client(debug_llm_tx));
+
+    // Create CLI session store early so it can be shared with the live manager
+    // (for ownership resolution) and AppState.
+    let cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore> = {
+        let tmux_impl = crate::routes::cli_sessions::tmux::RealTmux;
+        let existing = crate::routes::cli_sessions::reconcile::reconcile_tmux_sessions(&tmux_impl);
+        if existing.is_empty() {
+            Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new())
+        } else {
+            Arc::new(crate::routes::cli_sessions::store::CliSessionStore::from_sessions(existing))
+        }
+    };
+
+    // Create interaction data side-map early so it can be shared with the live
+    // manager (for coordinator side effects) and AppState (for HTTP endpoints).
+    let interaction_data: Arc<
+        tokio::sync::RwLock<std::collections::HashMap<String, claude_view_types::InteractionBlock>>,
+    > = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
+
     let (manager, live_sessions, recently_closed, transcript_to_session, live_tx, coordinator) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
@@ -336,6 +357,8 @@ pub fn create_app_full(
             llm_client,
             oracle_rx.clone(),
             hook_event_channels.clone(),
+            cli_sessions.clone(),
+            interaction_data.clone(),
         );
 
     // Hook registration deferred — caller must invoke register_hooks()
@@ -433,7 +456,8 @@ pub fn create_app_full(
         api_key_store_path,
         webhook_config_path,
         webhook_secrets_path,
-        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        cli_sessions,
+        interaction_data,
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
 

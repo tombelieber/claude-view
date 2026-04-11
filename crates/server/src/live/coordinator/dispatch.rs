@@ -4,6 +4,7 @@
 //! cross-source field merging (model, context_window_tokens, turn_count).
 
 use crate::live::mutation::apply_control::apply_control;
+use crate::live::mutation::apply_interaction::apply_interaction;
 use crate::live::mutation::apply_lifecycle::apply_lifecycle;
 use crate::live::mutation::apply_reconcile::apply_reconcile;
 use crate::live::mutation::apply_statusline::apply_statusline;
@@ -76,6 +77,10 @@ pub fn apply_mutation_to_session(
         }
         SessionMutation::Control(action) => {
             apply_control(&mut session.control, action);
+            None
+        }
+        SessionMutation::Interaction(action) => {
+            apply_interaction(&mut session.pending_interaction, action);
             None
         }
     }

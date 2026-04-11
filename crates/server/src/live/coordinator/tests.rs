@@ -14,7 +14,8 @@ mod tests {
     use crate::live::coordinator::types::MutationContext;
     use crate::live::manager::{LiveSessionMap, TranscriptMap};
     use crate::live::mutation::types::{
-        LifecycleEvent, MutationResult, ReconcileData, SessionMutation, SideEffect,
+        InteractionAction, LifecycleEvent, MutationResult, ReconcileData, SessionMutation,
+        SideEffect,
     };
     use crate::live::state::{HookEvent, LiveSession, SessionEvent, SessionStatus};
 
@@ -215,6 +216,9 @@ mod tests {
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
         let hook_event_channels: Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>> =
             Arc::new(RwLock::new(HashMap::new()));
+        let cli_sessions = Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new());
+        let interaction_data: Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>> =
+            Arc::new(RwLock::new(HashMap::new()));
 
         let ctx = MutationContext {
             sessions: &sessions,
@@ -223,6 +227,8 @@ mod tests {
             db: &db,
             transcript_to_session: &transcript_to_session,
             hook_event_channels: &hook_event_channels,
+            cli_sessions: &cli_sessions,
+            interaction_data: &interaction_data,
         };
 
         // Send a statusline mutation for a session that doesn't exist yet
@@ -312,6 +318,8 @@ mod tests {
         claude_view_db::Database,
         TranscriptMap,
         Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
+        Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+        Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
     ) {
         let coordinator = SessionCoordinator::new();
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -322,6 +330,9 @@ mod tests {
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
         let hook_event_channels: Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>> =
             Arc::new(RwLock::new(HashMap::new()));
+        let cli_sessions = Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new());
+        let interaction_data: Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>> =
+            Arc::new(RwLock::new(HashMap::new()));
         (
             coordinator,
             sessions,
@@ -329,12 +340,15 @@ mod tests {
             db,
             transcript_to_session,
             hook_event_channels,
+            cli_sessions,
+            interaction_data,
         )
     }
 
     #[tokio::test]
     async fn upsert_state_change_with_cwd_creates_session() {
-        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -342,6 +356,8 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
         };
 
         // PreToolUse with cwd — should upsert, not buffer
@@ -386,7 +402,8 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_observability_with_cwd_creates_session() {
-        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -394,6 +411,8 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
         };
 
         // ConfigChange (Observability) with cwd — must still upsert
@@ -425,7 +444,8 @@ mod tests {
 
     #[tokio::test]
     async fn no_cwd_still_buffers() {
-        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -433,6 +453,8 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
         };
 
         // StateChange without cwd — must buffer, not upsert
@@ -467,7 +489,8 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_drains_previously_buffered_events() {
-        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -475,6 +498,8 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
         };
 
         // 1) First event: no cwd -> buffered
@@ -530,7 +555,8 @@ mod tests {
 
     #[tokio::test]
     async fn upsert_does_not_force_autonomous_state() {
-        let (coordinator, sessions, live_tx, db, tmap, hec) = make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -538,6 +564,8 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
         };
 
         // Stop event with cwd -> should upsert with NeedsYou/idle, NOT Autonomous
@@ -617,5 +645,424 @@ mod tests {
         assert_eq!(stored[0].group_name, "autonomous");
         assert_eq!(stored[1].event_name, "PostToolUse");
         assert_eq!(stored[1].context.as_deref(), Some(r#"{"exit_code":0}"#));
+    }
+
+    // =========================================================================
+    // Interaction mutation tests
+    // =========================================================================
+
+    fn make_interaction_meta(request_id: &str) -> claude_view_types::PendingInteractionMeta {
+        claude_view_types::PendingInteractionMeta {
+            variant: claude_view_types::InteractionVariant::Permission,
+            request_id: request_id.to_string(),
+            preview: "Allow file write?".to_string(),
+        }
+    }
+
+    fn make_interaction_block(request_id: &str) -> claude_view_types::InteractionBlock {
+        claude_view_types::InteractionBlock {
+            id: format!("block-{request_id}"),
+            variant: claude_view_types::InteractionVariant::Permission,
+            request_id: Some(request_id.to_string()),
+            resolved: false,
+            historical_source: None,
+            data: serde_json::json!({"tool": "Bash", "command": "rm -rf /"}),
+        }
+    }
+
+    #[test]
+    fn interaction_set_updates_pending_interaction() {
+        let mut session =
+            create_session_from_start("int-set", &Some("/tmp".into()), &None, &None, 1700000000);
+        assert!(session.pending_interaction.is_none());
+
+        let meta = make_interaction_meta("req-001");
+        let full_data = make_interaction_block("req-001");
+        let mutation = SessionMutation::Interaction(InteractionAction::Set {
+            meta: meta.clone(),
+            full_data,
+        });
+        apply_mutation_to_session(&mut session, &mutation, 1700000001);
+
+        assert!(session.pending_interaction.is_some());
+        let stored = session.pending_interaction.as_ref().unwrap();
+        assert_eq!(stored.request_id, "req-001");
+        assert_eq!(stored.preview, "Allow file write?");
+        assert!(matches!(
+            stored.variant,
+            claude_view_types::InteractionVariant::Permission
+        ));
+    }
+
+    #[test]
+    fn interaction_clear_removes_pending_interaction() {
+        let mut session =
+            create_session_from_start("int-clr", &Some("/tmp".into()), &None, &None, 1700000000);
+        session.pending_interaction = Some(make_interaction_meta("req-001"));
+        assert!(session.pending_interaction.is_some());
+
+        let mutation = SessionMutation::Interaction(InteractionAction::Clear {
+            request_id: "req-001".into(),
+        });
+        apply_mutation_to_session(&mut session, &mutation, 1700000002);
+
+        assert!(session.pending_interaction.is_none());
+    }
+
+    #[test]
+    fn interaction_set_plans_set_side_effect() {
+        let session =
+            create_session_from_start("int-se", &Some("/tmp".into()), &None, &None, 1700000000);
+        let meta = make_interaction_meta("req-001");
+        let full_data = make_interaction_block("req-001");
+        let mutation = SessionMutation::Interaction(InteractionAction::Set { meta, full_data });
+
+        let effects = plan_side_effects("int-se", &session, &mutation, 1700000001);
+        assert_eq!(effects.len(), 1);
+        assert!(
+            matches!(&effects[0], SideEffect::SetInteractionData { request_id, .. } if request_id == "req-001"),
+            "Expected SetInteractionData side effect"
+        );
+    }
+
+    #[test]
+    fn interaction_clear_plans_clear_side_effect() {
+        let session =
+            create_session_from_start("int-ce", &Some("/tmp".into()), &None, &None, 1700000000);
+        let mutation = SessionMutation::Interaction(InteractionAction::Clear {
+            request_id: "req-001".into(),
+        });
+
+        let effects = plan_side_effects("int-ce", &session, &mutation, 1700000001);
+        assert_eq!(effects.len(), 1);
+        assert!(
+            matches!(&effects[0], SideEffect::ClearInteractionData { request_id } if request_id == "req-001"),
+            "Expected ClearInteractionData side effect"
+        );
+    }
+
+    #[test]
+    fn interaction_cannot_create_session() {
+        let set_mutation = SessionMutation::Interaction(InteractionAction::Set {
+            meta: make_interaction_meta("req-001"),
+            full_data: make_interaction_block("req-001"),
+        });
+        assert!(
+            !set_mutation.can_create_session(),
+            "Interaction::Set must not create sessions"
+        );
+
+        let clear_mutation = SessionMutation::Interaction(InteractionAction::Clear {
+            request_id: "req-001".into(),
+        });
+        assert!(
+            !clear_mutation.can_create_session(),
+            "Interaction::Clear must not create sessions"
+        );
+    }
+
+    #[tokio::test]
+    async fn interaction_set_broadcasts_updated() {
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
+        let mut rx = live_tx.subscribe();
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
+        };
+
+        // First create a session so it exists
+        coordinator
+            .handle(
+                &ctx,
+                "int-bc",
+                SessionMutation::Lifecycle(LifecycleEvent::Start {
+                    cwd: Some("/tmp".into()),
+                    model: None,
+                    source: None,
+                    pid: Some(111),
+                    transcript_path: None,
+                }),
+                Some(111),
+                1700000000,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        // Drain the Created event
+        let _ = rx.recv().await;
+
+        // Now send an interaction Set
+        let result = coordinator
+            .handle(
+                &ctx,
+                "int-bc",
+                SessionMutation::Interaction(InteractionAction::Set {
+                    meta: make_interaction_meta("req-001"),
+                    full_data: make_interaction_block("req-001"),
+                }),
+                None,
+                1700000001,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(result, MutationResult::Updated(_)),
+            "Interaction::Set must return Updated"
+        );
+
+        // Verify SSE broadcast was Updated
+        let event = rx.recv().await.unwrap();
+        assert!(
+            matches!(event, SessionEvent::SessionUpdated { .. }),
+            "Expected SessionUpdated broadcast"
+        );
+
+        // Verify pending_interaction is set on the session
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("int-bc").unwrap();
+        assert!(session.pending_interaction.is_some());
+        assert_eq!(
+            session.pending_interaction.as_ref().unwrap().request_id,
+            "req-001"
+        );
+    }
+
+    #[tokio::test]
+    async fn interaction_clear_broadcasts_updated() {
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
+        let mut rx = live_tx.subscribe();
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
+        };
+
+        // Create session + set interaction
+        coordinator
+            .handle(
+                &ctx,
+                "int-bc2",
+                SessionMutation::Lifecycle(LifecycleEvent::Start {
+                    cwd: Some("/tmp".into()),
+                    model: None,
+                    source: None,
+                    pid: Some(222),
+                    transcript_path: None,
+                }),
+                Some(222),
+                1700000000,
+                None,
+                None,
+                None,
+            )
+            .await;
+        let _ = rx.recv().await; // drain Created
+
+        coordinator
+            .handle(
+                &ctx,
+                "int-bc2",
+                SessionMutation::Interaction(InteractionAction::Set {
+                    meta: make_interaction_meta("req-002"),
+                    full_data: make_interaction_block("req-002"),
+                }),
+                None,
+                1700000001,
+                None,
+                None,
+                None,
+            )
+            .await;
+        let _ = rx.recv().await; // drain Updated from Set
+
+        // Now clear
+        let result = coordinator
+            .handle(
+                &ctx,
+                "int-bc2",
+                SessionMutation::Interaction(InteractionAction::Clear {
+                    request_id: "req-002".into(),
+                }),
+                None,
+                1700000002,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(result, MutationResult::Updated(_)),
+            "Interaction::Clear must return Updated"
+        );
+
+        let event = rx.recv().await.unwrap();
+        assert!(
+            matches!(event, SessionEvent::SessionUpdated { .. }),
+            "Expected SessionUpdated broadcast after Clear"
+        );
+
+        // Verify pending_interaction is cleared
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("int-bc2").unwrap();
+        assert!(session.pending_interaction.is_none());
+    }
+
+    #[tokio::test]
+    async fn interaction_set_stores_full_data_in_side_map() {
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
+        };
+
+        // Create session
+        coordinator
+            .handle(
+                &ctx,
+                "int-side",
+                SessionMutation::Lifecycle(LifecycleEvent::Start {
+                    cwd: Some("/tmp".into()),
+                    model: None,
+                    source: None,
+                    pid: Some(333),
+                    transcript_path: None,
+                }),
+                Some(333),
+                1700000000,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        // Set interaction
+        coordinator
+            .handle(
+                &ctx,
+                "int-side",
+                SessionMutation::Interaction(InteractionAction::Set {
+                    meta: make_interaction_meta("req-side"),
+                    full_data: make_interaction_block("req-side"),
+                }),
+                None,
+                1700000001,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        // Verify side-map has the full data
+        let map = idata.read().await;
+        assert!(
+            map.contains_key("req-side"),
+            "Side-map must contain the interaction data"
+        );
+        let block = map.get("req-side").unwrap();
+        assert_eq!(block.id, "block-req-side");
+        assert!(!block.resolved);
+    }
+
+    #[tokio::test]
+    async fn interaction_clear_removes_from_side_map() {
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
+        };
+
+        // Create session + set interaction
+        coordinator
+            .handle(
+                &ctx,
+                "int-rm",
+                SessionMutation::Lifecycle(LifecycleEvent::Start {
+                    cwd: Some("/tmp".into()),
+                    model: None,
+                    source: None,
+                    pid: Some(444),
+                    transcript_path: None,
+                }),
+                Some(444),
+                1700000000,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        coordinator
+            .handle(
+                &ctx,
+                "int-rm",
+                SessionMutation::Interaction(InteractionAction::Set {
+                    meta: make_interaction_meta("req-rm"),
+                    full_data: make_interaction_block("req-rm"),
+                }),
+                None,
+                1700000001,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        // Verify it was inserted
+        assert!(idata.read().await.contains_key("req-rm"));
+
+        // Clear it
+        coordinator
+            .handle(
+                &ctx,
+                "int-rm",
+                SessionMutation::Interaction(InteractionAction::Clear {
+                    request_id: "req-rm".into(),
+                }),
+                None,
+                1700000002,
+                None,
+                None,
+                None,
+            )
+            .await;
+
+        // Verify it was removed
+        assert!(
+            !idata.read().await.contains_key("req-rm"),
+            "Side-map must be cleared after Interaction::Clear"
+        );
     }
 }

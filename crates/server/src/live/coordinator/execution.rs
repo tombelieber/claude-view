@@ -68,6 +68,16 @@ pub async fn execute_side_effect(ctx: &MutationContext<'_>, effect: &SideEffect)
             debug!(session_id, reason, "Would evict session");
             // Future: remove from session map + broadcast Removed
         }
+        SideEffect::SetInteractionData { request_id, data } => {
+            let mut map = ctx.interaction_data.write().await;
+            map.insert(request_id.clone(), data.clone());
+            debug!(request_id, "Stored interaction data in side-map");
+        }
+        SideEffect::ClearInteractionData { request_id } => {
+            let mut map = ctx.interaction_data.write().await;
+            map.remove(request_id.as_str());
+            debug!(request_id, "Cleared interaction data from side-map");
+        }
     }
 }
 

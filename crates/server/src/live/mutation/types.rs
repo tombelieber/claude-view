@@ -23,6 +23,8 @@ pub enum SessionMutation {
     Reconcile(Box<ReconcileData>),
     /// Sidecar control binding / unbinding.
     Control(ControlAction),
+    /// Interaction event from sidecar or hook.
+    Interaction(InteractionAction),
 }
 
 impl SessionMutation {
@@ -36,6 +38,7 @@ impl SessionMutation {
                 cwd.as_ref().is_some_and(|v| !v.trim().is_empty())
             }
             Self::Reconcile(_) => true,
+            Self::Interaction(_) => false,
             _ => false,
         }
     }
@@ -136,6 +139,21 @@ pub enum ControlAction {
 }
 
 // ---------------------------------------------------------------------------
+// InteractionAction — sidecar interaction lifecycle
+// ---------------------------------------------------------------------------
+
+/// Interaction lifecycle actions (permission prompt, question, plan, etc.).
+pub enum InteractionAction {
+    /// A new interaction is pending (sidecar emitted permission_request, ask_question, etc.).
+    Set {
+        meta: claude_view_types::PendingInteractionMeta,
+        full_data: claude_view_types::InteractionBlock,
+    },
+    /// The interaction was resolved (user responded, or timeout).
+    Clear { request_id: String },
+}
+
+// ---------------------------------------------------------------------------
 // ReconcileData — JSONL watcher reconciliation
 // ---------------------------------------------------------------------------
 
@@ -190,6 +208,15 @@ pub enum SideEffect {
         session_id: String,
         file_path: PathBuf,
     },
+    /// Store full interaction data in the side-map (Phase 3b, after session lock).
+    SetInteractionData {
+        request_id: String,
+        data: claude_view_types::InteractionBlock,
+    },
+    /// Remove interaction data from the side-map (Phase 3b, after session lock).
+    ClearInteractionData {
+        request_id: String,
+    },
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +224,7 @@ pub enum SideEffect {
 // ---------------------------------------------------------------------------
 
 /// What SSE broadcast (if any) should follow a mutation.
+#[derive(PartialEq, Eq)]
 pub enum BroadcastAction {
     Created,
     Updated,

@@ -103,6 +103,11 @@ pub struct LiveSessionManager {
     /// Ephemeral recently-closed sessions — captured on reap, lost on restart.
     /// Pure display buffer, not persisted anywhere.
     recently_closed: LiveSessionMap,
+    /// CLI session store for ownership resolution during broadcast.
+    cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+    /// Side-map for full interaction data, keyed by request_id.
+    interaction_data:
+        Arc<tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
 }
 
 impl LiveSessionManager {
@@ -126,6 +131,10 @@ impl LiveSessionManager {
         oracle_rx: super::process_oracle::OracleReceiver,
         hook_event_channels: Arc<
             tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
+        >,
+        cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+        interaction_data: Arc<
+            tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>,
         >,
     ) -> (
         Arc<Self>,
@@ -183,6 +192,8 @@ impl LiveSessionManager {
             hook_event_channels,
             coordinator: coordinator.clone(),
             recently_closed: recently_closed.clone(),
+            cli_sessions,
+            interaction_data,
         });
 
         // Spawn background tasks
@@ -300,6 +311,8 @@ impl LiveSessionManager {
             db: &self.db,
             transcript_to_session: &self.transcript_to_session,
             hook_event_channels: &self.hook_event_channels,
+            cli_sessions: &self.cli_sessions,
+            interaction_data: &self.interaction_data,
         }
     }
 

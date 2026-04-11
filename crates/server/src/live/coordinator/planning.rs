@@ -1,6 +1,8 @@
 //! Side-effect planning — pure, captures data before mutation clears it.
 
-use crate::live::mutation::types::{LifecycleEvent, SessionMutation, SideEffect};
+use crate::live::mutation::types::{
+    InteractionAction, LifecycleEvent, SessionMutation, SideEffect,
+};
 use crate::live::state::LiveSession;
 
 /// Plan side effects that need to happen after the mutation.
@@ -32,6 +34,19 @@ pub fn plan_side_effects(
         SessionMutation::Lifecycle(LifecycleEvent::Start { .. }) => {
             effects.push(SideEffect::CreateAccumulator {
                 session_id: session_id.to_string(),
+            });
+        }
+        SessionMutation::Interaction(InteractionAction::Set {
+            meta, full_data, ..
+        }) => {
+            effects.push(SideEffect::SetInteractionData {
+                request_id: meta.request_id.clone(),
+                data: full_data.clone(),
+            });
+        }
+        SessionMutation::Interaction(InteractionAction::Clear { request_id }) => {
+            effects.push(SideEffect::ClearInteractionData {
+                request_id: request_id.clone(),
             });
         }
         _ => {}

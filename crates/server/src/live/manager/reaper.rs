@@ -181,6 +181,8 @@ mod tests {
             hook_event_channels: Arc::new(RwLock::new(HashMap::new())),
             coordinator: Arc::new(SessionCoordinator::new()),
             recently_closed: Arc::new(RwLock::new(HashMap::new())),
+            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            interaction_data: Arc::new(RwLock::new(HashMap::new())),
         });
 
         (manager, rx, snapshot_rx)
@@ -231,6 +233,8 @@ mod tests {
             },
             session_kind: None,
             entrypoint: None,
+            ownership: None,
+            pending_interaction: None,
         }
     }
 

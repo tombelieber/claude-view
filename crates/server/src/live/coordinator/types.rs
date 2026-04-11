@@ -22,6 +22,10 @@ pub struct MutationContext<'a> {
     pub db: &'a claude_view_db::Database,
     pub transcript_to_session: &'a TranscriptMap,
     pub hook_event_channels: &'a Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
+    /// CLI session store for ownership resolution during broadcast.
+    pub cli_sessions: &'a Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+    /// Side-map for full interaction data, keyed by request_id.
+    pub interaction_data: &'a Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
 }
 
 // ---------------------------------------------------------------------------

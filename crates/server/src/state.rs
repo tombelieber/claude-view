@@ -206,6 +206,10 @@ pub struct AppState {
     pub webhook_secrets_path: std::path::PathBuf,
     /// In-memory store for tmux-backed CLI sessions.
     pub cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+    /// Side-map for full interaction data, keyed by requestId.
+    /// Compact meta goes on LiveSession; full data fetched via GET.
+    pub interaction_data:
+        Arc<tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
     /// Tmux command abstraction (real in prod, mock in tests).
     pub tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
 }
@@ -320,6 +324,7 @@ impl AppStateBuilder {
             webhook_secrets_path: claude_view_core::paths::config_dir()
                 .join("webhook-secrets.json"),
             cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            interaction_data: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         })
     }
@@ -374,6 +379,8 @@ impl AppState {
             db: &self.db,
             transcript_to_session: &self.transcript_to_session,
             hook_event_channels: &self.hook_event_channels,
+            cli_sessions: &self.cli_sessions,
+            interaction_data: &self.interaction_data,
         }
     }
 
