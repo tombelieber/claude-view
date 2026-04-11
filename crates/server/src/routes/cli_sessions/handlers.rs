@@ -16,7 +16,7 @@ use crate::{
 use super::types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};
 
 /// Read the Claude session ID from ~/.claude/sessions/{pid}.json.
-fn resolve_claude_session_id(pid: u32) -> Option<String> {
+pub(super) fn resolve_claude_session_id(pid: u32) -> Option<String> {
     let home = dirs::home_dir()?;
     let path = home.join(format!(".claude/sessions/{pid}.json"));
     let data = std::fs::read_to_string(path).ok()?;

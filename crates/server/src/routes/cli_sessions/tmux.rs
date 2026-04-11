@@ -31,6 +31,9 @@ pub trait TmuxCommand: Send + Sync {
 
     /// Check if the tmux binary is available.
     fn is_available(&self) -> bool;
+
+    /// List all tmux session names.
+    fn list_sessions(&self) -> Vec<String>;
 }
 
 /// Production implementation that shells out to the real tmux binary.
@@ -125,6 +128,19 @@ impl TmuxCommand for RealTmux {
             .map(|o| o.status.success())
             .unwrap_or(false)
     }
+
+    fn list_sessions(&self) -> Vec<String> {
+        let output = Command::new("tmux")
+            .args(["list-sessions", "-F", "#{session_name}"])
+            .output();
+        match output {
+            Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(String::from)
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// Shell-escape a string with single quotes.
@@ -218,6 +234,10 @@ pub mod mock {
 
         fn is_available(&self) -> bool {
             self.available
+        }
+
+        fn list_sessions(&self) -> Vec<String> {
+            self.sessions.lock().unwrap().iter().cloned().collect()
         }
     }
 }
