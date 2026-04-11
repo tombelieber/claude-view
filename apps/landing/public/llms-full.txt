@@ -1701,6 +1701,74 @@ npx claude-view@latest
 Open the Teams tab to see debate transcripts and cost breakdowns. Check the Memory page to browse your `~/.claude` directory from the dashboard.
 
 
+--- blog/v0-34-0-cross-platform-terminals-webhooks.mdx ---
+
+---
+title: "Linux Support, Live Terminals, and Webhook Notifications"
+description: "v0.34.0 brings native Linux builds, interactive xterm terminals for CLI sessions, webhook notifications with Slack/Lark support, and a complete session ownership model."
+date: 2026-04-12
+author: claude-view team
+---
+
+Three things that don't seem related until you think about what they have in common: watching your AI agents work from anywhere, on any machine, and getting notified when something interesting happens.
+
+## Linux, finally
+
+claude-view started as a macOS tool because that's where most Claude Code users live. But "most" isn't "all," and the workaround — setting `CLAUDE_VIEW_ALLOW_LINUX=1` and hoping for the best — wasn't a real answer.
+
+v0.34.0 ships a native **linux-x64 binary** in every release. The CI pipeline now builds and tests on Linux alongside both Mac architectures. Under the hood, we replaced `node-pty` (which needed platform-specific native addons and caused ABI mismatch headaches) with Rust-native `portable-pty`. One fewer native dependency, one fewer class of install failures.
+
+If you're running Claude Code on a Linux dev server or in WSL, `npx claude-view@latest` now just works.
+
+## Interactive CLI terminals
+
+When Claude Code spawns tmux sessions — for long-running builds, server processes, or interactive debugging — you previously had to switch to a terminal to see what was happening. Now those sessions render as **real xterm terminals** directly inside the Chat and Monitor pages.
+
+Each terminal tab shows live output from the tmux session. A close button lets you manage tabs without switching contexts. The rendering is params-driven rather than creation-time config, which means terminal behavior updates dynamically as sessions change state.
+
+This is particularly useful when an agent is running a dev server in one session while editing code in another. You see both streams side by side without leaving claude-view.
+
+## Webhook notifications
+
+You're running agents overnight. Maybe a batch of code reviews, maybe a long migration. You want to know when something finishes — or fails — without keeping a browser tab open.
+
+v0.34.0 adds a **webhook notification API**:
+
+- **CRUD management** — create, update, list, and delete webhook endpoints through the API
+- **Slack and Lark formatters** — structured messages that render natively in your team's chat tool
+- **HMAC-SHA256 signing** — every delivery is signed so you can verify it came from your claude-view instance
+- **Automatic retry** — failed deliveries retry with exponential backoff
+- **Test-send endpoint** — validate your webhook config before relying on it
+
+The canonical payload format means you can also write custom formatters for any destination that accepts HTTP webhooks — Discord, Teams, PagerDuty, or a custom endpoint.
+
+## Session ownership
+
+The internal model for "who owns this session" got a complete rewrite. The old `LiveStatus` enum was a flat list of states that didn't capture the nuances of session lifecycle — is it running? Is it mine? Can I take it over?
+
+The new `OwnershipTier` model answers these questions structurally:
+
+- **pid.json** is now the single source of truth for live session detection
+- Ownership resolution can find sessions by Claude session ID, not just local paths
+- All UI components — session lists, sidebars, source badges, kanban boards — derive their state from ownership tier instead of maintaining parallel status tracking
+
+This also enabled the **unified interaction UI**: plan approvals, permission prompts, and user questions now surface through a single card system. If an agent needs your input, you see it in one consistent place regardless of the interaction type.
+
+## What's next
+
+- **Windows support** — win32-x64 builds are defined in CI but not yet enabled
+- **Mobile companion** — React Native app for monitoring agents on the go
+- **Notification rules** — filter which events trigger webhooks based on project, severity, or event type
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Try opening a session that spawns a tmux process — you'll see the terminal tab appear automatically in the Chat page.
+
+
 --- blog/v0-4-0-dashboard-analytics.mdx ---
 
 ---
@@ -3171,6 +3239,49 @@ version: v0.33.2
 **Fixed 49 E2E test failures** — updated routes, selectors, and skip gates to match the new module structure.
 
 **Scrubbed PII from doc comments and tests** — removed personally identifiable information from code documentation and test fixtures.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.34.0.md ---
+
+---
+title: "v0.34.0 — Cross-Platform, Terminals & Webhooks"
+date: 2026-04-12
+version: v0.34.0
+---
+
+## New features
+
+**Native Linux support** — linux-x64 binary now ships in every release. No more `CLAUDE_VIEW_ALLOW_LINUX=1` env var bypass.
+
+**Interactive CLI terminals** — tmux CLI sessions render as real xterm terminals inside Chat and Monitor pages. Close button on terminal tabs lets you manage multiple sessions.
+
+**Webhook notifications API** — CRUD API for managing webhooks with Lark and Slack formatters. HMAC-SHA256 signed deliveries with automatic retry. Test-send endpoint for validating configs before going live.
+
+**Session ownership model** — new `OwnershipTier` type replaces the old `LiveStatus` enum. Cleaner session lifecycle with pid.json as the single root for live detection. All session list, sidebar, and badge components rewired.
+
+**Unified interaction UI** — plan approvals, permission prompts, and user questions surface through a single interaction card system. `bypassPermissions` flows through the full plan approval path.
+
+**API authentication** — API key generation and validation with `cv_live_` prefix format. Tower middleware with automatic localhost bypass for local development.
+
+## Improvements
+
+**Zero-data-loss block rendering** — 17 missing system variant renderers added to chat mode. Missing fields added across TurnBoundary, ToolChip, ToolCard, Interaction Cards, NoticeBlock, ProgressBlock, UserBlock, and AssistantBlock. TeamTranscriptBlock renderers for both chat and dev modes.
+
+**Claude Code plugin expansion** — marketplace manifest for one-click plugin install. 18 MCP tools unlocked. System-monitor, live, and usage skills. OpenAPI drift check ensures all handlers stay documented.
+
+**Cross-platform terminal backend** — replaced node-pty with Rust-native portable-pty, removing the native addon dependency that caused ABI mismatch issues.
+
+**Storybook gallery** — AllBlocks mega-story for scrollable full gallery. 3-column comparison layout with a11y addon.
+
+**12 state-swallowing gaps closed** — error reasons now carry through the full pipeline instead of being silently dropped.
+
+**TaskItem deserialization fixed** — 23% of task files were silently dropped due to missing field defaults.
 
 ## Getting started
 

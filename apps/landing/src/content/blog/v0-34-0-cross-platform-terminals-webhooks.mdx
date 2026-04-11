@@ -1,0 +1,64 @@
+---
+title: "Linux Support, Live Terminals, and Webhook Notifications"
+description: "v0.34.0 brings native Linux builds, interactive xterm terminals for CLI sessions, webhook notifications with Slack/Lark support, and a complete session ownership model."
+date: 2026-04-12
+author: claude-view team
+---
+
+Three things that don't seem related until you think about what they have in common: watching your AI agents work from anywhere, on any machine, and getting notified when something interesting happens.
+
+## Linux, finally
+
+claude-view started as a macOS tool because that's where most Claude Code users live. But "most" isn't "all," and the workaround — setting `CLAUDE_VIEW_ALLOW_LINUX=1` and hoping for the best — wasn't a real answer.
+
+v0.34.0 ships a native **linux-x64 binary** in every release. The CI pipeline now builds and tests on Linux alongside both Mac architectures. Under the hood, we replaced `node-pty` (which needed platform-specific native addons and caused ABI mismatch headaches) with Rust-native `portable-pty`. One fewer native dependency, one fewer class of install failures.
+
+If you're running Claude Code on a Linux dev server or in WSL, `npx claude-view@latest` now just works.
+
+## Interactive CLI terminals
+
+When Claude Code spawns tmux sessions — for long-running builds, server processes, or interactive debugging — you previously had to switch to a terminal to see what was happening. Now those sessions render as **real xterm terminals** directly inside the Chat and Monitor pages.
+
+Each terminal tab shows live output from the tmux session. A close button lets you manage tabs without switching contexts. The rendering is params-driven rather than creation-time config, which means terminal behavior updates dynamically as sessions change state.
+
+This is particularly useful when an agent is running a dev server in one session while editing code in another. You see both streams side by side without leaving claude-view.
+
+## Webhook notifications
+
+You're running agents overnight. Maybe a batch of code reviews, maybe a long migration. You want to know when something finishes — or fails — without keeping a browser tab open.
+
+v0.34.0 adds a **webhook notification API**:
+
+- **CRUD management** — create, update, list, and delete webhook endpoints through the API
+- **Slack and Lark formatters** — structured messages that render natively in your team's chat tool
+- **HMAC-SHA256 signing** — every delivery is signed so you can verify it came from your claude-view instance
+- **Automatic retry** — failed deliveries retry with exponential backoff
+- **Test-send endpoint** — validate your webhook config before relying on it
+
+The canonical payload format means you can also write custom formatters for any destination that accepts HTTP webhooks — Discord, Teams, PagerDuty, or a custom endpoint.
+
+## Session ownership
+
+The internal model for "who owns this session" got a complete rewrite. The old `LiveStatus` enum was a flat list of states that didn't capture the nuances of session lifecycle — is it running? Is it mine? Can I take it over?
+
+The new `OwnershipTier` model answers these questions structurally:
+
+- **pid.json** is now the single source of truth for live session detection
+- Ownership resolution can find sessions by Claude session ID, not just local paths
+- All UI components — session lists, sidebars, source badges, kanban boards — derive their state from ownership tier instead of maintaining parallel status tracking
+
+This also enabled the **unified interaction UI**: plan approvals, permission prompts, and user questions now surface through a single card system. If an agent needs your input, you see it in one consistent place regardless of the interaction type.
+
+## What's next
+
+- **Windows support** — win32-x64 builds are defined in CI but not yet enabled
+- **Mobile companion** — React Native app for monitoring agents on the go
+- **Notification rules** — filter which events trigger webhooks based on project, severity, or event type
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Try opening a session that spawns a tmux process — you'll see the terminal tab appear automatically in the Chat page.
