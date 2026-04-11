@@ -1,6 +1,7 @@
 import type { ProgressBlock as ProgressBlockType } from '../../../../types/blocks'
 import { Bot, Clock, Database, GitBranch, Plug, Search, Terminal } from 'lucide-react'
 import { cn } from '../../../../utils/cn'
+import { StatusBadge } from '../shared/StatusBadge'
 
 interface ProgressBlockProps {
   block: ProgressBlockType
@@ -182,6 +183,8 @@ export function ChatProgressBlock({ block }: ProgressBlockProps) {
   const Icon = style.icon
   const { label, detail, isError } = extractInfo(block)
 
+  const timeLabel = new Date(block.ts * 1000).toLocaleTimeString()
+
   return (
     <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
       <span
@@ -190,18 +193,27 @@ export function ChatProgressBlock({ block }: ProgressBlockProps) {
           isError ? 'bg-red-500' : cn(style.dotColor, 'animate-pulse'),
         )}
       />
+      <StatusBadge label={block.category} color="gray" />
+      {block.parentToolUseId && (
+        <span className="font-mono text-xs text-indigo-400 dark:text-indigo-500 flex-shrink-0">
+          {`\u2192 ${block.parentToolUseId.slice(0, 8)}`}
+        </span>
+      )}
       <Icon className={cn('w-3.5 h-3.5 flex-shrink-0', isError ? 'text-red-500' : style.accent)} />
       <span className="text-gray-600 dark:text-gray-400 font-mono truncate">{label}</span>
       {detail && (
         <span
           className={cn(
-            'font-mono text-xs truncate flex-shrink-0 ml-auto',
+            'font-mono text-xs truncate flex-shrink-0',
             isError ? 'text-red-500 dark:text-red-400' : 'text-gray-500 dark:text-gray-600',
           )}
         >
           {detail}
         </span>
       )}
+      <span className="font-mono text-xs text-gray-400 dark:text-gray-500 tabular-nums ml-auto flex-shrink-0">
+        {timeLabel}
+      </span>
     </div>
   )
 }

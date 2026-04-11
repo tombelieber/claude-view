@@ -5,6 +5,7 @@ import type {
 import { ThinkingBlock } from '../../../ThinkingBlock'
 import { Markdown } from '../shared/Markdown'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
+import { StatusBadge } from '../shared/StatusBadge'
 import { DurationBadge } from './DurationBadge'
 import { EventCard } from './EventCard'
 import { ToolCard } from './ToolCard'
@@ -64,6 +65,7 @@ export function DevAssistantBlock({ block }: AssistantBlockProps) {
       pulse={block.streaming}
       meta={
         <div className="flex items-center gap-1.5">
+          {block.agentId && <StatusBadge label={`Agent: ${block.agentId}`} color="indigo" />}
           {block.rawJson?.permissionMode != null && (
             <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-gray-500/10 dark:bg-gray-500/20 text-gray-600 dark:text-gray-300">
               {String(block.rawJson.permissionMode)}

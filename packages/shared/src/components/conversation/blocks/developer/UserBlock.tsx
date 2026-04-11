@@ -1,5 +1,6 @@
 import { Check, Loader2, X } from 'lucide-react'
 import type { UserBlock as UserBlockType } from '../../../../types/blocks'
+import { StatusBadge } from '../shared/StatusBadge'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { EventCard } from './EventCard'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
@@ -37,13 +38,31 @@ export function DevUserBlock({ block }: UserBlockProps) {
       rawData={block}
       error={block.status === 'failed'}
       pulse={block.status === 'sending' || block.status === 'optimistic'}
-      meta={<StatusDot status={block.status} />}
+      meta={
+        <div className="flex items-center gap-1.5">
+          {block.agentId && <StatusBadge label={`Agent: ${block.agentId}`} color="indigo" />}
+          <StatusDot status={block.status} />
+        </div>
+      }
     >
       <div className="space-y-1.5">
         <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap break-words">
           {block.text}
         </p>
         <MessageTimestamp timestamp={block.timestamp} />
+        {block.images && block.images.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {block.images.map((img, i) => (
+              <img
+                // biome-ignore lint/suspicious/noArrayIndexKey: images have no stable id
+                key={i}
+                src={img.url ?? `data:${img.mediaType};base64,${img.data}`}
+                alt={`Pasted ${i + 1}`}
+                className="max-w-xs max-h-48 rounded border border-gray-200 dark:border-gray-700"
+              />
+            ))}
+          </div>
+        )}
         {block.rawJson != null && (
           <div className="space-y-1">
             {Array.isArray(block.rawJson.imagePasteIds) && (
