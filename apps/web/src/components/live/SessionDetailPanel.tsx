@@ -833,8 +833,14 @@ export function SessionDetailPanel({
                     }),
                   answerQuestion: (rid, answers) =>
                     convDispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
-                  approvePlan: (rid, approved, feedback) =>
-                    convDispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                  approvePlan: (rid, approved, feedback, bypassPermissions) =>
+                    convDispatch({
+                      type: 'APPROVE_PLAN',
+                      requestId: rid,
+                      approved,
+                      feedback,
+                      bypassPermissions,
+                    }),
                   submitElicitation: (rid, response) =>
                     convDispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
                 }}

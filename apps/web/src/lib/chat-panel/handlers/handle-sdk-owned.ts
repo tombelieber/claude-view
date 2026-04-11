@@ -197,6 +197,7 @@ export function handleSdkOwned(store: ChatPanelStore, event: RawEvent): Transiti
               requestId: event.requestId,
               approved: event.approved,
               feedback: event.feedback,
+              bypassPermissions: event.bypassPermissions,
             },
           },
         ],

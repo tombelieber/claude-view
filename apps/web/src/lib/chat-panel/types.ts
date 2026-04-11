@@ -142,7 +142,13 @@ export type RawEvent =
       updatedPermissions?: unknown[]
     }
   | { type: 'ANSWER_QUESTION'; requestId: string; answers: Record<string, string> }
-  | { type: 'APPROVE_PLAN'; requestId: string; approved: boolean; feedback?: string }
+  | {
+      type: 'APPROVE_PLAN'
+      requestId: string
+      approved: boolean
+      feedback?: string
+      bypassPermissions?: boolean
+    }
   | { type: 'SUBMIT_ELICITATION'; requestId: string; response: string }
   | { type: 'INTERRUPT' }
   | { type: 'RETRY_MESSAGE'; localId: string } // E-B3

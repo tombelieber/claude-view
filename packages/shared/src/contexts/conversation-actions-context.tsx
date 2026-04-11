@@ -6,7 +6,12 @@ export interface ConversationActions {
   // Interactive card handlers (permission, question, plan, elicitation)
   respondPermission?: (requestId: string, allowed: boolean, updatedPermissions?: unknown[]) => void
   answerQuestion?: (requestId: string, answers: Record<string, string>) => void
-  approvePlan?: (requestId: string, approved: boolean, feedback?: string) => void
+  approvePlan?: (
+    requestId: string,
+    approved: boolean,
+    feedback?: string,
+    bypassPermissions?: boolean,
+  ) => void
   submitElicitation?: (requestId: string, response: string) => void
 }
 

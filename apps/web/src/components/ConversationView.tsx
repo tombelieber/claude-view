@@ -628,8 +628,14 @@ export function ConversationView() {
                             }),
                           answerQuestion: (rid, answers) =>
                             dispatch({ type: 'ANSWER_QUESTION', requestId: rid, answers }),
-                          approvePlan: (rid, approved, feedback) =>
-                            dispatch({ type: 'APPROVE_PLAN', requestId: rid, approved, feedback }),
+                          approvePlan: (rid, approved, feedback, bypassPermissions) =>
+                            dispatch({
+                              type: 'APPROVE_PLAN',
+                              requestId: rid,
+                              approved,
+                              feedback,
+                              bypassPermissions,
+                            }),
                           submitElicitation: (rid, response) =>
                             dispatch({ type: 'SUBMIT_ELICITATION', requestId: rid, response }),
                         }}

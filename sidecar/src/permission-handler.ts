@@ -241,15 +241,26 @@ export class PermissionHandler {
     return true
   }
 
-  resolvePlan(requestId: string, approved: boolean, feedback?: string): boolean {
+  resolvePlan(
+    requestId: string,
+    approved: boolean,
+    feedback?: string,
+    bypassPermissions?: boolean,
+  ): boolean {
     const pending = this.plans.get(requestId)
     if (!pending) return false
     this.plans.delete(requestId)
-    pending.resolve(
-      approved
-        ? { behavior: 'allow', updatedInput: pending.originalInput }
-        : { behavior: 'deny', message: feedback ?? 'Plan rejected' },
-    )
+    if (!approved) {
+      pending.resolve({ behavior: 'deny', message: feedback ?? 'Plan rejected' })
+      return true
+    }
+    // When bypassPermissions is explicitly false ("manually approve edits"),
+    // clear allowedPrompts so the SDK still confirms each tool individually.
+    const input =
+      bypassPermissions === false
+        ? { ...pending.originalInput, allowedPrompts: [] }
+        : pending.originalInput
+    pending.resolve({ behavior: 'allow', updatedInput: input })
     return true
   }
 
