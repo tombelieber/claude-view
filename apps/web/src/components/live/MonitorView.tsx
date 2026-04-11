@@ -11,6 +11,7 @@ import { MonitorGrid } from './MonitorGrid'
 import { MonitorPane } from './MonitorPane'
 import { PaneContextMenu } from './PaneContextMenu'
 import { BlockTerminalPane } from './BlockTerminalPane'
+import { CliTerminal } from '../cli-terminal/CliTerminal'
 import type { LiveSession } from './use-live-sessions'
 import { useAutoFill } from './useAutoFill'
 import { useMonitorKeyboardShortcuts } from './useMonitorKeyboardShortcuts'
@@ -268,7 +269,14 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
                     onHide={() => hidePane(session.id)}
                     onContextMenu={(e) => handleContextMenu(e, session.id)}
                   >
-                    <BlockTerminalPane sessionId={session.id} isVisible={isPaneVisible} />
+                    {session.ownership?.tier === 'tmux' ? (
+                      <CliTerminal
+                        tmuxSessionId={session.ownership.cliSessionId}
+                        className="h-full"
+                      />
+                    ) : (
+                      <BlockTerminalPane sessionId={session.id} isVisible={isPaneVisible} />
+                    )}
                   </MonitorPane>
                 </div>
               )

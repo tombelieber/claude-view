@@ -268,13 +268,21 @@ impl SessionCoordinator {
         }
 
         // -- Phase 4: Broadcast --
-        // Enrich snapshot with ownership before sending to SSE clients.
-        // resolve_ownership() is async (reads CliSessionStore) — safe here
-        // because Phase 4 runs after all locks are dropped.
+        // Resolve ownership and write back to the authoritative map.
+        // resolve_ownership() is async (reads CliSessionStore) — called with
+        // no locks held, then briefly re-acquires the write lock to persist.
         let mut snapshot = snapshot;
         if broadcast_action != BroadcastAction::Removed {
             let ownership =
                 crate::live::ownership::resolve_ownership(&snapshot, ctx.cli_sessions).await;
+            // Write back to source of truth — REST, SSE initial connect, and
+            // every other consumer reads the real materialized value.
+            {
+                let mut sessions = ctx.sessions.write().await;
+                if let Some(session) = sessions.get_mut(session_id) {
+                    session.ownership = Some(ownership.clone());
+                }
+            }
             snapshot.ownership = Some(ownership);
         }
 

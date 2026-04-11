@@ -18,7 +18,6 @@ import {
   TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { CliTerminalCompact } from '../cli-terminal'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
@@ -312,8 +311,6 @@ interface SessionCardProps {
   hideProjectBranch?: boolean
   /** When true, show StateBadge pill instead of green pulse dot (used by Harness view) */
   showStateBadge?: boolean
-  /** Handler for expanding a CLI terminal session into a full dockview panel. */
-  onExpandCliSession?: (sessionId: string) => void
 }
 
 export function SessionCard({
@@ -323,7 +320,6 @@ export function SessionCard({
   onClickOverride,
   hideProjectBranch,
   showStateBadge,
-  onExpandCliSession,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
   const respond = useInteractionResponder(session.id, session.ownership)
@@ -515,24 +511,8 @@ export function SessionCard({
         </div>
       )}
 
-      {/* ── CLI Terminal compact view ── */}
-      {session.ownership?.tier === 'tmux' && (
-        <div className="border-t border-gray-100 dark:border-gray-800 mt-2.5 pt-2">
-          <CliTerminalCompact
-            tmuxSessionId={session.ownership.cliSessionId}
-            onExpand={
-              onExpandCliSession
-                ? () =>
-                    onExpandCliSession(
-                      session.ownership?.tier === 'tmux'
-                        ? session.ownership.cliSessionId
-                        : session.id,
-                    )
-                : undefined
-            }
-          />
-        </div>
-      )}
+      {/* Tmux xterm rendering is handled by dockview panels (MonitorView, ChatPageV2),
+         not session cards. Cards show the same metadata for all ownership tiers. */}
 
       {/* ── Detail zone — plain text, labeled lines ── */}
       {hasDetails && (

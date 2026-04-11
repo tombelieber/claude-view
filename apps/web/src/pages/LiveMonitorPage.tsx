@@ -2,7 +2,6 @@ import type { DockviewApi } from 'dockview-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { NewCliSessionButton } from '../components/cli-terminal'
-import { useCliSessions } from '../hooks/use-cli-sessions'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
 import { CostTokenPopover } from '../components/live/CostTokenPopover'
 import { HarnessKanbanView } from '../components/live/HarnessKanbanView'
@@ -103,15 +102,7 @@ export function LiveMonitorPage() {
   // Filtered sessions
   const filteredSessions = useMemo(() => filterLiveSessions(sessions, filters), [sessions, filters])
 
-  // Exclude live sessions that belong to CLI (tmux) sessions — they render as xterm panels.
-  const { data: cliSessions } = useCliSessions()
-  const visibleSessions = useMemo(() => {
-    const cliOwnedIds = new Set(
-      (cliSessions ?? []).map((c) => c.claudeSessionId).filter(Boolean) as string[],
-    )
-    if (cliOwnedIds.size === 0) return filteredSessions
-    return filteredSessions.filter((s) => !cliOwnedIds.has(s.id))
-  }, [filteredSessions, cliSessions])
+  const visibleSessions = filteredSessions
 
   // Kanban grouping
   const urlGroupBy = searchParams.get('groupBy') as KanbanGroupBy | null
@@ -302,26 +293,8 @@ export function LiveMonitorPage() {
     [viewMode, handleViewModeChange],
   )
 
-  // Sync existing CLI sessions into xterm panels when monitor view is active.
-  // handleCliSessionCreated covers newly-created sessions; this covers pre-existing
-  // ones (e.g., page refresh while tmux sessions are running).
-  useEffect(() => {
-    const api = dockviewApiRef.current
-    if (!api || viewMode !== 'monitor' || !cliSessions?.length) return
-    for (const cli of cliSessions) {
-      if (cli.status !== 'running') continue
-      const panelId = `cli-${cli.id}`
-      if (api.panels.some((p) => p.id === panelId)) continue
-      api.addPanel({
-        id: panelId,
-        component: 'cliTerminal',
-        tabComponent: 'cliTerminal',
-        title: `CLI: ${cli.id.slice(0, 11)}`,
-        params: { tmuxSessionId: cli.id },
-        inactive: true,
-      })
-    }
-  }, [cliSessions, viewMode])
+  // CLI sessions now flow through visibleSessions → MonitorView renders xterm
+  // based on ownership.tier === 'tmux'. No separate panel sync needed.
 
   // Session selection
   const handleSelectSession = useCallback((id: string) => {
@@ -535,7 +508,6 @@ export function LiveMonitorPage() {
                     stalledSessions={stalledSessions}
                     currentTime={currentTime}
                     onClickOverride={() => handleSelectSession(session.id)}
-                    onExpandCliSession={handleCliSessionCreated}
                   />
                 </div>
               ))}

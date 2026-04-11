@@ -15,6 +15,7 @@ const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import type { DisplayMode } from '../../store/monitor-store'
 import { useMonitorStore } from '../../store/monitor-store'
+import { CliTerminal } from '../cli-terminal/CliTerminal'
 import { CliTerminalPanel } from '../cli-terminal/CliTerminalPanel'
 import { CliTerminalTabRenderer } from '../cli-terminal/CliTerminalTabRenderer'
 import { BlockTerminalPane } from './BlockTerminalPane'
@@ -92,7 +93,11 @@ function SessionPanel({
       onHide={() => hidePane(sessionId)}
       onContextMenu={() => {}}
     >
-      <BlockTerminalPane sessionId={sessionId} isVisible={true} />
+      {session.ownership?.tier === 'tmux' ? (
+        <CliTerminal tmuxSessionId={session.ownership.cliSessionId} className="h-full" />
+      ) : (
+        <BlockTerminalPane sessionId={sessionId} isVisible={true} />
+      )}
     </MonitorPane>
   )
 }
