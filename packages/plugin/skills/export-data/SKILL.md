@@ -66,6 +66,8 @@ Export the user's Claude Code session data for external analysis or backup.
 | `classify_cancel_classification` | Cancel a running classification job. |
 | `classify_single_session` | Classify a single session synchronously. |
 | `classify_get_classification_status` | Get classification status. |
+| **Cli Tools** | |
+| `cli_create_session` | - Create a new tmux-backed CLI session. |
 | **Coaching Tools** | |
 | `coaching_list_rules` | - List all coaching rules from the rules directory. |
 | `coaching_apply_rule` | - Create a new coaching rule file. |
@@ -74,6 +76,9 @@ Export the user's Claude Code session data for external analysis or backup.
 | `contributions_get_contributions` | Main contributions page data. |
 | `contributions_get_branch_sessions` | Sessions for a branch. |
 | `contributions_get_session_contribution` | Session contribution detail. |
+| **Crate::routes::interact::handlers Tools** | |
+| `crate_routes_interact_handlers_interact_handler` | Resolve a pending interaction (permission, question, plan, elicitation). |
+| `crate_routes_interact_handlers_get_interaction_handler` | Fetch the full interaction data for a session's pending interaction. |
 | **Export Tools** | |
 | `export_sessions` | Export all sessions. |
 | **Facets Tools** | |
@@ -98,8 +103,16 @@ Export the user's Claude Code session data for external analysis or backup.
 | `jobs_list_jobs` | List all active jobs. |
 | **Live Tools** | |
 | `live_get_pricing` | - Return the model pricing table. |
+| `live_dismiss_all_closed` | - Dismiss all recently closed (in-memory only). |
 | `live_get_live_session` | - Get a single live session by ID. |
+| `live_dismiss_session` | - Dismiss from recently closed (in-memory only). |
 | `live_get_live_session_messages` | - Get the most recent messages for a live session. |
+| **Mcp Tools** | |
+| `mcp_get_mcp_servers` | returns all deduplicated MCP server configurations. |
+| **Memory Tools** | |
+| `memory_get_all_memories` | returns all memory entries grouped by scope. |
+| `memory_get_memory_file` | read a single memory file. |
+| `memory_get_project_memories` | returns memories for a specific project. |
 | **Monitor Tools** | |
 | `monitor_snapshot` | - One-shot JSON snapshot of current resources. |
 | **Oauth Tools** | |
@@ -115,6 +128,7 @@ Export the user's Claude Code session data for external analysis or backup.
 | **Plugins Tools** | |
 | `plugins_list_plugins` | - Unified view of installed + available plugins. |
 | `plugins_list_marketplaces` | plugins marketplaces |
+| `plugins_marketplace_action` | plugins marketplaces action |
 | `plugins_refresh_all` | all |
 | `plugins_refresh_status` | status |
 | `plugins_list_ops_handler` | List all queued/running/completed ops. |
@@ -136,9 +150,11 @@ Export the user's Claude Code session data for external analysis or backup.
 | `reports_get_report` | Get a single report. |
 | `reports_delete_report` | Delete a report. |
 | **Sessions Tools** | |
+| `sessions_get_active_sessions` | returns all active session files from ~/.claude/sessions/. |
 | `sessions_list_branches` | Get distinct list of branch names across all sessions. |
 | `sessions_estimate_cost` | cost estimation (Rust-only, no sidecar). |
 | `sessions_session_activity` | Activity histogram for sparkline chart. |
+| `sessions_session_activity_rich` | Full server-side activity aggregation. |
 | `sessions_bulk_archive_handler` | sessions archive |
 | `sessions_bulk_unarchive_handler` | sessions unarchive |
 | `sessions_archive_session_handler` | sessions {id} archive |
@@ -146,8 +162,10 @@ Export the user's Claude Code session data for external analysis or backup.
 | `sessions_get_file_diff` | history/:file_hash/diff?from=N&to=M |
 | `sessions_get_session_hook_events` | Fetch hook events for a session. |
 | `sessions_get_session_messages_by_id` | Get paginated messages by session ID. |
+| `sessions_get_subagent_messages` | Paginated blocks for a sub-agent. |
 | `sessions_unarchive_session_handler` | sessions {id} unarchive |
 | **Settings Tools** | |
+| `settings_get_claude_code_settings` | returns merged, redacted Claude Code settings. |
 | `settings_get_settings` | Read current app settings. |
 | `settings_update_settings` | Update app settings (partial). |
 | `settings_update_git_sync_interval` | Update the git sync interval. |
@@ -174,11 +192,20 @@ Export the user's Claude Code session data for external analysis or backup.
 | **Teams Tools** | |
 | `teams_list_teams` | List all teams. |
 | `teams_get_team` | Get team detail. |
+| `teams_get_team_cost` | Get team cost breakdown. |
 | `teams_get_team_inbox` | Get team inbox messages. |
+| `teams_get_team_sidechains` | Get team member sidechains. |
 | **Telemetry Tools** | |
 | `telemetry_set_consent` | Set telemetry consent preference. |
 | **Turns Tools** | |
 | `turns_get_session_turns` | - Per-turn breakdown for a historical session. |
+| **Webhooks Tools** | |
+| `webhooks_list_webhooks` | list all webhooks (secrets excluded). |
+| `webhooks_create_webhook` | create a new webhook (returns signing secret once). |
+| `webhooks_get_webhook` | get a single webhook by ID. |
+| `webhooks_update_webhook` | update an existing webhook (partial update). |
+| `webhooks_delete_webhook` | remove a webhook from config and secrets. |
+| `webhooks_test_send` | send a synthetic test payload. |
 | **Workflows Tools** | |
 | `workflows_list_workflows` | workflows |
 | `workflows_create_workflow` | workflows |
