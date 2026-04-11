@@ -9,6 +9,30 @@
     "version": "0.33.2"
   },
   "paths": {
+    "/api/active-sessions": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /api/active-sessions — returns all active session files from ~/.claude/sessions/.",
+        "operationId": "get_active_sessions",
+        "responses": {
+          "200": {
+            "description": "Active Claude Code sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ActiveSession"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/branches": {
       "get": {
         "tags": [
@@ -195,6 +219,67 @@
             "content": {
               "text/event-stream": {}
             }
+          }
+        }
+      }
+    },
+    "/api/claude-code-settings": {
+      "get": {
+        "tags": [
+          "settings"
+        ],
+        "summary": "GET /api/claude-code-settings — returns merged, redacted Claude Code settings.",
+        "operationId": "get_claude_code_settings",
+        "responses": {
+          "200": {
+            "description": "Claude Code settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaudeCodeSettings"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cli-sessions": {
+      "post": {
+        "tags": [
+          "cli"
+        ],
+        "summary": "POST /api/cli-sessions -- Create a new tmux-backed CLI session.",
+        "operationId": "create_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "CLI session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (e.g. bad project_dir)"
+          },
+          "409": {
+            "description": "Maximum concurrent sessions reached"
+          },
+          "503": {
+            "description": "tmux unavailable"
           }
         }
       }
@@ -1221,6 +1306,25 @@
         }
       }
     },
+    "/api/live/recently-closed": {
+      "delete": {
+        "tags": [
+          "live"
+        ],
+        "summary": "DELETE /api/live/recently-closed -- Dismiss all recently closed (in-memory only).",
+        "operationId": "dismiss_all_closed",
+        "responses": {
+          "200": {
+            "description": "All recently closed sessions dismissed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/live/sessions": {
       "get": {
         "tags": [
@@ -1313,6 +1417,39 @@
           },
           "404": {
             "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/live/sessions/{id}/dismiss": {
+      "delete": {
+        "tags": [
+          "live"
+        ],
+        "summary": "DELETE /api/live/sessions/:id/dismiss -- Dismiss from recently closed (in-memory only).",
+        "operationId": "dismiss_session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session dismissed",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found in recently closed"
           }
         }
       }
@@ -1534,6 +1671,118 @@
             "content": {
               "application/json": {
                 "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/mcp-servers": {
+      "get": {
+        "tags": [
+          "mcp"
+        ],
+        "summary": "GET /api/mcp-servers — returns all deduplicated MCP server configurations.",
+        "operationId": "get_mcp_servers",
+        "responses": {
+          "200": {
+            "description": "Deduplicated MCP server configurations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/McpServerIndex"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "GET /api/memory — returns all memory entries grouped by scope.",
+        "operationId": "get_all_memories",
+        "responses": {
+          "200": {
+            "description": "All memory entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryIndex"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/memory/file": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "GET /api/memory/file?path=... — read a single memory file.",
+        "operationId": "get_memory_file",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "query",
+            "description": "Relative path from ~/.claude/",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Single memory entry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Memory file not found"
+          }
+        }
+      }
+    },
+    "/api/memory/{project}": {
+      "get": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "GET /api/memory/:project — returns memories for a specific project.",
+        "operationId": "get_project_memories",
+        "parameters": [
+          {
+            "name": "project",
+            "in": "path",
+            "description": "Encoded project directory name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project memory entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemoryEntry"
+                  }
+                }
               }
             }
           }
@@ -1762,6 +2011,46 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/plugins/marketplaces/action": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /api/plugins/marketplaces/action",
+        "operationId": "marketplace_action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MarketplaceActionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Marketplace action result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid action or missing required fields"
+          },
+          "409": {
+            "description": "A mutation is already in progress"
+          },
+          "500": {
+            "description": "Internal error"
           }
         }
       }
@@ -2848,6 +3137,68 @@
         }
       }
     },
+    "/api/sessions/activity/rich": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /api/sessions/activity/rich — Full server-side activity aggregation.",
+        "description": "Returns histogram, project breakdown, and summary stats in a single request.\nReplaces the client-side `useActivityData` pagination loop.",
+        "operationId": "session_activity_rich",
+        "parameters": [
+          {
+            "name": "time_after",
+            "in": "query",
+            "description": "Unix timestamp lower bound",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "time_before",
+            "in": "query",
+            "description": "Unix timestamp upper bound",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "project",
+            "in": "query",
+            "description": "Filter by project path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "branch",
+            "in": "query",
+            "description": "Filter by git branch",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rich activity data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RichActivityResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/sessions/archive": {
       "post": {
         "tags": [
@@ -3303,6 +3654,96 @@
           },
           "404": {
             "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/sessions/{id}/subagents/{agent_id}/messages": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /api/sessions/:id/subagents/:agent_id/messages — Paginated blocks for a sub-agent.",
+        "description": "Resolves the parent session's JSONL path, then derives the sub-agent's JSONL\nfile using the same path convention as the terminal WebSocket handler.\nReturns `PaginatedBlocks` — same shape as the parent messages endpoint.",
+        "operationId": "get_subagent_messages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Parent session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Sub-agent ID (alphanumeric)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "raw",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "\"block\" → return ConversationBlock[], otherwise legacy Message[]",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated sub-agent blocks",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid agent ID"
+          },
+          "404": {
+            "description": "Session or sub-agent not found"
           }
         }
       }
@@ -4007,6 +4448,40 @@
         }
       }
     },
+    "/api/teams/{name}/cost": {
+      "get": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "GET /api/teams/:name/cost — Get team cost breakdown.",
+        "description": "Resolves team member session IDs from the lead session's JSONL, then runs\n`SessionAccumulator::from_file` on each member session to compute per-member costs.",
+        "operationId": "get_team_cost",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Team name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team cost breakdown",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found"
+          }
+        }
+      }
+    },
     "/api/teams/{name}/inbox": {
       "get": {
         "tags": [
@@ -4028,6 +4503,49 @@
         "responses": {
           "200": {
             "description": "Inbox messages",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "404": {
+            "description": "Team not found"
+          }
+        }
+      }
+    },
+    "/api/teams/{name}/sidechains": {
+      "get": {
+        "tags": [
+          "teams"
+        ],
+        "summary": "GET /api/teams/:name/sidechains?session_id=xxx — Get team member sidechains.",
+        "description": "Resolves sidechain `.meta.json` / `.jsonl` pairs inside the session directory\nto enumerate each member's spawned sub-conversations.",
+        "operationId": "get_team_sidechains",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Team name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "session_id",
+            "in": "query",
+            "description": "Lead session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team member sidechains",
             "content": {
               "application/json": {
                 "schema": {}
@@ -4087,6 +4605,220 @@
                 "schema": {}
               }
             }
+          }
+        }
+      }
+    },
+    "/api/webhooks": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "GET /api/webhooks — list all webhooks (secrets excluded).",
+        "operationId": "list_webhooks",
+        "responses": {
+          "200": {
+            "description": "All configured webhooks (secrets excluded)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookListResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to load webhook config"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "POST /api/webhooks — create a new webhook (returns signing secret once).",
+        "operationId": "create_webhook",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook created (signing secret returned once)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWebhookResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (bad URL, name, or events)"
+          },
+          "500": {
+            "description": "Failed to persist webhook config or secrets"
+          }
+        }
+      }
+    },
+    "/api/webhooks/{id}": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "GET /api/webhooks/{id} — get a single webhook by ID.",
+        "operationId": "get_webhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Webhook ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookConfig"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "PUT /api/webhooks/{id} — update an existing webhook (partial update).",
+        "operationId": "update_webhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Webhook ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWebhookRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated webhook configuration",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookConfig"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found"
+          },
+          "500": {
+            "description": "Failed to persist webhook config"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "DELETE /api/webhooks/{id} — remove a webhook from config and secrets.",
+        "operationId": "delete_webhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Webhook ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Webhook deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeleteWebhookResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found"
+          },
+          "500": {
+            "description": "Failed to persist config or secrets"
+          }
+        }
+      }
+    },
+    "/api/webhooks/{id}/test": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "POST /api/webhooks/{id}/test — send a synthetic test payload.",
+        "operationId": "test_send",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Webhook ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Test delivery result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestSendResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Webhook not found"
+          },
+          "500": {
+            "description": "Signing secret not found or delivery error"
           }
         }
       }
@@ -4360,6 +5092,39 @@
           }
         }
       },
+      "ActiveSession": {
+        "type": "object",
+        "description": "A parsed session file from ~/.claude/sessions/{pid}.json.\n\nWritten by Claude Code CLI — external data we don't control.\nEvery field uses `#[serde(default)]` so missing fields never\ncause silent deserialization failures.",
+        "properties": {
+          "cwd": {
+            "type": "string",
+            "description": "Working directory where the session was started."
+          },
+          "entrypoint": {
+            "type": "string",
+            "description": "Entrypoint: \"cli\", \"claude-vscode\", \"claude-desktop\", \"claude-web\", etc."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Session kind: \"interactive\" or \"background\" (subagent)."
+          },
+          "pid": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Process ID of the Claude Code process.",
+            "minimum": 0
+          },
+          "sessionId": {
+            "type": "string",
+            "description": "Session UUID."
+          },
+          "startedAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix timestamp (milliseconds) when the session started."
+          }
+        }
+      },
       "ActivityPoint": {
         "type": "object",
         "description": "A single point in the activity histogram.",
@@ -4380,6 +5145,67 @@
             "type": "integer",
             "format": "int64",
             "description": "Total duration in seconds for this bucket (used by CalendarHeatmap)."
+          }
+        }
+      },
+      "ActivitySummaryRow": {
+        "type": "object",
+        "description": "Summary stats for the activity page.",
+        "required": [
+          "totalSeconds",
+          "sessionCount",
+          "totalToolCalls",
+          "totalAgentSpawns",
+          "totalMcpCalls",
+          "uniqueSkills",
+          "longestSessionSeconds"
+        ],
+        "properties": {
+          "longestSessionId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "longestSessionProject": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "longestSessionSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "longestSessionTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalAgentSpawns": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalMcpCalls": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalSeconds": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalToolCalls": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "uniqueSkills": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -5595,6 +6421,88 @@
           }
         }
       },
+      "ClaudeCodeSettings": {
+        "type": "object",
+        "description": "Merged, redacted Claude Code settings for display.",
+        "required": [
+          "env",
+          "permissions",
+          "userHooks",
+          "systemHookCount",
+          "systemHooks",
+          "plugins",
+          "customMarketplaces",
+          "voiceEnabled",
+          "skipDangerousPrompt"
+        ],
+        "properties": {
+          "customMarketplaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CustomMarketplace"
+            },
+            "description": "Custom marketplaces"
+          },
+          "defaultMode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default permission mode"
+          },
+          "env": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvVar"
+            },
+            "description": "Environment variables (sensitive values redacted)"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionRules",
+            "description": "Permission rules"
+          },
+          "plugins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PluginEntry"
+            },
+            "description": "Enabled/disabled plugins"
+          },
+          "skipDangerousPrompt": {
+            "type": "boolean"
+          },
+          "statusLine": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Status line command (if set)"
+          },
+          "systemHookCount": {
+            "type": "integer",
+            "description": "Count of claude-view system hooks",
+            "minimum": 0
+          },
+          "systemHooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserHook"
+            },
+            "description": "System hooks (claude-view) — only included when expanded"
+          },
+          "userHooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserHook"
+            },
+            "description": "User-defined hooks (non-claude-view)"
+          },
+          "voiceEnabled": {
+            "type": "boolean",
+            "description": "Misc settings"
+          }
+        }
+      },
       "CleanupRequest": {
         "type": "object",
         "required": [
@@ -5649,6 +6557,61 @@
             "type": "string"
           }
         }
+      },
+      "CliSession": {
+        "type": "object",
+        "description": "A tmux-managed CLI session running Claude Code.",
+        "required": [
+          "id",
+          "createdAt",
+          "status",
+          "args"
+        ],
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "CLI args passed at creation."
+          },
+          "claudeSessionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The Claude session UUID running inside this tmux pane.\nResolved lazily from ~/.claude/sessions/{pane_pid}.json."
+          },
+          "createdAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unix timestamp in milliseconds when the session was created.",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "Tmux session name, e.g. \"cv-abc123\"."
+          },
+          "projectDir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Working directory for the CLI session."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CliSessionStatus",
+            "description": "Current session status."
+          }
+        }
+      },
+      "CliSessionStatus": {
+        "type": "string",
+        "description": "Status of a CLI session.",
+        "enum": [
+          "running",
+          "exited"
+        ]
       },
       "CoachingRule": {
         "type": "object",
@@ -5890,6 +6853,85 @@
           }
         }
       },
+      "CostBreakdown": {
+        "type": "object",
+        "description": "Itemized cost breakdown in USD.",
+        "required": [
+          "totalUsd",
+          "inputCostUsd",
+          "outputCostUsd",
+          "cacheReadCostUsd",
+          "cacheCreationCostUsd",
+          "cacheSavingsUsd",
+          "hasUnpricedUsage",
+          "unpricedInputTokens",
+          "unpricedOutputTokens",
+          "unpricedCacheReadTokens",
+          "unpricedCacheCreationTokens",
+          "pricedTokenCoverage",
+          "totalCostSource"
+        ],
+        "properties": {
+          "cacheCreationCostUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "cacheReadCostUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "cacheSavingsUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "hasUnpricedUsage": {
+            "type": "boolean",
+            "description": "True when any tokens were excluded from USD due to missing model pricing."
+          },
+          "inputCostUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "outputCostUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "pricedTokenCoverage": {
+            "type": "number",
+            "format": "double",
+            "description": "Fraction of all tokens priced with real model rates [0.0, 1.0]."
+          },
+          "totalCostSource": {
+            "type": "string",
+            "description": "`computed_priced_tokens_full` | `computed_priced_tokens_partial`."
+          },
+          "totalUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "unpricedCacheCreationTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unpricedCacheReadTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "unpricedInputTokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Tokens excluded from USD totals (no pricing match).",
+            "minimum": 0
+          },
+          "unpricedOutputTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "CostEstimate": {
         "type": "object",
         "description": "Cost estimation response.",
@@ -5967,6 +7009,79 @@
           }
         }
       },
+      "CreateRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/cli-sessions.",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Additional CLI args to pass to `claude`."
+          },
+          "projectDir": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional working directory for the CLI session."
+          }
+        }
+      },
+      "CreateResponse": {
+        "type": "object",
+        "description": "Response for POST /api/cli-sessions.",
+        "required": [
+          "session"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/CliSession"
+          }
+        }
+      },
+      "CreateWebhookRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "url",
+          "format",
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            }
+          },
+          "format": {
+            "$ref": "#/components/schemas/WebhookFormat"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateWebhookResponse": {
+        "type": "object",
+        "required": [
+          "webhook",
+          "signingSecret"
+        ],
+        "properties": {
+          "signingSecret": {
+            "type": "string"
+          },
+          "webhook": {
+            "$ref": "#/components/schemas/WebhookConfig"
+          }
+        }
+      },
       "CreateWorkflowRequest": {
         "type": "object",
         "required": [
@@ -6007,6 +7122,26 @@
             "type": "integer",
             "format": "int64",
             "minimum": 0
+          }
+        }
+      },
+      "CustomMarketplace": {
+        "type": "object",
+        "description": "Custom marketplace entry.",
+        "required": [
+          "name",
+          "sourceType",
+          "sourceValue"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sourceType": {
+            "type": "string"
+          },
+          "sourceValue": {
+            "type": "string"
           }
         }
       },
@@ -6209,6 +7344,21 @@
             "minimum": 0
           },
           "date": {
+            "type": "string"
+          }
+        }
+      },
+      "DeleteWebhookResponse": {
+        "type": "object",
+        "required": [
+          "deleted",
+          "id"
+        ],
+        "properties": {
+          "deleted": {
+            "type": "boolean"
+          },
+          "id": {
             "type": "string"
           }
         }
@@ -6557,6 +7707,26 @@
           "trendPct": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "EnvVar": {
+        "type": "object",
+        "description": "Environment variable entry (value may be redacted).",
+        "required": [
+          "key",
+          "value",
+          "redacted"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "redacted": {
+            "type": "boolean"
+          },
+          "value": {
+            "type": "string"
           }
         }
       },
@@ -7152,6 +8322,52 @@
           "sessions": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "HookDef": {
+        "type": "object",
+        "description": "Hook definition from settings.json.",
+        "required": [
+          "type",
+          "command"
+        ],
+        "properties": {
+          "async": {
+            "type": "boolean"
+          },
+          "command": {
+            "type": "string"
+          },
+          "statusMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "type": {
+            "type": "string"
+          }
+        }
+      },
+      "HookMatcher": {
+        "type": "object",
+        "description": "A hook matcher group from settings.json.",
+        "required": [
+          "hooks"
+        ],
+        "properties": {
+          "hooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HookDef"
+            }
+          },
+          "matcher": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -8326,6 +9542,40 @@
           }
         }
       },
+      "MarketplaceActionRequest": {
+        "type": "object",
+        "description": "Request body for POST /api/plugins/marketplaces/action.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "\"add\" | \"remove\" | \"update\""
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For remove/update: marketplace name"
+          },
+          "scope": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For add: \"user\" | \"project\""
+          },
+          "source": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "For add: GitHub repo URL or owner/repo"
+          }
+        }
+      },
       "MarketplaceInfo": {
         "type": "object",
         "description": "A configured marketplace.",
@@ -8357,6 +9607,163 @@
             "type": "string"
           }
         }
+      },
+      "McpServer": {
+        "type": "object",
+        "description": "A deduplicated MCP server for API response.",
+        "required": [
+          "name",
+          "hasOauth",
+          "needsReauth"
+        ],
+        "properties": {
+          "hasOauth": {
+            "type": "boolean",
+            "description": "Whether this server uses OAuth authentication."
+          },
+          "name": {
+            "type": "string",
+            "description": "Server name (e.g. \"slack\", \"sentry\", \"notion\")."
+          },
+          "needsReauth": {
+            "type": "boolean",
+            "description": "Whether this server needs re-authentication (from auth cache)."
+          },
+          "serverType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Transport type: \"http\", \"stdio\", or null if unknown."
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Server endpoint URL, if configured."
+          }
+        }
+      },
+      "McpServerIndex": {
+        "type": "object",
+        "description": "Summary of all discovered MCP servers.",
+        "required": [
+          "servers",
+          "rawFileCount"
+        ],
+        "properties": {
+          "rawFileCount": {
+            "type": "integer",
+            "description": "Total .mcp.json files found before dedup.",
+            "minimum": 0
+          },
+          "servers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/McpServer"
+            },
+            "description": "Deduplicated list of MCP servers."
+          }
+        }
+      },
+      "MemoryEntry": {
+        "type": "object",
+        "description": "A single memory entry parsed from a .md file.",
+        "required": [
+          "name",
+          "description",
+          "memoryType",
+          "body",
+          "filename",
+          "relativePath",
+          "scope",
+          "projectDir",
+          "sizeBytes",
+          "modifiedAt"
+        ],
+        "properties": {
+          "body": {
+            "type": "string",
+            "description": "Markdown body (after frontmatter)"
+          },
+          "description": {
+            "type": "string",
+            "description": "Frontmatter `description` field"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Filename (e.g. \"feedback_always_fsm_tree_diagram.md\")"
+          },
+          "memoryType": {
+            "$ref": "#/components/schemas/MemoryType",
+            "description": "Frontmatter `type` field"
+          },
+          "modifiedAt": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Last modified timestamp (unix seconds)"
+          },
+          "name": {
+            "type": "string",
+            "description": "Frontmatter `name` field"
+          },
+          "projectDir": {
+            "type": "string",
+            "description": "Encoded project dir name (empty for global)"
+          },
+          "relativePath": {
+            "type": "string",
+            "description": "Relative path from ~/.claude/ (for API reference)"
+          },
+          "scope": {
+            "type": "string",
+            "description": "Scope: \"global\" or project display name"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "File size in bytes",
+            "minimum": 0
+          }
+        }
+      },
+      "MemoryIndex": {
+        "type": "object",
+        "description": "Summary of all memories grouped by scope.",
+        "required": [
+          "totalCount",
+          "global",
+          "projects"
+        ],
+        "properties": {
+          "global": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectMemoryGroup"
+            }
+          },
+          "totalCount": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "MemoryType": {
+        "type": "string",
+        "description": "Memory type enum matching Claude Code's 4 memory types.",
+        "enum": [
+          "user",
+          "feedback",
+          "project",
+          "reference"
+        ]
       },
       "MetricDataPoint": {
         "type": "object",
@@ -8809,6 +10216,30 @@
           }
         }
       },
+      "PermissionRules": {
+        "type": "object",
+        "description": "Permission rules from settings.json.",
+        "properties": {
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "ask": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "deny": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
       "PlanDocument": {
         "type": "object",
         "description": "A plan document from ~/.claude/plans/{slug}[-variant].md.",
@@ -8907,6 +10338,29 @@
           },
           "success": {
             "type": "boolean"
+          }
+        }
+      },
+      "PluginEntry": {
+        "type": "object",
+        "description": "Plugin entry for display.",
+        "required": [
+          "id",
+          "marketplace",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether enabled"
+          },
+          "id": {
+            "type": "string",
+            "description": "Plugin ID (e.g. \"superpowers\")"
+          },
+          "marketplace": {
+            "type": "string",
+            "description": "Marketplace (e.g. \"claude-plugins-official\")"
           }
         }
       },
@@ -9294,6 +10748,69 @@
           },
           "lastMonth": {
             "$ref": "#/components/schemas/PeriodMetrics"
+          }
+        }
+      },
+      "ProjectActivityRow": {
+        "type": "object",
+        "description": "Project-level aggregation for the activity page.",
+        "required": [
+          "projectPath",
+          "displayName",
+          "sessionCount",
+          "totalSeconds",
+          "totalCostUsd"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string"
+          },
+          "projectPath": {
+            "type": "string"
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalCostUsd": {
+            "type": "number",
+            "format": "double"
+          },
+          "totalSeconds": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ProjectMemoryGroup": {
+        "type": "object",
+        "description": "A group of memories for one project.",
+        "required": [
+          "projectDir",
+          "displayName",
+          "count",
+          "memories"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "description": "Number of memories",
+            "minimum": 0
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Human-readable project display name"
+          },
+          "memories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryEntry"
+            },
+            "description": "The memory entries"
+          },
+          "projectDir": {
+            "type": "string",
+            "description": "Encoded project directory name"
           }
         }
       },
@@ -9883,6 +11400,41 @@
               "$ref": "#/components/schemas/ProcessGroup"
             },
             "description": "Top processes by CPU+memory, grouped by normalized name."
+          }
+        }
+      },
+      "RichActivityResponse": {
+        "type": "object",
+        "description": "Full server-side activity response (replaces client-side aggregation).",
+        "required": [
+          "histogram",
+          "bucket",
+          "projects",
+          "summary",
+          "total"
+        ],
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "histogram": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityPoint"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectActivityRow"
+            }
+          },
+          "summary": {
+            "$ref": "#/components/schemas/ActivitySummaryRow"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -11420,6 +12972,36 @@
           }
         }
       },
+      "TeamCostBreakdown": {
+        "type": "object",
+        "description": "Aggregated cost breakdown for an entire team.",
+        "required": [
+          "teamName",
+          "totalCostUsd",
+          "leadCostUsd",
+          "members"
+        ],
+        "properties": {
+          "leadCostUsd": {
+            "type": "number",
+            "format": "double",
+            "description": "Lead session cost (the coordinator)."
+          },
+          "members": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamMemberCost"
+            }
+          },
+          "teamName": {
+            "type": "string"
+          },
+          "totalCostUsd": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
       "TeamDetail": {
         "type": "object",
         "required": [
@@ -11494,6 +13076,149 @@
           }
         }
       },
+      "TeamMemberCost": {
+        "type": "object",
+        "description": "Per-member cost data for the team cost breakdown.",
+        "required": [
+          "name",
+          "color",
+          "model",
+          "agentType",
+          "inProcess"
+        ],
+        "properties": {
+          "agentType": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "cost": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CostBreakdown",
+                "description": "Full cost breakdown (None if session not found)."
+              }
+            ]
+          },
+          "costUsd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Total cost in USD (None if session not found or not yet resolved)."
+          },
+          "inProcess": {
+            "type": "boolean",
+            "description": "True when member runs in-process -- cost is included in the coordinator total."
+          },
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sessionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Resolved session ID (None for in-process members whose cost is in the lead session)."
+          },
+          "tokens": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage breakdown (None if session not found)."
+              }
+            ]
+          }
+        }
+      },
+      "TeamMemberSidechain": {
+        "type": "object",
+        "description": "A single sidechain instance for a team member.",
+        "required": [
+          "hexId",
+          "memberName",
+          "lineCount",
+          "fileSizeBytes",
+          "model",
+          "durationSeconds"
+        ],
+        "properties": {
+          "costUsd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Cost in USD (computed from JSONL token usage + pricing)."
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Duration in seconds (derived from started_at -> ended_at).",
+            "minimum": 0
+          },
+          "endedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp of the last JSONL entry."
+          },
+          "fileSizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "File size in bytes.",
+            "minimum": 0
+          },
+          "hexId": {
+            "type": "string",
+            "description": "Hex agent ID -- used with `/api/sessions/{sid}/subagents/{hex}/messages`."
+          },
+          "lineCount": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Number of JSONL lines (proxy for amount of work done).",
+            "minimum": 0
+          },
+          "memberName": {
+            "type": "string",
+            "description": "Agent name from meta.json (e.g., \"js-advocate\")."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model used by this sidechain (e.g., \"claude-opus-4-6\")."
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 8601 timestamp of the first JSONL entry."
+          },
+          "tokens": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Token usage breakdown (input, output, cache read, cache creation)."
+              }
+            ]
+          }
+        }
+      },
       "TeamSummary": {
         "type": "object",
         "required": [
@@ -11552,6 +13277,37 @@
           "enabled",
           "disabled"
         ]
+      },
+      "TestSendResponse": {
+        "type": "object",
+        "required": [
+          "success"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "responseBody": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "statusCode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
       },
       "TodoItem": {
         "type": "object",
@@ -11628,6 +13384,58 @@
             "minimum": 0
           },
           "turnsCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "TokenUsage": {
+        "type": "object",
+        "description": "Accumulated token counts for a live session.",
+        "required": [
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheCreationTokens",
+          "cacheCreation5mTokens",
+          "cacheCreation1hrTokens",
+          "totalTokens"
+        ],
+        "properties": {
+          "cacheCreation1hrTokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cache creation tokens with 1-hour TTL (from JSONL ephemeral_1h_input_tokens).",
+            "minimum": 0
+          },
+          "cacheCreation5mTokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Cache creation tokens with 5-minute TTL (from JSONL ephemeral_5m_input_tokens).",
+            "minimum": 0
+          },
+          "cacheCreationTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cacheReadTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "inputTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "totalTokens": {
             "type": "integer",
             "format": "int64",
             "minimum": 0
@@ -11887,6 +13695,48 @@
           }
         }
       },
+      "UpdateWebhookRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "events": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            }
+          },
+          "format": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookFormat"
+              }
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UsageTier": {
         "type": "object",
         "required": [
@@ -11917,6 +13767,36 @@
               "null"
             ],
             "description": "Dollar description for budget tiers"
+          }
+        }
+      },
+      "UserHook": {
+        "type": "object",
+        "description": "A user hook (non-claude-view) for display.",
+        "required": [
+          "event",
+          "command",
+          "isAsync"
+        ],
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "The command"
+          },
+          "event": {
+            "type": "string",
+            "description": "Event name (e.g. \"PreToolUse\", \"Stop\")"
+          },
+          "isAsync": {
+            "type": "boolean",
+            "description": "Whether async"
+          },
+          "matcher": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Matcher pattern (e.g. \".*\", \"Bash\")"
           }
         }
       },
@@ -11954,6 +13834,75 @@
           "totalInvocations": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "WebhookConfig": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "url",
+          "format",
+          "events",
+          "enabled",
+          "createdAt"
+        ],
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookEventType"
+            }
+          },
+          "format": {
+            "$ref": "#/components/schemas/WebhookFormat"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "WebhookEventType": {
+        "type": "string",
+        "enum": [
+          "session.started",
+          "session.ended",
+          "session.error",
+          "session.updated"
+        ]
+      },
+      "WebhookFormat": {
+        "type": "string",
+        "enum": [
+          "raw",
+          "lark",
+          "slack"
+        ]
+      },
+      "WebhookListResponse": {
+        "type": "object",
+        "required": [
+          "webhooks"
+        ],
+        "properties": {
+          "webhooks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookConfig"
+            }
           }
         }
       },
@@ -12366,8 +14315,24 @@
       "description": "Telemetry consent"
     },
     {
+      "name": "cli",
+      "description": "CLI session management"
+    },
+    {
       "name": "processes",
       "description": "Process management"
+    },
+    {
+      "name": "memory",
+      "description": "Memory and knowledge base"
+    },
+    {
+      "name": "mcp",
+      "description": "MCP server configuration"
+    },
+    {
+      "name": "webhooks",
+      "description": "Webhook configuration and testing"
     }
   ]
 }
