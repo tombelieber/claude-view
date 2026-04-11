@@ -13,7 +13,7 @@
 #
 # Usage:
 #   cq build                 # queued, incremental ON (interactive dev loop)
-#   cq test -p my-crate      # queued, incremental OFF (one-shot)
+#   cq test -p my-crate      # queued, incremental OFF; uses nextest when installed
 #   cq check                 # queued, incremental OFF
 #   cq sweep                 # prune stale incremental caches (>6h old)
 #   cq metadata              # pass-through, no queue
@@ -100,6 +100,36 @@ case "${1:-}" in
     ;;
   # build|run keep incremental ON (interactive dev benefits from cache)
 esac
+
+# --- nextest: prefer cargo-nextest for `test` when available ---
+# nextest provides: better output, per-test timeout, retries, JUnit XML.
+# Falls back to `cargo test` in three cases:
+#   1. nextest not installed
+#   2. Args contain `--` separator (post-`--` arg semantics differ:
+#      cargo test passes them to the test binary, nextest does not.
+#      e.g. `-- --nocapture` and `-- --test-threads=1` break under nextest)
+#   3. Args contain `--doc` (nextest doesn't support doc tests)
+#
+# IMPORTANT: This block MUST come AFTER the CARGO_INCREMENTAL case above.
+# The incremental case matches $1=="test" to set CARGO_INCREMENTAL=0.
+# If we rewrote $1 to "nextest" before that case, incremental would stay ON.
+if [[ "${1:-}" == "test" ]]; then
+  if command -v cargo-nextest &>/dev/null; then
+    # Check for incompatible arg patterns before rewriting
+    _cq_use_nextest=true
+    for _cq_arg in "$@"; do
+      case "$_cq_arg" in
+        --)    _cq_use_nextest=false; break ;;
+        --doc) _cq_use_nextest=false; break ;;
+      esac
+    done
+    if $_cq_use_nextest; then
+      # Rewrite: `cq test <args>` → `cargo nextest run <args>`
+      shift
+      set -- nextest run "$@"
+    fi
+  fi
+fi
 
 # --- queued execution with process group isolation ---
 # Uses perl for two things macOS bash can't do natively:
