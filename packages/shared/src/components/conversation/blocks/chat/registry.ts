@@ -4,7 +4,7 @@ import { ChatAssistantBlock } from './AssistantBlock'
 import { ChatInteractionBlock } from './InteractionBlock'
 import { ChatNoticeBlock } from './NoticeBlock'
 import { ChatProgressBlock } from './ProgressBlock'
-import { CHAT_SYSTEM_VARIANTS, ChatSystemBlock, isChatVisibleQueueOp } from './SystemBlock'
+import { ChatSystemBlock, isChatVisibleQueueOp } from './SystemBlock'
 import { ChatTurnBoundary } from './TurnBoundary'
 import { ChatUserBlock } from './UserBlock'
 
@@ -17,13 +17,11 @@ export const chatRegistry: BlockRenderers = {
   system: ChatSystemBlock as BlockRenderer,
   progress: ChatProgressBlock as BlockRenderer,
   canRender: (block) => {
-    if (block.type === 'system' && 'variant' in block) {
-      // queue_operation needs fine-grained check: only user-typed enqueue messages pass
-      if (block.variant === 'queue_operation') {
-        return isChatVisibleQueueOp(block as SystemBlock)
-      }
-      return CHAT_SYSTEM_VARIANTS.has(block.variant)
+    if (block.type === 'system' && block.variant === 'queue_operation') {
+      return isChatVisibleQueueOp(block as SystemBlock)
     }
+    // team_transcript has no renderer yet (A2 will add it)
+    if (block.type === 'team_transcript') return false
     return true
   },
 }

@@ -1,6 +1,5 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useState } from 'react'
-import type { JsonTreeProps } from '../../../../contexts/DeveloperToolsContext'
 import { SimpleJsonView } from '../developer/SimpleJsonView'
 
 interface CollapsibleJsonProps {
