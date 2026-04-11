@@ -2,6 +2,7 @@ import type { DockviewApi } from 'dockview-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import { NewCliSessionButton } from '../components/cli-terminal'
+import { useCliSessions } from '../hooks/use-cli-sessions'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
 import { CostTokenPopover } from '../components/live/CostTokenPopover'
 import { HarnessKanbanView } from '../components/live/HarnessKanbanView'
@@ -102,10 +103,20 @@ export function LiveMonitorPage() {
   // Filtered sessions
   const filteredSessions = useMemo(() => filterLiveSessions(sessions, filters), [sessions, filters])
 
+  // Exclude live sessions that belong to CLI (tmux) sessions — they render as xterm panels.
+  const { data: cliSessions } = useCliSessions()
+  const visibleSessions = useMemo(() => {
+    const cliOwnedIds = new Set(
+      (cliSessions ?? []).map((c) => c.claudeSessionId).filter(Boolean) as string[],
+    )
+    if (cliOwnedIds.size === 0) return filteredSessions
+    return filteredSessions.filter((s) => !cliOwnedIds.has(s.id))
+  }, [filteredSessions, cliSessions])
+
   // Kanban grouping
   const urlGroupBy = searchParams.get('groupBy') as KanbanGroupBy | null
   const { groupBy, setGroupBy, sort, setSort, projectGroups, isCollapsed, toggleCollapse } =
-    useKanbanGrouping(filteredSessions, urlGroupBy)
+    useKanbanGrouping(visibleSessions, urlGroupBy)
 
   const handleGroupByChange = useCallback(
     (value: KanbanGroupBy) => {
@@ -283,6 +294,27 @@ export function LiveMonitorPage() {
     [viewMode, handleViewModeChange],
   )
 
+  // Sync existing CLI sessions into xterm panels when monitor view is active.
+  // handleCliSessionCreated covers newly-created sessions; this covers pre-existing
+  // ones (e.g., page refresh while tmux sessions are running).
+  useEffect(() => {
+    const api = dockviewApiRef.current
+    if (!api || viewMode !== 'monitor' || !cliSessions?.length) return
+    for (const cli of cliSessions) {
+      if (cli.status !== 'running') continue
+      const panelId = `cli-${cli.id}`
+      if (api.panels.some((p) => p.id === panelId)) continue
+      api.addPanel({
+        id: panelId,
+        component: 'cliTerminal',
+        tabComponent: 'cliTerminal',
+        title: `CLI: ${cli.id.slice(0, 11)}`,
+        params: { tmuxSessionId: cli.id },
+        inactive: true,
+      })
+    }
+  }, [cliSessions, viewMode])
+
   // Session selection
   const handleSelectSession = useCallback((id: string) => {
     setSelectedId((prev) => (prev === id ? null : id))
@@ -310,7 +342,7 @@ export function LiveMonitorPage() {
   useKeyboardShortcuts({
     viewMode,
     onViewModeChange: handleViewModeChange,
-    sessions: filteredSessions,
+    sessions: visibleSessions,
     selectedId,
     onSelect: setSelectedId,
     onExpand: handleExpandSession,
@@ -456,7 +488,7 @@ export function LiveMonitorPage() {
             searchInputRef={searchInputRef}
             indexingPhase={indexingProgress?.phase}
             indexingPercent={indexingPercent}
-            filteredCount={filteredSessions.length}
+            filteredCount={visibleSessions.length}
             totalCount={sessions.length}
             groupByValue={viewMode === 'kanban' || viewMode === 'harness' ? groupBy : undefined}
             onGroupByChange={
@@ -484,7 +516,7 @@ export function LiveMonitorPage() {
           {/* View content */}
           {viewMode === 'grid' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredSessions.map((session) => (
+              {visibleSessions.map((session) => (
                 <div
                   key={session.id}
                   data-session-id={session.id}
@@ -504,7 +536,7 @@ export function LiveMonitorPage() {
 
           {viewMode === 'list' && (
             <ListView
-              sessions={filteredSessions}
+              sessions={visibleSessions}
               selectedId={selectedId}
               onSelect={handleSelectSession}
             />
@@ -512,7 +544,7 @@ export function LiveMonitorPage() {
 
           {viewMode === 'kanban' && (
             <KanbanView
-              sessions={filteredSessions}
+              sessions={visibleSessions}
               selectedId={selectedId}
               onSelect={handleSelectSession}
               onCardClick={handleSelectSession}
@@ -531,7 +563,7 @@ export function LiveMonitorPage() {
 
           {viewMode === 'monitor' && (
             <MonitorView
-              sessions={filteredSessions}
+              sessions={visibleSessions}
               onSelectSession={handleMonitorExpand}
               onDockApiReady={(api) => {
                 dockviewApiRef.current = api
@@ -541,7 +573,7 @@ export function LiveMonitorPage() {
 
           {viewMode === 'harness' && (
             <HarnessKanbanView
-              sessions={filteredSessions}
+              sessions={visibleSessions}
               selectedId={selectedId}
               onSelect={handleSelectSession}
               onCardClick={handleSelectSession}
@@ -555,7 +587,7 @@ export function LiveMonitorPage() {
           )}
 
           {/* Empty state — skip for kanban and harness (columns have their own emptyMessage) */}
-          {filteredSessions.length === 0 &&
+          {visibleSessions.length === 0 &&
             isConnected &&
             viewMode !== 'kanban' &&
             viewMode !== 'harness' && (

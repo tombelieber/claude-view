@@ -66,6 +66,7 @@ async fn test_store_insert_and_get() {
             status: CliSessionStatus::Running,
             project_dir: Some("/tmp/proj".to_string()),
             args: vec!["--flag".to_string()],
+            claude_session_id: None,
         })
         .await;
 
@@ -93,6 +94,7 @@ async fn test_store_remove() {
             status: CliSessionStatus::Running,
             project_dir: None,
             args: vec![],
+            claude_session_id: None,
         })
         .await;
 
@@ -142,6 +144,7 @@ async fn test_store_update_status() {
             status: CliSessionStatus::Running,
             project_dir: None,
             args: vec![],
+            claude_session_id: None,
         })
         .await;
 
@@ -256,6 +259,7 @@ async fn test_list_sessions_marks_dead_as_exited() {
             status: CliSessionStatus::Running,
             project_dir: None,
             args: vec![],
+            claude_session_id: None,
         })
         .await;
 
@@ -296,6 +300,7 @@ async fn test_kill_session_success() {
             status: CliSessionStatus::Running,
             project_dir: None,
             args: vec![],
+            claude_session_id: None,
         })
         .await;
 

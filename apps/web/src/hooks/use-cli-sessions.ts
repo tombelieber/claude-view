@@ -7,6 +7,8 @@ export interface CliSession {
   status: 'running' | 'exited'
   projectDir: string | null
   args: string[]
+  /** Claude session UUID running inside this tmux pane. Resolved lazily by backend. */
+  claudeSessionId?: string | null
 }
 
 /**
@@ -70,7 +72,7 @@ function useCliSessionSSE() {
 export function useCliSessions() {
   useCliSessionSSE()
 
-  return useQuery({
+  const query = useQuery({
     queryKey: ['cli-sessions'],
     queryFn: async (): Promise<CliSession[]> => {
       const resp = await fetch('/api/cli-sessions')
@@ -78,9 +80,17 @@ export function useCliSessions() {
       const data = await resp.json()
       return data.sessions
     },
-    // No refetchInterval — SSE events + background health check keep data fresh.
+    // Refetch when running sessions lack a claudeSessionId — the PID file
+    // appears ~1-2s after the Claude process starts inside tmux.
+    refetchInterval: (query) => {
+      const sessions = query.state.data
+      if (!sessions) return false
+      const hasUnresolved = sessions.some((s) => s.status === 'running' && !s.claudeSessionId)
+      return hasUnresolved ? 3_000 : false
+    },
     staleTime: 60_000,
   })
+  return query
 }
 
 export function useCreateCliSession() {

@@ -15,6 +15,15 @@ use crate::{
 
 use super::types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};
 
+/// Read the Claude session ID from ~/.claude/sessions/{pid}.json.
+fn resolve_claude_session_id(pid: u32) -> Option<String> {
+    let home = dirs::home_dir()?;
+    let path = home.join(format!(".claude/sessions/{pid}.json"));
+    let data = std::fs::read_to_string(path).ok()?;
+    let parsed: serde_json::Value = serde_json::from_str(&data).ok()?;
+    parsed.get("sessionId")?.as_str().map(String::from)
+}
+
 fn to_cli_info(s: &CliSession) -> CliSessionInfo {
     CliSessionInfo {
         id: s.id.clone(),
@@ -96,6 +105,7 @@ pub async fn create_session(
         status: CliSessionStatus::Running,
         project_dir: req.project_dir,
         args: req.args,
+        claude_session_id: None, // Resolved lazily on list/health-check
     };
 
     // Store the session.
@@ -115,7 +125,8 @@ pub async fn create_session(
 pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListResponse>> {
     let sessions = state.cli_sessions.list().await;
 
-    // Run a quick health check: mark sessions that no longer exist in tmux.
+    // Run a quick health check: mark sessions that no longer exist in tmux,
+    // and resolve Claude session IDs from tmux pane PIDs.
     let mut result = Vec::with_capacity(sessions.len());
     for mut session in sessions {
         if session.status != CliSessionStatus::Exited && !state.tmux.has_session(&session.id) {
@@ -128,6 +139,14 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
             let _ = state.live_tx.send(SessionEvent::CliSessionUpdated {
                 cli_session: to_cli_info(&session),
             });
+        }
+        // Lazily resolve Claude session ID if not yet known.
+        if session.claude_session_id.is_none() && session.status == CliSessionStatus::Running {
+            if let Some(pid) = state.tmux.pane_pid(&session.id) {
+                if let Some(sid) = resolve_claude_session_id(pid) {
+                    session.claude_session_id = Some(sid);
+                }
+            }
         }
         result.push(session);
     }

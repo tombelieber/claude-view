@@ -17,6 +17,10 @@ pub struct CliSession {
     pub project_dir: Option<String>,
     /// CLI args passed at creation.
     pub args: Vec<String>,
+    /// The Claude session UUID running inside this tmux pane.
+    /// Resolved lazily from ~/.claude/sessions/{pane_pid}.json.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claude_session_id: Option<String>,
 }
 
 /// Status of a CLI session.

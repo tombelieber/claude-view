@@ -93,6 +93,7 @@ mod tests {
                 status: CliSessionStatus::Running,
                 project_dir: None,
                 args: vec![],
+                claude_session_id: None,
             })
             .await;
 
@@ -105,6 +106,7 @@ mod tests {
                 status: CliSessionStatus::Running,
                 project_dir: None,
                 args: vec![],
+                claude_session_id: None,
             })
             .await;
 
@@ -132,6 +134,7 @@ mod tests {
                 status: CliSessionStatus::Exited,
                 project_dir: None,
                 args: vec![],
+                claude_session_id: None,
             })
             .await;
 

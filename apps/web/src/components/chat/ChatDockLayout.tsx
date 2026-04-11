@@ -6,14 +6,16 @@ import {
   type SerializedDockview,
 } from 'dockview-react'
 import { useCallback, useRef } from 'react'
+import { CliTerminalPanel } from '../cli-terminal/CliTerminalPanel'
+import { CliTerminalTabRenderer } from '../cli-terminal/CliTerminalTabRenderer'
 import { ChatPanel } from './ChatPanel'
 import { ChatTabRenderer } from './ChatTabRenderer'
 import { TabBarActions } from './TabBarActions'
 
 // Component registries — defined outside the component to avoid
 // re-creating on every render (dockview uses referential equality).
-const chatComponents = { chat: ChatPanel }
-const chatTabComponents = { chat: ChatTabRenderer }
+const chatComponents = { chat: ChatPanel, cliTerminal: CliTerminalPanel }
+const chatTabComponents = { chat: ChatTabRenderer, cliTerminal: CliTerminalTabRenderer }
 
 // Custom dockview theme — must be passed via `theme` prop to prevent dockview
 // from defaulting to themeAbyss (which adds .dockview-theme-abyss and overrides

@@ -25,6 +25,10 @@ pub trait TmuxCommand: Send + Sync {
     /// Check if a tmux session exists.
     fn has_session(&self, name: &str) -> bool;
 
+    /// Get the PID of the process running in the tmux pane.
+    /// Returns None if the session doesn't exist or pane PID can't be read.
+    fn pane_pid(&self, name: &str) -> Option<u32>;
+
     /// Check if the tmux binary is available.
     fn is_available(&self) -> bool;
 }
@@ -100,6 +104,18 @@ impl TmuxCommand for RealTmux {
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
+    }
+
+    fn pane_pid(&self, name: &str) -> Option<u32> {
+        let output = Command::new("tmux")
+            .args(["list-panes", "-t", name, "-F", "#{pane_pid}"])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout.trim().parse::<u32>().ok()
     }
 
     fn is_available(&self) -> bool {
@@ -194,6 +210,10 @@ pub mod mock {
 
         fn has_session(&self, name: &str) -> bool {
             self.sessions.lock().unwrap().contains(name)
+        }
+
+        fn pane_pid(&self, _name: &str) -> Option<u32> {
+            None
         }
 
         fn is_available(&self) -> bool {

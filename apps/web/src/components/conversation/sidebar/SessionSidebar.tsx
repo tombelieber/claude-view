@@ -1,6 +1,6 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import { useInfiniteQuery } from '@tanstack/react-query'
-import { PenSquare, Search } from 'lucide-react'
+import { Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -9,6 +9,7 @@ import { TOAST_DURATION } from '../../../lib/notify'
 import { toSidebarItems } from '../../../lib/sidebar-mapper'
 import { useAppStore } from '../../../store/app-store'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
+import { NewSessionDropdown } from './NewSessionDropdown'
 import { SessionListItem } from './SessionListItem'
 import { groupByUrgency } from './session-list-helpers'
 
@@ -18,6 +19,8 @@ interface SessionSidebarProps {
   liveSessions: LiveSession[]
   /** Called when user clicks "New Chat" — opens a blank tab directly in the dock. */
   onNewChat?: () => void
+  /** Called when user creates a new CLI (tmux) session from the dropdown. */
+  onNewCliSession?: () => void
 }
 
 function groupByTime(sessions: SessionInfo[], now: number) {
@@ -46,7 +49,7 @@ function groupByTime(sessions: SessionInfo[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps) {
+export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
   const { resumeSession, deleteSession, forkSession } = useSessionMutations()
@@ -203,14 +206,10 @@ export function SessionSidebar({ liveSessions, onNewChat }: SessionSidebarProps)
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200 dark:border-gray-800">
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Chats</span>
-        <button
-          type="button"
-          onClick={handleNewChat}
-          className="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-800 text-gray-500 dark:text-gray-400 transition-colors"
-          title="New chat"
-        >
-          <PenSquare size={16} />
-        </button>
+        <NewSessionDropdown
+          onNewChat={handleNewChat}
+          onNewCliSession={onNewCliSession ?? handleNewChat}
+        />
       </div>
 
       {/* Search */}
