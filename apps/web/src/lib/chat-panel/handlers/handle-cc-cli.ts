@@ -38,9 +38,9 @@ export function handleCcCli(store: ChatPanelStore, event: RawEvent): TransitionR
       ]
     }
 
-    case 'LIVE_STATUS_CHANGED': {
+    case 'OWNERSHIP_CHANGED': {
       const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
-      if (event.status === 'inactive') {
+      if (event.tier === null) {
         const panel: PanelState = {
           phase: 'nobody',
           sessionId: p.sessionId,

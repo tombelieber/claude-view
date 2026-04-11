@@ -21,7 +21,7 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
 
   // SSE race rejection: ignore live status PHASE changes during acquire,
   // but still update projectPath if provided (it's safe — no phase change).
-  if (event.type === 'LIVE_STATUS_CHANGED') {
+  if (event.type === 'OWNERSHIP_CHANGED') {
     if (event.projectPath && event.projectPath !== store.projectPath) {
       return [{ ...store, projectPath: event.projectPath }, []]
     }

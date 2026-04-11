@@ -1,3 +1,4 @@
+import { isWatchable } from '../../derive-panel-mode'
 import { outboxTransition } from '../modules/outbox'
 import type { ChatPanelStore, PanelState, RawEvent, TransitionResult } from '../types'
 
@@ -50,9 +51,9 @@ export function handleClosed(store: ChatPanelStore, event: RawEvent): Transition
       ]
     }
 
-    case 'LIVE_STATUS_CHANGED': {
+    case 'OWNERSHIP_CHANGED': {
       const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
-      if (event.status === 'cc_owned') {
+      if (isWatchable(event.tier)) {
         const panel: PanelState = {
           phase: 'cc_cli',
           sessionId: p.sessionId,
