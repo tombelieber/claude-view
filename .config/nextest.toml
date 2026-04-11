@@ -1,0 +1,28 @@
+# .config/nextest.toml — cargo-nextest configuration
+# Docs: https://nexte.st/docs/configuration/
+#
+# NOTE: nextest does NOT run doc tests. Doc tests still go through
+# `cargo test --doc`. This is a known nextest limitation.
+
+[store]
+dir = "target/nextest"
+
+[profile.default]
+# Slow-test warning at 30s, hard kill after 2 periods (60s total).
+# 60s is generous for unit tests; catches infinite loops and hangs.
+slow-timeout = { period = "30s", terminate-after = 2 }
+# No retries in default profile — surface flaky tests immediately.
+# Use `cargo nextest run --retries 1` ad-hoc if needed.
+retries = 0
+# Fail fast: stop on first failure for fast developer feedback
+fail-fast = true
+# Status level: show pass/fail/skip
+status-level = "pass"
+
+[profile.ci]
+# CI profile: strict, with JUnit XML output
+retries = 0
+fail-fast = true
+
+[profile.ci.junit]
+path = "junit.xml"
