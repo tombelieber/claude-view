@@ -1,4 +1,5 @@
 import type { ConversationBlock } from '@claude-view/shared/types/blocks'
+import type { OwnershipTier } from '../derive-panel-mode'
 
 // ─── Leaf FSMs (sdk_owned children only) ─────────────────────
 export type TurnState =
@@ -16,7 +17,7 @@ export type ConnHealth = { health: 'ok' } | { health: 'reconnecting'; attempt: n
 
 // ─── Sub-state types ─────────────────────────────────────────
 export type NobodySub =
-  | { sub: 'loading'; pendingLive?: 'cc_owned' }
+  | { sub: 'loading'; pendingLive?: 'tmux' | 'observed' }
   | { sub: 'ready'; blocks: ConversationBlock[] }
 
 export type CcCliSub = { sub: 'watching' }
@@ -193,8 +194,8 @@ export type RawEvent =
   | { type: 'AGENTS_UPDATED'; agents: string[] }
   // SSE (pre-computed prop)
   | {
-      type: 'LIVE_STATUS_CHANGED'
-      status: 'cc_owned' | 'cc_agent_sdk_owned' | 'inactive'
+      type: 'OWNERSHIP_CHANGED'
+      tier: OwnershipTier
       projectPath?: string
     }
   // Terminal WS block stream (watching mode)

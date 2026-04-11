@@ -1,85 +1,51 @@
-import type { LiveSession } from '@claude-view/shared/types/generated'
 import { describe, expect, it } from 'vitest'
 import {
-  deriveLiveStatus,
   derivePanelMode,
+  isWatchable,
   modeToConnectionHealth,
   modeToInputBar,
 } from './derive-panel-mode'
-import type { LiveStatus, SessionState } from './derive-panel-mode'
+import type { OwnershipTier, SessionState } from './derive-panel-mode'
 
-/** Test helper: creates a minimal LiveSession stub with only the fields deriveLiveStatus reads */
-function stubLive(partial: {
-  status: LiveSession['status']
-  control: { controlId: string } | null
-}): LiveSession {
-  return partial as unknown as LiveSession
-}
-
-describe('deriveLiveStatus', () => {
-  it('returns inactive for null', () => {
-    expect(deriveLiveStatus(null)).toBe('inactive')
-  })
-
-  it('returns inactive for undefined', () => {
-    expect(deriveLiveStatus(undefined)).toBe('inactive')
-  })
-
-  it('returns inactive for done session without control', () => {
-    expect(deriveLiveStatus(stubLive({ status: 'done', control: null }))).toBe('inactive')
-  })
-
-  it('returns cc_agent_sdk_owned for done + stale control (control!=null passes isActive)', () => {
-    expect(deriveLiveStatus(stubLive({ status: 'done', control: { controlId: 'c1' } }))).toBe(
-      'cc_agent_sdk_owned',
-    )
-  })
-
-  it('returns cc_owned for working session without control', () => {
-    expect(deriveLiveStatus(stubLive({ status: 'working', control: null }))).toBe('cc_owned')
-  })
-
-  it('returns cc_owned for paused session without control', () => {
-    expect(deriveLiveStatus(stubLive({ status: 'paused', control: null }))).toBe('cc_owned')
-  })
-
-  it('returns cc_agent_sdk_owned for working session with control', () => {
-    expect(deriveLiveStatus(stubLive({ status: 'working', control: { controlId: 'c1' } }))).toBe(
-      'cc_agent_sdk_owned',
-    )
-  })
-
-  it('returns cc_agent_sdk_owned for paused session with control', () => {
-    expect(deriveLiveStatus(stubLive({ status: 'paused', control: { controlId: 'c1' } }))).toBe(
-      'cc_agent_sdk_owned',
-    )
-  })
+describe('isWatchable', () => {
+  it('true for tmux', () => expect(isWatchable('tmux')).toBe(true))
+  it('true for observed', () => expect(isWatchable('observed')).toBe(true))
+  it('false for sdk', () => expect(isWatchable('sdk')).toBe(false))
+  it('false for null', () => expect(isWatchable(null)).toBe(false))
 })
 
 describe('derivePanelMode', () => {
   it('returns blank when no sessionId', () => {
-    expect(derivePanelMode(undefined, 'inactive', 'idle')).toEqual({ mode: 'blank' })
+    expect(derivePanelMode(undefined, null, 'idle')).toEqual({ mode: 'blank' })
   })
 
-  it('returns watching when liveStatus is cc_owned', () => {
-    expect(derivePanelMode('s1', 'cc_owned', 'idle')).toEqual({ mode: 'watching' })
+  it('returns watching for tmux tier', () => {
+    expect(derivePanelMode('s1', 'tmux', 'idle')).toEqual({ mode: 'watching' })
   })
 
-  it('returns watching regardless of sessionState when cc_owned', () => {
-    expect(derivePanelMode('s1', 'cc_owned', 'active')).toEqual({ mode: 'watching' })
-    expect(derivePanelMode('s1', 'cc_owned', 'error')).toEqual({ mode: 'watching' })
+  it('returns watching for observed tier', () => {
+    expect(derivePanelMode('s1', 'observed', 'idle')).toEqual({ mode: 'watching' })
+  })
+
+  it('returns watching regardless of sessionState when tmux', () => {
+    expect(derivePanelMode('s1', 'tmux', 'active')).toEqual({ mode: 'watching' })
+    expect(derivePanelMode('s1', 'tmux', 'error')).toEqual({ mode: 'watching' })
+  })
+
+  it('does not return watching for sdk tier', () => {
+    expect(derivePanelMode('s1', 'sdk', 'idle')).toEqual({ mode: 'history' })
   })
 
   // --- SDK owned: connecting ---
   it('returns connecting(initial) for initializing', () => {
-    expect(derivePanelMode('s1', 'inactive', 'initializing')).toEqual({
+    expect(derivePanelMode('s1', null, 'initializing')).toEqual({
       mode: 'connecting',
       reason: 'initial',
     })
   })
 
   it('returns connecting(reconnecting) for reconnecting', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'reconnecting')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'reconnecting')).toEqual({
       mode: 'connecting',
       reason: 'reconnecting',
     })
@@ -87,28 +53,28 @@ describe('derivePanelMode', () => {
 
   // --- SDK owned: connected ---
   it('returns own(active) for waiting_input', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'waiting_input')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'waiting_input')).toEqual({
       mode: 'own',
       subState: 'active',
     })
   })
 
   it('returns own(streaming) for active', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'active')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'active')).toEqual({
       mode: 'own',
       subState: 'streaming',
     })
   })
 
   it('returns own(waiting_permission) for waiting_permission', () => {
-    expect(derivePanelMode('s1', 'inactive', 'waiting_permission')).toEqual({
+    expect(derivePanelMode('s1', null, 'waiting_permission')).toEqual({
       mode: 'own',
       subState: 'waiting_permission',
     })
   })
 
   it('returns own(compacting) for compacting', () => {
-    expect(derivePanelMode('s1', 'inactive', 'compacting')).toEqual({
+    expect(derivePanelMode('s1', null, 'compacting')).toEqual({
       mode: 'own',
       subState: 'compacting',
     })
@@ -116,70 +82,70 @@ describe('derivePanelMode', () => {
 
   // --- SDK owned: failed ---
   it('returns error(fatal) for error', () => {
-    expect(derivePanelMode('s1', 'inactive', 'error')).toEqual({
+    expect(derivePanelMode('s1', null, 'error')).toEqual({
       mode: 'error',
       reason: 'fatal',
     })
   })
 
   it('returns error(replaced) for replaced', () => {
-    expect(derivePanelMode('s1', 'inactive', 'replaced')).toEqual({
+    expect(derivePanelMode('s1', null, 'replaced')).toEqual({
       mode: 'error',
       reason: 'replaced',
     })
   })
 
-  // --- Inactive (history) ---
-  it('returns history for idle', () => {
-    expect(derivePanelMode('s1', 'inactive', 'idle')).toEqual({ mode: 'history' })
+  // --- Null tier (history) ---
+  it('returns history for null tier + idle', () => {
+    expect(derivePanelMode('s1', null, 'idle')).toEqual({ mode: 'history' })
   })
 
   it('returns history for closed', () => {
-    expect(derivePanelMode('s1', 'inactive', 'closed')).toEqual({ mode: 'history' })
+    expect(derivePanelMode('s1', null, 'closed')).toEqual({ mode: 'history' })
   })
 
-  // --- liveStatus does not override sessionState for SDK states ---
-  it('SDK sessionStates work regardless of liveStatus (SSE can lag)', () => {
-    // SSE says inactive but sidecar WS is connected
-    expect(derivePanelMode('s1', 'inactive', 'waiting_input')).toEqual({
+  // --- ownershipTier does not override sessionState for SDK states ---
+  it('SDK sessionStates work regardless of ownershipTier (SSE can lag)', () => {
+    // SSE says null but sidecar WS is connected
+    expect(derivePanelMode('s1', null, 'waiting_input')).toEqual({
       mode: 'own',
       subState: 'active',
     })
-    // SSE says sdk_owned and sessionState agrees
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'waiting_input')).toEqual({
+    // SSE says sdk and sessionState agrees
+    expect(derivePanelMode('s1', 'sdk', 'waiting_input')).toEqual({
       mode: 'own',
       subState: 'active',
     })
   })
 
-  // --- Cross-product: cc_agent_sdk_owned with all SDK session states ---
-  it('returns connecting(initial) when cc_agent_sdk_owned + initializing', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'initializing')).toEqual({
+  // --- Cross-product: sdk tier with all SDK session states ---
+  it('returns connecting(initial) when sdk + initializing', () => {
+    expect(derivePanelMode('s1', 'sdk', 'initializing')).toEqual({
       mode: 'connecting',
       reason: 'initial',
     })
   })
 
-  it('returns error(fatal) when cc_agent_sdk_owned + error', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'error')).toEqual({
+  it('returns error(fatal) when sdk + error', () => {
+    expect(derivePanelMode('s1', 'sdk', 'error')).toEqual({
       mode: 'error',
       reason: 'fatal',
     })
   })
 
-  it('returns error(replaced) when cc_agent_sdk_owned + replaced', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'replaced')).toEqual({
+  it('returns error(replaced) when sdk + replaced', () => {
+    expect(derivePanelMode('s1', 'sdk', 'replaced')).toEqual({
       mode: 'error',
       reason: 'replaced',
     })
   })
 
-  it('returns history when cc_agent_sdk_owned + idle (SSE/WS desync)', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'idle')).toEqual({ mode: 'history' })
+  it('returns history when sdk + idle (SSE/WS desync)', () => {
+    expect(derivePanelMode('s1', 'sdk', 'idle')).toEqual({ mode: 'history' })
   })
 
-  it('returns history when cc_agent_sdk_owned + closed', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'closed')).toEqual({ mode: 'history' })
+  it('returns history when sdk + closed', () => {
+    expect(derivePanelMode('s1', 'sdk', 'closed')).toEqual({ mode: 'history' })
   })
 })
 
@@ -235,56 +201,56 @@ describe('integration: derivePanelMode → modeToInputBar pipeline', () => {
   const scenarios: {
     desc: string
     sessionId: string | undefined
-    liveStatus: LiveStatus
+    ownershipTier: OwnershipTier
     sessionState: SessionState
     expectCanSend: boolean
   }[] = [
     {
       desc: 'no session',
       sessionId: undefined,
-      liveStatus: 'inactive',
+      ownershipTier: null,
       sessionState: 'idle',
       expectCanSend: false,
     },
     {
       desc: 'history session',
       sessionId: 's1',
-      liveStatus: 'inactive',
+      ownershipTier: null,
       sessionState: 'idle',
       expectCanSend: true,
     },
     {
       desc: 'watching session',
       sessionId: 's1',
-      liveStatus: 'cc_owned',
+      ownershipTier: 'tmux',
       sessionState: 'idle',
       expectCanSend: false,
     },
     {
       desc: 'active own session',
       sessionId: 's1',
-      liveStatus: 'cc_agent_sdk_owned',
+      ownershipTier: 'sdk',
       sessionState: 'waiting_input',
       expectCanSend: true,
     },
     {
       desc: 'streaming session',
       sessionId: 's1',
-      liveStatus: 'cc_agent_sdk_owned',
+      ownershipTier: 'sdk',
       sessionState: 'active',
       expectCanSend: false,
     },
     {
       desc: 'connecting session',
       sessionId: 's1',
-      liveStatus: 'inactive',
+      ownershipTier: null,
       sessionState: 'initializing',
       expectCanSend: false,
     },
     {
       desc: 'error session',
       sessionId: 's1',
-      liveStatus: 'inactive',
+      ownershipTier: null,
       sessionState: 'error',
       expectCanSend: false,
     },
@@ -292,7 +258,7 @@ describe('integration: derivePanelMode → modeToInputBar pipeline', () => {
 
   for (const s of scenarios) {
     it(`${s.desc}: produces valid InputBarState`, () => {
-      const mode = derivePanelMode(s.sessionId, s.liveStatus, s.sessionState)
+      const mode = derivePanelMode(s.sessionId, s.ownershipTier, s.sessionState)
       const inputBar = modeToInputBar(mode)
       expect([
         'dormant',
@@ -310,87 +276,87 @@ describe('integration: derivePanelMode → modeToInputBar pipeline', () => {
 
 describe('state transitions (spec compliance)', () => {
   it('BLANK → CONNECTING when user sends message (sessionState changes)', () => {
-    expect(derivePanelMode(undefined, 'inactive', 'idle')).toEqual({ mode: 'blank' })
-    expect(derivePanelMode('s1', 'inactive', 'initializing')).toEqual({
+    expect(derivePanelMode(undefined, null, 'idle')).toEqual({ mode: 'blank' })
+    expect(derivePanelMode('s1', null, 'initializing')).toEqual({
       mode: 'connecting',
       reason: 'initial',
     })
   })
 
   it('HISTORY → CONNECTING when user types + send', () => {
-    expect(derivePanelMode('s1', 'inactive', 'idle')).toEqual({ mode: 'history' })
-    expect(derivePanelMode('s1', 'inactive', 'initializing')).toEqual({
+    expect(derivePanelMode('s1', null, 'idle')).toEqual({ mode: 'history' })
+    expect(derivePanelMode('s1', null, 'initializing')).toEqual({
       mode: 'connecting',
       reason: 'initial',
     })
   })
 
   it('CONNECTING → OWN when session_init received', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'initializing')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'initializing')).toEqual({
       mode: 'connecting',
       reason: 'initial',
     })
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'waiting_input')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'waiting_input')).toEqual({
       mode: 'own',
       subState: 'active',
     })
   })
 
   it('OWN(active) → OWN(streaming) when assistant starts', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'waiting_input')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'waiting_input')).toEqual({
       mode: 'own',
       subState: 'active',
     })
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'active')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'active')).toEqual({
       mode: 'own',
       subState: 'streaming',
     })
   })
 
   it('OWN(streaming) → OWN(waiting_permission) when permission requested', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'active')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'active')).toEqual({
       mode: 'own',
       subState: 'streaming',
     })
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'waiting_permission')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'waiting_permission')).toEqual({
       mode: 'own',
       subState: 'waiting_permission',
     })
   })
 
   it('OWN(*) → HISTORY when session closes', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'active')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'active')).toEqual({
       mode: 'own',
       subState: 'streaming',
     })
-    expect(derivePanelMode('s1', 'inactive', 'closed')).toEqual({ mode: 'history' })
+    expect(derivePanelMode('s1', null, 'closed')).toEqual({ mode: 'history' })
   })
 
   it('OWN(*) → CONNECTING(reconnecting) when WS drops', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'active')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'active')).toEqual({
       mode: 'own',
       subState: 'streaming',
     })
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'reconnecting')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'reconnecting')).toEqual({
       mode: 'connecting',
       reason: 'reconnecting',
     })
   })
 
   it('OWN(*) → ERROR(replaced) when WS close 4001', () => {
-    expect(derivePanelMode('s1', 'cc_agent_sdk_owned', 'active')).toEqual({
+    expect(derivePanelMode('s1', 'sdk', 'active')).toEqual({
       mode: 'own',
       subState: 'streaming',
     })
-    expect(derivePanelMode('s1', 'inactive', 'replaced')).toEqual({
+    expect(derivePanelMode('s1', null, 'replaced')).toEqual({
       mode: 'error',
       reason: 'replaced',
     })
   })
 
   it('WATCHING → HISTORY when SSE shows session ended', () => {
-    expect(derivePanelMode('s1', 'cc_owned', 'idle')).toEqual({ mode: 'watching' })
-    expect(derivePanelMode('s1', 'inactive', 'idle')).toEqual({ mode: 'history' })
+    expect(derivePanelMode('s1', 'tmux', 'idle')).toEqual({ mode: 'watching' })
+    expect(derivePanelMode('s1', null, 'idle')).toEqual({ mode: 'history' })
   })
 })
 

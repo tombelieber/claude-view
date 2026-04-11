@@ -1,6 +1,7 @@
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import type { SessionSourceInfo } from '@claude-view/shared/types/generated/SessionSourceInfo'
 import { Claude, Cursor, Windsurf } from '@lobehub/icons'
-import { Code, Zap } from 'lucide-react'
+import { Code, Terminal, Zap } from 'lucide-react'
 import {
   SiAndroidstudio,
   SiEclipseide,
@@ -50,10 +51,40 @@ const IDE_CONFIG: Record<string, { icon: IconComponent; color: string }> = {
 interface SourceBadgeProps {
   source: SessionSourceInfo | null | undefined
   size?: 'sm' | 'md'
+  /** Backend-resolved ownership tier. Drives "This App" badge. */
+  ownership?: SessionOwnership | null
 }
 
-export function SourceBadge({ source, size = 'sm' }: SourceBadgeProps) {
+export function SourceBadge({ source, size = 'sm', ownership }: SourceBadgeProps) {
   const iconSize = size === 'sm' ? 10 : 12
+
+  // SDK session — sidecar-controlled, interactive.
+  if (ownership?.tier === 'sdk') {
+    const textClass = 'text-xs'
+    return (
+      <span
+        className={`inline-flex items-center gap-1 ${textClass} font-semibold text-blue-500 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/30 rounded px-1.5 py-0.5 shrink-0`}
+        title="Started from this app — you can send prompts and interact directly"
+      >
+        <Zap size={iconSize} />
+        This App
+      </span>
+    )
+  }
+
+  // Tmux CLI session launched by this app.
+  if (ownership?.tier === 'tmux') {
+    const textClass = 'text-xs'
+    return (
+      <span
+        className={`inline-flex items-center gap-1 ${textClass} font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 rounded px-1.5 py-0.5 shrink-0`}
+        title="CLI session launched from this app"
+      >
+        <Terminal size={iconSize} />
+        This App
+      </span>
+    )
+  }
 
   // Source not yet resolved — skeleton placeholder while reconciliation loop classifies.
   // Shows a pulsing pill so users expect the badge to appear (resolves within ~30s).

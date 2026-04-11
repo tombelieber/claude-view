@@ -109,21 +109,19 @@ describe('toSidebarItems', () => {
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('aaa')
     expect(result[0].isActive).toBe(false)
-    expect(result[0].liveStatus).toBe('inactive')
     expect(result[0].liveData).toBeNull()
   })
 
-  it('marks session as cc_owned when live but no control binding', () => {
+  it('marks session as active when live but no control binding', () => {
     const history = [makeSessionInfo('bbb')]
     const live = [makeLiveSession('bbb', { status: 'working' })]
     const result = toSidebarItems(history, live)
 
     expect(result[0].isActive).toBe(true)
-    expect(result[0].liveStatus).toBe('cc_owned')
     expect(result[0].liveData).toBe(live[0])
   })
 
-  it('marks session as cc_agent_sdk_owned when control binding exists', () => {
+  it('marks session as active when control binding exists', () => {
     const history = [makeSessionInfo('ccc')]
     const live = [
       makeLiveSession('ccc', {
@@ -134,7 +132,6 @@ describe('toSidebarItems', () => {
     const result = toSidebarItems(history, live)
 
     expect(result[0].isActive).toBe(true)
-    expect(result[0].liveStatus).toBe('cc_agent_sdk_owned')
   })
 
   it('inactive for done live sessions (not working/paused)', () => {
@@ -143,7 +140,6 @@ describe('toSidebarItems', () => {
     const result = toSidebarItems(history, live)
 
     expect(result[0].isActive).toBe(false)
-    expect(result[0].liveStatus).toBe('inactive')
   })
 
   it('includes active live sessions not yet in history (newly created)', () => {
@@ -155,7 +151,6 @@ describe('toSidebarItems', () => {
     expect(result[0].id).toBe('aaa')
     expect(result[1].id).toBe('zzz')
     expect(result[1].isActive).toBe(true)
-    expect(result[1].liveStatus).toBe('cc_owned')
   })
 
   it('does NOT include done live sessions not in history', () => {
@@ -190,20 +185,17 @@ describe('toSidebarItems', () => {
     ]
     const result = toSidebarItems(history, live)
 
-    // h1: live + no control → cc_owned
+    // h1: live + no control → active
     expect(result[0].isActive).toBe(true)
-    expect(result[0].liveStatus).toBe('cc_owned')
 
     // h2: not live → inactive
     expect(result[1].isActive).toBe(false)
-    expect(result[1].liveStatus).toBe('inactive')
 
-    // h3: live + control → cc_agent_sdk_owned
+    // h3: live + control → active
     expect(result[2].isActive).toBe(true)
-    expect(result[2].liveStatus).toBe('cc_agent_sdk_owned')
   })
 
-  it('SSE control field marks cc_agent_sdk_owned sessions', () => {
+  it('SSE control field marks sessions with control as active', () => {
     const history = [makeSessionInfo('aaa'), makeSessionInfo('bbb')]
     const live = [
       makeLiveSession('aaa', {
@@ -215,13 +207,10 @@ describe('toSidebarItems', () => {
     const result = toSidebarItems(history, live)
 
     expect(result[0].isActive).toBe(true)
-    expect(result[0].liveStatus).toBe('cc_agent_sdk_owned')
-
     expect(result[1].isActive).toBe(true)
-    expect(result[1].liveStatus).toBe('cc_owned')
   })
 
-  it('live-only session with control is cc_agent_sdk_owned (not yet indexed)', () => {
+  it('live-only session with control is active (not yet indexed)', () => {
     const history: SessionInfo[] = []
     const live = [
       makeLiveSession('new-sidecar', {
@@ -234,7 +223,6 @@ describe('toSidebarItems', () => {
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('new-sidecar')
     expect(result[0].isActive).toBe(true)
-    expect(result[0].liveStatus).toBe('cc_agent_sdk_owned')
   })
 
   // --- Focus safety: reference stability ---
@@ -258,7 +246,6 @@ describe('toSidebarItems', () => {
     const r2 = toSidebarItems(history, live)
 
     expect(r1[0].isActive).toBe(r2[0].isActive)
-    expect(r1[0].liveStatus).toBe(r2[0].liveStatus)
   })
 
   // --- Edge: empty inputs ---

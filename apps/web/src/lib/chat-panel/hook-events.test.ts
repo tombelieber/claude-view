@@ -498,7 +498,7 @@ describe('integration: hook events across phase transitions', () => {
       { type: 'HISTORY_OK', blocks: mockBlocks },
       { type: 'HOOK_EVENTS_OK', sessionId: 'abc', blocks: [mockHookBlock] },
       // Go live → cc_cli
-      { type: 'LIVE_STATUS_CHANGED', status: 'cc_owned' },
+      { type: 'OWNERSHIP_CHANGED', tier: 'tmux' },
     ])
 
     expect(store.panel.phase).toBe('cc_cli')

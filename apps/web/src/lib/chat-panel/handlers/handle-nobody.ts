@@ -1,3 +1,4 @@
+import { isWatchable } from '../../derive-panel-mode'
 import { mergeHookBlocks } from '../hook-events'
 import { nobodyTransition } from '../modules/nobody'
 import { outboxTransition } from '../modules/outbox'
@@ -22,9 +23,9 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
       if (event.type === 'HISTORY_OK' && event.total != null && event.offset != null) {
         pagination = { total: event.total, offset: event.offset, fetchingOlder: false }
       }
-      // If LIVE_STATUS_CHANGED(cc_owned) arrived while loading, now that
+      // If OWNERSHIP_CHANGED(tmux/observed) arrived while loading, now that
       // history is ready, complete the deferred transition to cc_cli.
-      if (sub.sub === 'ready' && p.sub.sub === 'loading' && p.sub.pendingLive === 'cc_owned') {
+      if (sub.sub === 'ready' && p.sub.sub === 'loading' && p.sub.pendingLive != null) {
         const panel: PanelState = {
           phase: 'cc_cli',
           sessionId: p.sessionId,
@@ -134,10 +135,10 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
       ]
     }
 
-    case 'LIVE_STATUS_CHANGED': {
+    case 'OWNERSHIP_CHANGED': {
       // Update projectPath from Live Monitor data whenever available
       const updatedStore = event.projectPath ? { ...store, projectPath: event.projectPath } : store
-      if (event.status === 'cc_owned') {
+      if (isWatchable(event.tier)) {
         if (p.sub.sub === 'ready') {
           // History loaded — transition immediately with blocks
           const panel: PanelState = {
@@ -151,7 +152,13 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
         // History still loading — defer cc_cli transition until HISTORY_OK arrives.
         // Without this, cc_cli starts with blocks: [] and the user sees a blank page.
         return [
-          { ...updatedStore, panel: { ...p, sub: { sub: 'loading', pendingLive: 'cc_owned' } } },
+          {
+            ...updatedStore,
+            panel: {
+              ...p,
+              sub: { sub: 'loading', pendingLive: event.tier as 'tmux' | 'observed' },
+            },
+          },
           [],
         ]
       }

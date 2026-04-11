@@ -1,20 +1,17 @@
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import type { SessionInfo } from '../types/generated/SessionInfo'
-import { deriveLiveStatus } from './live-status'
-import type { LiveStatus } from './live-status'
 
 export type SidebarSession = SessionInfo & {
   isActive: boolean
-  liveStatus: LiveStatus
   liveData: LiveSession | null
 }
 
 /**
  * Pure mapper: merges history sessions with live session data.
  *
- * Sidecar-managed detection uses SSE LiveSession.control field — set by the
- * Rust server when the sidecar calls POST /api/live/sessions/:id/bind-control.
- * No frontend workarounds (localSidecarIds, polling) needed.
+ * isActive is derived from ownership tier: sdk/tmux are always active,
+ * observed is active only if the session is working/paused.
+ * No live data → inactive.
  */
 export function toSidebarItems(
   history: SessionInfo[],
@@ -23,14 +20,11 @@ export function toSidebarItems(
   const liveMap = new Map(liveSessions.map((s) => [s.id, s]))
   const historyIds = new Set(history.map((h) => h.id))
 
-  // Enrich history sessions with live data
   const result: SidebarSession[] = history.map((h) => {
     const live = liveMap.get(h.id) ?? null
-    const ls = deriveLiveStatus(live)
     return {
       ...h,
-      isActive: ls !== 'inactive',
-      liveStatus: ls,
+      isActive: isSessionActive(live),
       liveData: live,
     }
   })
@@ -38,8 +32,7 @@ export function toSidebarItems(
   // Append active live sessions not yet in history (newly created, not yet indexed)
   for (const live of liveSessions) {
     if (historyIds.has(live.id)) continue
-    const ls = deriveLiveStatus(live)
-    if (ls === 'inactive') continue
+    if (!isSessionActive(live)) continue
 
     result.push({
       id: live.id,
@@ -84,10 +77,16 @@ export function toSidebarItems(
       correctionCount: 0,
       sameFileEditCount: 0,
       isActive: true,
-      liveStatus: ls,
       liveData: live,
     } as SidebarSession)
   }
 
   return result
+}
+
+function isSessionActive(live: LiveSession | null): boolean {
+  if (!live) return false
+  const tier = live.ownership?.tier
+  if (tier === 'sdk' || tier === 'tmux') return true
+  return live.status === 'working' || live.status === 'paused'
 }

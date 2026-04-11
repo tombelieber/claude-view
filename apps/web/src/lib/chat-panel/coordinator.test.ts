@@ -154,8 +154,8 @@ describe('coordinator', () => {
     expect(cmds).not.toContainEqual(expect.objectContaining({ cmd: 'POST_RESUME' }))
   })
 
-  // Scenario 5: SSE race — LIVE_STATUS_CHANGED during acquiring is IGNORED
-  test('acquiring + LIVE_STATUS_CHANGED → stays acquiring (SSE race rejection)', () => {
+  // Scenario 5: SSE race — OWNERSHIP_CHANGED during acquiring is IGNORED
+  test('acquiring + OWNERSHIP_CHANGED → stays acquiring (SSE race rejection)', () => {
     const acquiringStore: ChatPanelStore = {
       panel: {
         phase: 'acquiring',
@@ -174,8 +174,8 @@ describe('coordinator', () => {
       historyPagination: null,
     }
     const [store] = coordinate(acquiringStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
     })
     expect(store.panel.phase).toBe('acquiring')
   })
@@ -412,8 +412,8 @@ describe('coordinator', () => {
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'WS_SEND' }))
   })
 
-  // Scenario 16: LIVE_STATUS cc_cli → nobody transitions to cc_cli
-  test('nobody + LIVE_STATUS cc_owned → cc_cli.watching', () => {
+  // Scenario 16: OWNERSHIP_CHANGED → nobody transitions to cc_cli
+  test('nobody + OWNERSHIP_CHANGED tmux → cc_cli.watching', () => {
     const historyStore: ChatPanelStore = {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
       outbox: { messages: [] },
@@ -424,8 +424,8 @@ describe('coordinator', () => {
       historyPagination: null,
     }
     const [store, cmds] = coordinate(historyStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
     })
     expect(store.panel.phase).toBe('cc_cli')
     if (store.panel.phase === 'cc_cli') {
@@ -434,9 +434,9 @@ describe('coordinator', () => {
     expect(cmds).toContainEqual(expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS' }))
   })
 
-  // Scenario 16b: LIVE_STATUS cc_owned arrives BEFORE HISTORY_OK (race condition)
+  // Scenario 16b: OWNERSHIP_CHANGED tmux arrives BEFORE HISTORY_OK (race condition)
   // Must defer cc_cli transition until history loads to avoid blank page.
-  test('nobody(loading) + LIVE_STATUS cc_owned → deferred, then HISTORY_OK → cc_cli with blocks', () => {
+  test('nobody(loading) + OWNERSHIP_CHANGED tmux → deferred, then HISTORY_OK → cc_cli with blocks', () => {
     const loadingStore: ChatPanelStore = {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'loading' } },
       outbox: { messages: [] },
@@ -446,16 +446,16 @@ describe('coordinator', () => {
       lastPermissionMode: null,
       historyPagination: null,
     }
-    // Step 1: LIVE_STATUS arrives while loading — should NOT transition to cc_cli
+    // Step 1: OWNERSHIP_CHANGED arrives while loading — should NOT transition to cc_cli
     const [midStore, midCmds] = coordinate(loadingStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
     })
     expect(midStore.panel.phase).toBe('nobody') // still nobody!
     if (midStore.panel.phase === 'nobody') {
       expect(midStore.panel.sub.sub).toBe('loading')
       if (midStore.panel.sub.sub === 'loading') {
-        expect(midStore.panel.sub.pendingLive).toBe('cc_owned')
+        expect(midStore.panel.sub.pendingLive).toBe('tmux')
       }
     }
     expect(midCmds).toHaveLength(0) // no OPEN_TERMINAL_WS yet
@@ -596,8 +596,8 @@ describe('coordinator', () => {
     }
   })
 
-  // Gap 7: acquiring + LIVE_STATUS_CHANGED updates projectPath but stays acquiring
-  test('acquiring + LIVE_STATUS_CHANGED updates projectPath without phase change', () => {
+  // Gap 7: acquiring + OWNERSHIP_CHANGED updates projectPath but stays acquiring
+  test('acquiring + OWNERSHIP_CHANGED updates projectPath without phase change', () => {
     const acquiringStore: ChatPanelStore = {
       panel: {
         phase: 'acquiring',
@@ -616,8 +616,8 @@ describe('coordinator', () => {
       historyPagination: null,
     }
     const [store] = coordinate(acquiringStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
       projectPath: '/new/path',
     })
     expect(store.panel.phase).toBe('acquiring')
@@ -643,8 +643,8 @@ describe('coordinator', () => {
     }
   })
 
-  // LIVE_STATUS_CHANGED with projectPath updates store.projectPath
-  test('nobody + LIVE_STATUS_CHANGED with projectPath → store.projectPath updated', () => {
+  // OWNERSHIP_CHANGED with projectPath updates store.projectPath
+  test('nobody + OWNERSHIP_CHANGED with projectPath → store.projectPath updated', () => {
     const historyStore: ChatPanelStore = {
       panel: { phase: 'nobody', sessionId: 'abc', sub: { sub: 'ready', blocks: mockBlocks } },
       outbox: { messages: [] },
@@ -655,8 +655,8 @@ describe('coordinator', () => {
       historyPagination: null,
     }
     const [store] = coordinate(historyStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
       projectPath: '/from/sse',
     })
     expect(store.projectPath).toBe('/from/sse')

@@ -368,8 +368,8 @@ describe('historyPagination preserved across phase transitions', () => {
   it('nobody → cc_cli preserves pagination', () => {
     const store = paginatedStore('nobody')
     const next = step(store, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
     } as RawEvent)
 
     expect(next.panel.phase).toBe('cc_cli')
@@ -383,8 +383,8 @@ describe('historyPagination preserved across phase transitions', () => {
   it('cc_cli → nobody preserves pagination', () => {
     const store = paginatedStore('cc_cli')
     const next = step(store, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'inactive',
+      type: 'OWNERSHIP_CHANGED',
+      tier: null,
     } as RawEvent)
 
     expect(next.panel.phase).toBe('nobody')

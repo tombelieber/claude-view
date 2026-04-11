@@ -8,21 +8,24 @@ vi.mock('react-router-dom', () => ({
 
 // Mock ChatSession — ChatPanel is just a thin wrapper
 vi.mock('../../../pages/ChatSession', () => ({
-  ChatSession: ({ sessionId, liveStatus }: { sessionId?: string; liveStatus?: string }) => (
+  ChatSession: ({
+    sessionId,
+    ownershipTier,
+  }: { sessionId?: string; ownershipTier?: string | null }) => (
     <div
       data-testid="chat-session"
       data-session-id={sessionId ?? ''}
-      data-live-status={liveStatus ?? 'inactive'}
+      data-ownership-tier={ownershipTier ?? ''}
     />
   ),
 }))
 
 import { ChatPanel } from '../ChatPanel'
 
-function renderPanel(overrides?: { sessionId?: string; liveStatus?: string }) {
+function renderPanel(overrides?: { sessionId?: string; ownershipTier?: string | null }) {
   const params = {
     sessionId: overrides?.sessionId ?? 'sess-123',
-    liveStatus: overrides?.liveStatus ?? 'inactive',
+    ownershipTier: overrides?.ownershipTier ?? null,
   }
   const props = {
     params,
@@ -46,16 +49,16 @@ describe('ChatPanel', () => {
     expect(el.getAttribute('data-session-id')).toBe('abc-123')
   })
 
-  it('passes liveStatus to ChatSession', () => {
-    renderPanel({ liveStatus: 'cc_owned' })
+  it('passes ownershipTier to ChatSession', () => {
+    renderPanel({ ownershipTier: 'tmux' })
     const el = screen.getByTestId('chat-session')
-    expect(el.getAttribute('data-live-status')).toBe('cc_owned')
+    expect(el.getAttribute('data-ownership-tier')).toBe('tmux')
   })
 
-  it('passes liveStatus=inactive by default', () => {
+  it('passes ownershipTier=null by default', () => {
     renderPanel()
     const el = screen.getByTestId('chat-session')
-    expect(el.getAttribute('data-live-status')).toBe('inactive')
+    expect(el.getAttribute('data-ownership-tier')).toBe('')
   })
 
   it('panel container has min-w-0 and overflow-hidden for responsive shrinking', () => {

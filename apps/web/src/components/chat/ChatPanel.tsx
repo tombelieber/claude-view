@@ -2,12 +2,12 @@ import type { IDockviewPanelProps } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { LiveContextData } from '../../hooks/use-context-percent'
-import type { LiveStatus } from '../../lib/live-status'
+import type { OwnershipTier } from '../../lib/derive-panel-mode'
 import { ChatSession } from '../../pages/ChatSession'
 
 interface ChatPanelParams {
   sessionId: string
-  liveStatus?: LiveStatus
+  ownershipTier?: OwnershipTier
   liveProjectPath?: string
   liveContextData?: LiveContextData
 }
@@ -19,7 +19,7 @@ interface ChatPanelParams {
  * permission handling, model selection, and command palette.
  */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>) {
-  const { sessionId, liveStatus, liveProjectPath, liveContextData } = params
+  const { sessionId, ownershipTier, liveProjectPath, liveContextData } = params
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -72,7 +72,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     <div ref={containerRef} className="flex flex-col h-full min-w-0 overflow-hidden">
       <ChatSession
         sessionId={sessionId || undefined}
-        liveStatus={liveStatus ?? 'inactive'}
+        ownershipTier={ownershipTier ?? null}
         liveProjectPath={liveProjectPath}
         liveContextData={liveContextData}
         onSessionCreated={!sessionId ? onSessionCreated : undefined}
