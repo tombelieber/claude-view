@@ -10,6 +10,7 @@
 
 pub mod handlers;
 pub mod health;
+pub mod reconcile;
 pub mod ring_buffer;
 pub mod store;
 pub mod terminal;

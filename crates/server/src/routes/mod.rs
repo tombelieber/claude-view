@@ -17,6 +17,7 @@ pub mod grep;
 pub mod health;
 pub mod hooks;
 pub mod ide;
+pub mod interact;
 pub mod indexing;
 pub mod insights;
 pub mod interaction_tap;
@@ -154,6 +155,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api/live", terminal::router())
         .nest("/api", turns::router())
         .nest("/api", hooks::router())
+        .nest("/api", interact::router())
         .nest("/api", ide::router())
         .nest("/api", active_sessions::router())
         .nest("/api", mcp_servers::router())

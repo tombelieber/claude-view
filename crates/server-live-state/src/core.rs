@@ -1,5 +1,6 @@
 //! Core session types: LiveSession, SessionStatus, ControlBinding, snapshots.
 
+use claude_view_types::{PendingInteractionMeta, SessionOwnership};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
@@ -113,6 +114,16 @@ pub struct LiveSession {
     /// Populated from sessions/{pid}.json, NOT from hooks.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entrypoint: Option<String>,
+
+    // -- Ownership + interaction fields (populated by coordinator before broadcast) --
+    /// Session ownership tier — who can interact (SDK, Tmux, or Observed).
+    /// Resolved server-side by `resolve_ownership()` before SSE broadcast.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ownership: Option<SessionOwnership>,
+    /// Lightweight pending interaction metadata for SessionCard display.
+    /// Set by SetPendingInteraction mutation, cleared by ClearPendingInteraction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_interaction: Option<PendingInteractionMeta>,
 }
 
 /// A per-session snapshot entry persisted to disk for crash recovery.
@@ -207,6 +218,8 @@ pub fn test_live_session(id: &str) -> LiveSession {
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }
 
@@ -215,6 +228,7 @@ mod tests {
     use super::super::agent::{AgentState, AgentStateGroup};
     use super::super::field_types::{FileSourceKind, VerifiedFile};
     use super::*;
+    use claude_view_types::InteractionVariant;
 
     #[test]
     fn test_control_binding_serializes_to_camel_case() {
@@ -316,5 +330,91 @@ mod tests {
         );
         assert_eq!(json["session"]["id"], "abc-123");
         assert_eq!(json["session"]["closedAt"], 1_700_000_000);
+    }
+
+    // ================================================================
+    // Ownership + PendingInteraction serialization tests (Task 3 TDD)
+    // ================================================================
+
+    #[test]
+    fn ownership_none_omitted_from_json() {
+        let session = test_live_session("s1");
+        assert!(session.ownership.is_none());
+        let json = serde_json::to_value(&session).unwrap();
+        assert!(
+            json.get("ownership").is_none(),
+            "ownership=None must be omitted via skip_serializing_if"
+        );
+    }
+
+    #[test]
+    fn ownership_some_observed_included_in_json() {
+        let mut session = test_live_session("s2");
+        session.ownership = Some(SessionOwnership::Observed {
+            source: Some("terminal".into()),
+            entrypoint: None,
+        });
+        let json = serde_json::to_value(&session).unwrap();
+        let ownership = json
+            .get("ownership")
+            .expect("ownership=Some must be present");
+        assert_eq!(ownership["tier"], "observed");
+        assert_eq!(ownership["source"], "terminal");
+    }
+
+    #[test]
+    fn ownership_some_sdk_included_in_json() {
+        let mut session = test_live_session("s3");
+        session.ownership = Some(SessionOwnership::Sdk {
+            control_id: "ctl-42".into(),
+            source: None,
+            entrypoint: Some("cli".into()),
+        });
+        let json = serde_json::to_value(&session).unwrap();
+        let ownership = json.get("ownership").expect("ownership must be present");
+        assert_eq!(ownership["tier"], "sdk");
+        assert_eq!(ownership["controlId"], "ctl-42");
+        assert_eq!(ownership["entrypoint"], "cli");
+    }
+
+    #[test]
+    fn pending_interaction_none_omitted_from_json() {
+        let session = test_live_session("s4");
+        assert!(session.pending_interaction.is_none());
+        let json = serde_json::to_value(&session).unwrap();
+        assert!(
+            json.get("pendingInteraction").is_none(),
+            "pendingInteraction=None must be omitted via skip_serializing_if"
+        );
+    }
+
+    #[test]
+    fn pending_interaction_some_included_in_json() {
+        let mut session = test_live_session("s5");
+        session.pending_interaction = Some(PendingInteractionMeta {
+            variant: InteractionVariant::Permission,
+            request_id: "req-001".into(),
+            preview: "Allow file write?".into(),
+        });
+        let json = serde_json::to_value(&session).unwrap();
+        let pi = json
+            .get("pendingInteraction")
+            .expect("pendingInteraction=Some must be present");
+        assert_eq!(pi["variant"], "permission");
+        assert_eq!(pi["requestId"], "req-001");
+        assert_eq!(pi["preview"], "Allow file write?");
+    }
+
+    #[test]
+    fn test_live_session_factory_returns_none_for_ownership_and_interaction() {
+        let session = test_live_session("factory-check");
+        assert!(
+            session.ownership.is_none(),
+            "test_live_session must initialize ownership as None"
+        );
+        assert!(
+            session.pending_interaction.is_none(),
+            "test_live_session must initialize pending_interaction as None"
+        );
     }
 }

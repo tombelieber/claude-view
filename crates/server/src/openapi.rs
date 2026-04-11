@@ -158,6 +158,9 @@ use utoipa::OpenApi;
         crate::routes::webhooks::update_webhook,
         crate::routes::webhooks::delete_webhook,
         crate::routes::webhooks::test_send,
+        // Interactions
+        crate::routes::interact::handlers::get_interaction_handler,
+        crate::routes::interact::handlers::interact_handler,
     ),
     components(schemas(
         crate::routes::health::HealthResponse,

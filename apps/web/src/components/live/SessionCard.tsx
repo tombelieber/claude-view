@@ -25,7 +25,9 @@ import { cleanPreviewText } from '../../utils/get-session-title'
 import { PhaseBadge, PhaseBadgeSkeleton } from '../PhaseBadge'
 import { SourceBadge } from '../shared/SourceBadge'
 import { SessionSpinner, pickVerb } from '../spinner'
-import { AskUserQuestionDisplay, isAskUserQuestionInput } from './AskUserQuestionDisplay'
+import { useInteractionResponder } from '@claude-view/shared'
+import { SessionInteractionCard } from '@claude-view/shared/components/conversation/blocks/shared/SessionInteractionCard'
+import { useFullInteraction } from '../../hooks/use-full-interaction'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { TaskProgressList } from './TaskProgressList'
@@ -324,6 +326,8 @@ export function SessionCard({
   onExpandCliSession,
 }: SessionCardProps) {
   const [searchParams] = useSearchParams()
+  const respond = useInteractionResponder(session.id, session.ownership)
+  const fullInteraction = useFullInteraction(session.id, session.pendingInteraction)
   const turnStart = session.currentTurnStartedAt ?? session.startedAt ?? currentTime
   const elapsedSeconds = currentTime - turnStart
 
@@ -451,9 +455,14 @@ export function SessionCard({
         />
       </div>
 
-      {/* ── AskUserQuestion ── */}
-      {session.agentState.context && isAskUserQuestionInput(session.agentState.context) && (
-        <AskUserQuestionDisplay inputData={session.agentState.context} variant="amber" />
+      {/* ── Pending interaction (permission, question, plan, elicitation) ── */}
+      {session.pendingInteraction && (
+        <SessionInteractionCard
+          sessionId={session.id}
+          meta={session.pendingInteraction}
+          fullInteraction={fullInteraction}
+          respond={respond}
+        />
       )}
 
       {/* ── Task progress ── */}

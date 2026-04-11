@@ -35,6 +35,8 @@ pub fn create_session_from_start(
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }
 
@@ -72,5 +74,7 @@ pub fn create_session_shell(session_id: &str, data: &ReconcileData, now: i64) ->
         jsonl,
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }

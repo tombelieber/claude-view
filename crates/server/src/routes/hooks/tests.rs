@@ -109,6 +109,8 @@ fn make_autonomous_session(id: &str) -> crate::live::state::LiveSession {
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }
 

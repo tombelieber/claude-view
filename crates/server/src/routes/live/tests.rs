@@ -53,6 +53,8 @@ fn test_session(id: &str, closed: bool) -> LiveSession {
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     };
     if closed {
         s.status = SessionStatus::Done;

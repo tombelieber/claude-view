@@ -1058,6 +1058,8 @@ fn minimal_live_session_for_branch_tests(id: &str) -> LiveSession {
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }
 

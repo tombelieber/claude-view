@@ -1,8 +1,16 @@
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
+  plugins: [react()],
   test: {
-    include: ['src/**/*.test.ts'],
+    globals: true,
+    environment: 'happy-dom',
+    include: [
+      'src/**/*.test.ts',
+      'src/components/conversation/blocks/shared/__tests__/SessionInteractionCard.test.tsx',
+    ],
+    setupFiles: ['./src/test-setup.ts'],
     passWithNoTests: true,
   },
 })

@@ -293,6 +293,8 @@ pub(super) fn build_recovered_session(
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }
 

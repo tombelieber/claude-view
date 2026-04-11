@@ -155,6 +155,8 @@ pub(super) fn make_live_session(id: &str, file_path: &str) -> crate::live::state
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     }
 }
 

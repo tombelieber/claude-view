@@ -26,3 +26,11 @@ export { MessageQueueEventCard } from './MessageQueueEventCard'
 export { HookEventRow } from './HookEventRow'
 export { ViewModeToggle } from './ViewModeToggle'
 export { SessionInfoPanel } from './SessionInfoPanel'
+export { SessionInteractionCard } from './conversation/blocks/shared/SessionInteractionCard'
+export type {
+  SessionInteractionCardProps,
+  PendingInteractionMeta,
+  FullInteractionBlock,
+} from './conversation/blocks/shared/SessionInteractionCard'
+export { CompactInteractionPreview } from './conversation/blocks/shared/CompactInteractionPreview'
+export { InteractionError } from './conversation/blocks/shared/InteractionError'

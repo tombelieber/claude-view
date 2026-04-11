@@ -264,6 +264,16 @@ impl SessionCoordinator {
         }
 
         // -- Phase 4: Broadcast --
+        // Enrich snapshot with ownership before sending to SSE clients.
+        // resolve_ownership() is async (reads CliSessionStore) — safe here
+        // because Phase 4 runs after all locks are dropped.
+        let mut snapshot = snapshot;
+        if broadcast_action != BroadcastAction::Removed {
+            let ownership =
+                crate::live::ownership::resolve_ownership(&snapshot, ctx.cli_sessions).await;
+            snapshot.ownership = Some(ownership);
+        }
+
         match broadcast_action {
             BroadcastAction::Created => {
                 let _ = ctx.live_tx.send(SessionEvent::SessionDiscovered {

@@ -1,7 +1,16 @@
 import { CheckCircle2, Circle, HelpCircle, Send } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import { isAskUserQuestionInput } from '../../live/AskUserQuestionDisplay'
 import { InteractiveCardShell } from './InteractiveCardShell'
+
+interface AskUserQuestionInputShape {
+  questions: { question: string; header?: string; options?: { label: string; description?: string }[]; multiple?: boolean }[]
+}
+
+function isAskUserQuestionInput(data: unknown): data is AskUserQuestionInputShape {
+  if (!data || typeof data !== 'object') return false
+  const d = data as Record<string, unknown>
+  return Array.isArray(d.questions)
+}
 
 export interface AskUserQuestionCardProps {
   inputData: unknown

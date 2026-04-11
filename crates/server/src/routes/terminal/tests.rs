@@ -81,6 +81,7 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
         webhook_config_path: std::env::temp_dir().join("notifications.json"),
         webhook_secrets_path: std::env::temp_dir().join("webhook-secrets.json"),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
 
@@ -130,6 +131,8 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
             },
             session_kind: None,
             entrypoint: None,
+            ownership: None,
+            pending_interaction: None,
         };
         map.insert(session_id.to_string(), session);
     }
@@ -312,6 +315,7 @@ async fn ws_unknown_session_returns_error() {
         webhook_config_path: std::env::temp_dir().join("notifications.json"),
         webhook_secrets_path: std::env::temp_dir().join("webhook-secrets.json"),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
 

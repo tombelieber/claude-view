@@ -156,83 +156,34 @@ describe('SessionCard sub-agent pills', () => {
   })
 })
 
-describe('SessionCard question display', () => {
-  it('shows AskUserQuestionDisplay when context has questions', () => {
+describe('SessionCard interaction display', () => {
+  it('renders SessionInteractionCard compact preview when pendingInteraction is present', () => {
     const session = createMockSession({
-      agentState: {
-        group: 'needs_you',
-        state: 'awaiting_input',
-        label: 'Asked you a question',
-        context: {
-          questions: [
-            {
-              question: 'Which database should we use?',
-              header: 'DB',
-              options: [
-                { label: 'PostgreSQL', description: 'Relational' },
-                { label: 'SQLite', description: 'Embedded' },
-              ],
-              multiSelect: false,
-            },
-          ],
-        },
+      pendingInteraction: {
+        variant: 'permission',
+        requestId: 'req-001',
+        preview: 'Allow file write to src/main.rs?',
       },
     })
     renderCard(session)
-    expect(screen.getByText('Which database should we use?')).toBeInTheDocument()
-    expect(screen.getByText('PostgreSQL')).toBeInTheDocument()
-    expect(screen.getByText('SQLite')).toBeInTheDocument()
+    // CompactInteractionPreview shows the preview text while full data loads
+    expect(screen.getByText(/Allow file write/)).toBeInTheDocument()
   })
 
-  it('shows AskUserQuestionDisplay for needs_permission state with question context', () => {
+  it('does not render interaction card when pendingInteraction is absent', () => {
     const session = createMockSession({
-      agentState: {
-        group: 'needs_you',
-        state: 'needs_permission',
-        label: 'Asked you a question',
-        context: {
-          questions: [
-            {
-              question: 'Which framework?',
-              header: 'Framework',
-              options: [
-                { label: 'React', description: 'Component-based' },
-                { label: 'Vue', description: 'Progressive' },
-              ],
-              multiSelect: false,
-            },
-          ],
-        },
-      },
+      pendingInteraction: undefined,
     })
     renderCard(session)
-    expect(screen.getByText('Which framework?')).toBeInTheDocument()
-    expect(screen.getByText('React')).toBeInTheDocument()
+    expect(screen.queryByText(/Allow file write/)).not.toBeInTheDocument()
   })
 
-  it('does not show question display when awaiting_input but no context', () => {
+  it('does not render interaction card when pendingInteraction is null', () => {
     const session = createMockSession({
-      agentState: {
-        group: 'needs_you',
-        state: 'awaiting_input',
-        label: 'Waiting for your next message',
-        context: null,
-      },
+      pendingInteraction: null,
     })
     renderCard(session)
-    expect(screen.queryByText('Single selection only')).not.toBeInTheDocument()
-  })
-
-  it('does not show question display when autonomous state without question context', () => {
-    const session = createMockSession({
-      agentState: {
-        group: 'autonomous',
-        state: 'acting',
-        label: 'Using tools...',
-        context: null,
-      },
-    })
-    renderCard(session)
-    expect(screen.queryByText('Single selection only')).not.toBeInTheDocument()
+    // No interaction-related UI should be present
+    expect(screen.queryByText(/Permission/i)).not.toBeInTheDocument()
   })
 })

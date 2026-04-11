@@ -135,6 +135,8 @@ async fn test_get_hook_events_from_live_session() {
         },
         session_kind: None,
         entrypoint: None,
+        ownership: None,
+        pending_interaction: None,
     };
     session.hook.hook_events.push(HookEvent {
         timestamp: 1000,

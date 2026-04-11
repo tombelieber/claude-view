@@ -29,13 +29,12 @@ import { TeamMemberPills } from './live/TeamMemberPills'
 import { SourceBadge } from './shared/SourceBadge'
 import { SessionSpinner, formatDurationCompact, pickPastVerb } from './spinner'
 
-/** Map raw JSONL entrypoint string to SessionSourceInfo for SourceBadge. */
-function entrypointToSource(entrypoint: string | null | undefined): SessionSourceInfo | null {
+/** Map raw JSONL entrypoint string to SessionSourceInfo for SourceBadge (historical sessions only). */
+function sourceFromEntrypoint(entrypoint: string | null | undefined): SessionSourceInfo | null {
   if (!entrypoint) return null
   if (entrypoint === 'cli') return { category: 'terminal', label: null }
   if (entrypoint === 'claude-vscode') return { category: 'ide', label: 'VS Code' }
   if (entrypoint === 'sdk-ts') return { category: 'agent_sdk', label: null }
-  // Unknown IDE entrypoints: treat as IDE with raw label
   if (entrypoint.startsWith('claude-')) {
     return { category: 'ide', label: entrypoint.replace('claude-', '') }
   }
@@ -311,7 +310,7 @@ export function SessionCard({
             <div className="flex items-center gap-1.5 min-w-0">
               <WeightIndicator tier={weightTier} />
               {session.entrypoint && (
-                <SourceBadge source={entrypointToSource(session.entrypoint)} />
+                <SourceBadge source={sourceFromEntrypoint(session.entrypoint)} />
               )}
               {projectLabel && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded shrink-0">

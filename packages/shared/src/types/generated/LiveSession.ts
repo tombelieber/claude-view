@@ -4,8 +4,10 @@ import type { CacheStatus } from './CacheStatus'
 import type { ControlBinding } from './ControlBinding'
 import type { CostBreakdown } from './CostBreakdown'
 import type { HookEvent } from './HookEvent'
+import type { PendingInteractionMeta } from './PendingInteractionMeta'
 import type { PhaseHistory } from './PhaseHistory'
 import type { ProgressItem } from './ProgressItem'
+import type { SessionOwnership } from './SessionOwnership'
 import type { SessionSourceInfo } from './SessionSourceInfo'
 import type { SessionStatus } from './SessionStatus'
 import type { SubAgentInfo } from './SubAgentInfo'
@@ -356,4 +358,14 @@ export type LiveSession = {
    * AI-generated session title (from `ai-title` JSONL lines).
    */
   aiTitle?: string | null
+  /**
+   * Session ownership tier — who can interact (SDK, Tmux, or Observed).
+   * Resolved server-side by `resolve_ownership()` before SSE broadcast.
+   */
+  ownership?: SessionOwnership | null
+  /**
+   * Lightweight pending interaction metadata for SessionCard display.
+   * Set by SetPendingInteraction mutation, cleared by ClearPendingInteraction.
+   */
+  pendingInteraction?: PendingInteractionMeta | null
 }
