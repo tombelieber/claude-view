@@ -2,16 +2,15 @@
 // Aligned with Live Monitor StatusDot colors: needs_you → amber, autonomous → green.
 // Mission Control grouping: urgency-first (NEEDS YOU → WORKING → history).
 
-import type { LiveStatus } from '../../../lib/live-status'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 
 export interface SessionLike {
   liveData?: {
     agentState?: { group: string }
     status?: string
-    control?: unknown
+    ownership?: SessionOwnership | null
   } | null
   isActive?: boolean
-  liveStatus?: LiveStatus
 }
 
 // --- Source type (for icon rendering) ---
@@ -19,7 +18,7 @@ export interface SessionLike {
 export type SessionSource = 'terminal' | 'sdk'
 
 export function getSessionSource(session: SessionLike): SessionSource {
-  return session.liveStatus === 'cc_agent_sdk_owned' ? 'sdk' : 'terminal'
+  return session.liveData?.ownership?.tier === 'sdk' ? 'sdk' : 'terminal'
 }
 
 // --- Urgency grouping ---
@@ -63,16 +62,18 @@ export interface DropdownActions {
   archive: boolean
 }
 
-export function deriveDropdownActions(session: SessionLike): DropdownActions {
-  const ls = session.liveStatus ?? 'inactive'
-  const isHistory = ls === 'inactive'
+export function deriveDropdownActions(
+  session: SessionLike,
+  ownership?: SessionOwnership | null,
+): DropdownActions {
+  const isHistory = !session.isActive
 
   return {
     resume: isHistory,
     takeOver: false, // TODO: re-enable when fork flow is fixed
     fork: false, // TODO: re-enable when fork flow is fixed
-    shutDown: ls === 'cc_agent_sdk_owned',
-    openInMonitor: ls !== 'inactive',
+    shutDown: ownership?.tier === 'sdk' || ownership?.tier === 'tmux',
+    openInMonitor: !isHistory,
     archive: isHistory,
   }
 }
