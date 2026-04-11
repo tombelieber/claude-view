@@ -123,6 +123,7 @@ async fn test_store_list_sorted_newest_first() {
                 status: CliSessionStatus::Running,
                 project_dir: None,
                 args: vec![],
+                claude_session_id: None,
             })
             .await;
     }
