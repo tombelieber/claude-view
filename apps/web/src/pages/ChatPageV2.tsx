@@ -51,6 +51,10 @@ function makeSessionPanelArgs(
       }
     : undefined
   const tier = (liveSession?.ownership?.tier ?? null) as OwnershipTier
+  const tmuxSessionId =
+    liveSession?.ownership?.tier === 'tmux'
+      ? (liveSession.ownership as { cliSessionId: string }).cliSessionId
+      : undefined
   return {
     id: `chat-${sid}`,
     component: 'chat' as const,
@@ -58,14 +62,11 @@ function makeSessionPanelArgs(
     params: {
       sessionId: sid,
       ownershipTier: tier,
+      status: liveSession?.status ?? 'done',
       liveProjectPath: liveSession?.projectPath,
       liveContextData,
       agentStateGroup: liveSession?.agentState?.group ?? null,
-      // When tmux-owned, pass cliSessionId so ChatPanel renders xterm
-      tmuxSessionId:
-        liveSession?.ownership?.tier === 'tmux'
-          ? (liveSession.ownership as { cliSessionId: string }).cliSessionId
-          : undefined,
+      tmuxSessionId,
     },
   }
 }
@@ -79,6 +80,7 @@ function makeTmuxPanelArgs(tmuxSessionId: string) {
     params: {
       sessionId: '',
       ownershipTier: 'tmux' as OwnershipTier,
+      status: 'working' as const,
       tmuxSessionId,
     },
   }
@@ -230,10 +232,10 @@ export function ChatPageV2() {
       const tier = (live?.ownership?.tier ?? null) as OwnershipTier
       panel.api.updateParameters({
         ownershipTier: tier,
+        status: live?.status ?? 'done',
         liveProjectPath: live?.projectPath,
         liveContextData: liveCtx,
         agentStateGroup: live?.agentState?.group ?? null,
-        // Pass tmuxSessionId when ownership is tmux — ChatPanel renders xterm
         tmuxSessionId:
           live?.ownership?.tier === 'tmux'
             ? (live.ownership as { cliSessionId: string }).cliSessionId

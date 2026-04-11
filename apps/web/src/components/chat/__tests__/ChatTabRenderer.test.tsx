@@ -1,5 +1,5 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChatTabRenderer } from '../ChatTabRenderer'
 
 // Create a mock api object matching IDockviewPanelHeaderProps.api
@@ -36,30 +36,25 @@ function renderTab(
   )
 }
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('ChatTabRenderer', () => {
-  it('shows green dot for autonomous live session (aligned with sidebar)', () => {
-    const { container } = renderTab(undefined, {
-      agentStateGroup: 'autonomous',
-      ownershipTier: 'tmux',
-    })
+  it('shows green dot for working session', () => {
+    const { container } = renderTab(undefined, { status: 'working' })
     const dot = container.querySelector('span.bg-green-500')
     expect(dot).not.toBeNull()
   })
 
-  it('shows amber dot for needs_you live session (aligned with sidebar)', () => {
-    const { container } = renderTab(undefined, {
-      agentStateGroup: 'needs_you',
-      ownershipTier: 'tmux',
-    })
+  it('shows amber dot for paused session', () => {
+    const { container } = renderTab(undefined, { status: 'paused' })
     const dot = container.querySelector('span.bg-amber-500')
     expect(dot).not.toBeNull()
   })
 
-  it('shows gray dot when no live data', () => {
-    const { container } = renderTab(undefined, {
-      agentStateGroup: null,
-      ownershipTier: null,
-    })
+  it('shows gray dot for done/no-data session', () => {
+    const { container } = renderTab(undefined, { status: 'done' })
     const dot = container.querySelector('[class*="bg-gray-"]')
     expect(dot).not.toBeNull()
   })
@@ -81,5 +76,42 @@ describe('ChatTabRenderer', () => {
     const { container } = renderTab({ isActive: true })
     const closeBtn = container.querySelector('button')
     expect(closeBtn?.className).toContain('opacity-100')
+  })
+
+  it('close button always visible for tmux tab with kill tooltip', () => {
+    const { container } = renderTab(
+      { isActive: false },
+      {
+        ownershipTier: 'tmux',
+        tmuxSessionId: 'cv-abc123',
+      },
+    )
+    const closeBtn = container.querySelector('button')
+    expect(closeBtn?.className).toContain('opacity-100')
+    expect(closeBtn?.title).toBe('Kill CLI session')
+  })
+
+  it('clicking close on tmux tab sends DELETE to kill session', () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response())
+    const closeFn = vi.fn()
+    const { container } = renderTab(
+      { close: closeFn },
+      {
+        ownershipTier: 'tmux',
+        tmuxSessionId: 'cv-abc123',
+      },
+    )
+    fireEvent.click(container.querySelector('button')!)
+    expect(mockFetch).toHaveBeenCalledWith('/api/cli-sessions/cv-abc123', { method: 'DELETE' })
+    expect(closeFn).toHaveBeenCalled()
+  })
+
+  it('clicking close on non-tmux tab does not send DELETE', () => {
+    const mockFetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response())
+    const closeFn = vi.fn()
+    const { container } = renderTab({ close: closeFn })
+    fireEvent.click(container.querySelector('button')!)
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(closeFn).toHaveBeenCalled()
   })
 })

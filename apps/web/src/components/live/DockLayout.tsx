@@ -114,20 +114,15 @@ function EmptyWatermark(_props: IWatermarkPanelProps) {
   )
 }
 
-/**
- * Maps LiveSession.status to design-token status colors.
- * Values from packages/design-tokens/src/colors.ts -> status.
- */
-function statusToColor(status: LiveSession['status']): string {
+/** Session status → Tailwind dot color (working=green, paused=amber, done=gray). */
+function statusDotColor(status: string | null): string {
   switch (status) {
     case 'working':
-      return '#22c55e' // status.active
+      return 'bg-green-500'
     case 'paused':
-      return '#f59e0b' // status.waiting
-    case 'done':
-      return '#6b7280' // status.done
+      return 'bg-amber-500'
     default:
-      return '#6b7280'
+      return 'bg-gray-300 dark:bg-gray-600'
   }
 }
 
@@ -136,24 +131,66 @@ function SessionTabRenderer({
   containerApi: _containerApi,
   params,
 }: IDockviewPanelHeaderProps) {
-  const status = params.status as LiveSession['status'] | undefined
-  const statusColor = status ? statusToColor(status) : '#6b7280'
+  const status = (params.status as string | null) ?? null
+  const agentStateGroup = (params.agentStateGroup as string | null) ?? null
+  const tmuxSessionId = (params.tmuxSessionId as string | undefined) ?? undefined
+  const isTmux = !!tmuxSessionId
+
+  const dotColor = statusDotColor(status)
+  const isAutonomous = agentStateGroup === 'autonomous'
+  const showPulse = isAutonomous && status === 'working'
+
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    if (tmuxSessionId) {
+      fetch(`/api/cli-sessions/${tmuxSessionId}`, { method: 'DELETE' }).catch(() => {})
+    }
+    api.close()
+  }
 
   const handleMiddleClick = (e: React.MouseEvent) => {
     if (e.button === 1) {
-      e.preventDefault()
-      e.stopPropagation()
-      api.close()
+      handleClose(e)
     }
   }
 
   return (
-    <div className="flex items-center gap-1.5 px-3 h-full text-xs" onMouseDown={handleMiddleClick}>
-      <div
-        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-        style={{ backgroundColor: statusColor }}
-      />
-      <span className="truncate">{api.title}</span>
+    <div
+      className="group flex items-center gap-1.5 px-3 h-full text-xs"
+      onMouseDown={handleMiddleClick}
+    >
+      <div className="flex-shrink-0 relative inline-flex">
+        {showPulse && (
+          <span
+            className={`absolute inline-flex w-2 h-2 rounded-full opacity-60 motion-safe:animate-live-ring ${dotColor}`}
+          />
+        )}
+        <span
+          className={`relative inline-flex w-2 h-2 rounded-full ${dotColor} ${showPulse ? 'motion-safe:animate-live-breathe' : ''}`}
+        />
+      </div>
+      <span className="truncate max-w-[120px]">{api.title}</span>
+      {isTmux && (
+        <button
+          type="button"
+          onClick={handleClose}
+          title="Kill CLI session"
+          className="ml-1 shrink-0 flex items-center justify-center w-5 h-5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
+        >
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.25"
+            strokeLinecap="round"
+          >
+            <path d="M2 2l6 6M8 2l-6 6" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }
@@ -200,6 +237,9 @@ export function DockLayout({
                 sessionId: session.id,
                 displayMode: currentDisplayMode,
                 status: session.status,
+                agentStateGroup: session.agentState?.group ?? null,
+                tmuxSessionId:
+                  session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
               })
             }
           }
@@ -221,6 +261,9 @@ export function DockLayout({
               sessionId: id,
               displayMode: currentDisplayMode,
               status: session?.status ?? 'done',
+              agentStateGroup: session?.agentState?.group ?? null,
+              tmuxSessionId:
+                session?.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
             },
             // First panel gets its own group, rest stack or split
             position: i === 0 ? undefined : { referencePanel: ids[0], direction: 'right' },
@@ -255,20 +298,26 @@ export function DockLayout({
     const api = apiRef.current
     if (!api) return
 
-    // CLI terminal panels carry tmuxSessionId in params — they have their own
-    // lifecycle and are NOT tied to the live sessions list.
-    const isCliPanel = (p: { params: unknown }) =>
-      !!(p.params as { tmuxSessionId?: string } | undefined)?.tmuxSessionId
+    // Standalone CLI panels (from handleCliSessionCreated) have tmuxSessionId
+    // but NO sessionId — they're not tied to the live sessions list.
+    // Session panels for tmux-owned sessions have BOTH sessionId + tmuxSessionId.
+    const isStandaloneCliPanel = (p: { params: unknown }) => {
+      const pp = p.params as { sessionId?: string; tmuxSessionId?: string } | undefined
+      return !!pp?.tmuxSessionId && !pp?.sessionId
+    }
 
     // Update existing session panels with fresh displayMode
     for (const panel of api.panels) {
-      if (isCliPanel(panel)) continue
+      if (isStandaloneCliPanel(panel)) continue
       const session = sessions.find((s) => s.id === panel.id)
       if (session) {
         panel.api.updateParameters({
           sessionId: session.id,
           displayMode,
           status: session.status,
+          agentStateGroup: session.agentState?.group ?? null,
+          tmuxSessionId:
+            session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
         })
       }
     }
@@ -277,7 +326,7 @@ export function DockLayout({
     // If CLI terminal panels exist, add session panels as inactive so they
     // don't steal focus from the xterm terminal (tmux has higher precedence).
     const existingIds = new Set(api.panels.map((p) => p.id))
-    const hasCliPanels = api.panels.some((p) => isCliPanel(p))
+    const hasCliPanels = api.panels.some((p) => isStandaloneCliPanel(p))
     for (const session of sessions) {
       if (!existingIds.has(session.id)) {
         api.addPanel({
@@ -288,6 +337,9 @@ export function DockLayout({
             sessionId: session.id,
             displayMode,
             status: session.status,
+            agentStateGroup: session.agentState?.group ?? null,
+            tmuxSessionId:
+              session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
           },
           inactive: hasCliPanels,
         })
@@ -299,7 +351,9 @@ export function DockLayout({
     // api.panels in place, which causes iterator invalidation if we iterate
     // the live array directly (same pattern as Array.prototype.filter-then-forEach).
     const currentIds = new Set(sessions.map((s) => s.id))
-    const panelsToRemove = api.panels.filter((p) => !isCliPanel(p) && !currentIds.has(p.id))
+    const panelsToRemove = api.panels.filter(
+      (p) => !isStandaloneCliPanel(p) && !currentIds.has(p.id),
+    )
     for (const panel of panelsToRemove) {
       api.removePanel(panel)
     }

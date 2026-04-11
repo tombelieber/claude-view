@@ -1,39 +1,41 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import { X } from 'lucide-react'
-import type { OwnershipTier } from '../../lib/derive-panel-mode'
 import { cn } from '../../lib/utils'
 import { ChatTabContextMenu } from './ChatTabContextMenu'
 
-/**
- * Dot color aligned with sidebar SessionListItem.getStatusDotColor:
- * - needs_you → amber (matches Live Monitor)
- * - autonomous / other active → green
- * - inactive → gray
- */
-function getTabDotColor(agentStateGroup: string | null, ownershipTier: OwnershipTier): string {
-  if (ownershipTier === null) return 'bg-gray-300 dark:bg-gray-600'
-  if (agentStateGroup === 'needs_you') return 'bg-amber-500'
-  return 'bg-green-500'
+/** Session status → Tailwind dot color (working=green, paused=amber, done=gray). */
+function statusDotColor(status: string | null): string {
+  switch (status) {
+    case 'working':
+      return 'bg-green-500'
+    case 'paused':
+      return 'bg-amber-500'
+    default:
+      return 'bg-gray-300 dark:bg-gray-600'
+  }
 }
 
 export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHeaderProps) {
   const agentStateGroup = (params.agentStateGroup as string | null) ?? null
-  const ownershipTier = (params.ownershipTier as OwnershipTier) ?? null
+  const status = (params.status as string | null) ?? null
+  const tmuxSessionId = (params.tmuxSessionId as string | undefined) ?? undefined
+  const isTmux = !!tmuxSessionId
 
-  const dotColor = getTabDotColor(agentStateGroup, ownershipTier)
+  const dotColor = statusDotColor(status)
   const isAutonomous = agentStateGroup === 'autonomous'
-  const showPulse = isAutonomous && ownershipTier !== null
+  const showPulse = isAutonomous && status === 'working'
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
+    if (tmuxSessionId) {
+      fetch(`/api/cli-sessions/${tmuxSessionId}`, { method: 'DELETE' }).catch(() => {})
+    }
     api.close()
   }
 
   const handleMiddleClick = (e: React.MouseEvent) => {
     if (e.button === 1) {
-      e.preventDefault()
-      e.stopPropagation()
-      api.close()
+      handleClose(e)
     }
   }
 
@@ -60,11 +62,12 @@ export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHea
       <button
         type="button"
         onClick={handleClose}
+        title={isTmux ? 'Kill CLI session' : undefined}
         className={cn(
           'ml-auto w-4 h-4 flex items-center justify-center rounded-sm',
           'text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700',
-          'opacity-0 group-hover:opacity-100',
-          api.isActive && 'opacity-100',
+          isTmux ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          !isTmux && api.isActive && 'opacity-100',
         )}
       >
         <X className="w-3 h-3" />
