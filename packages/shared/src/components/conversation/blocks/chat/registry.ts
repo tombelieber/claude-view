@@ -5,6 +5,7 @@ import { ChatInteractionBlock } from './InteractionBlock'
 import { ChatNoticeBlock } from './NoticeBlock'
 import { ChatProgressBlock } from './ProgressBlock'
 import { ChatSystemBlock, isChatVisibleQueueOp } from './SystemBlock'
+import { ChatTeamTranscriptBlock } from './TeamTranscriptBlock'
 import { ChatTurnBoundary } from './TurnBoundary'
 import { ChatUserBlock } from './UserBlock'
 
@@ -16,12 +17,11 @@ export const chatRegistry: BlockRenderers = {
   notice: ChatNoticeBlock as BlockRenderer,
   system: ChatSystemBlock as BlockRenderer,
   progress: ChatProgressBlock as BlockRenderer,
+  team_transcript: ChatTeamTranscriptBlock as BlockRenderer,
   canRender: (block) => {
     if (block.type === 'system' && block.variant === 'queue_operation') {
       return isChatVisibleQueueOp(block as SystemBlock)
     }
-    // team_transcript has no renderer yet (A2 will add it)
-    if (block.type === 'team_transcript') return false
     return true
   },
 }

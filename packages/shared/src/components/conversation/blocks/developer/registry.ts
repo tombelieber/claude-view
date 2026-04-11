@@ -4,6 +4,7 @@ import { DevInteractionBlock } from './InteractionBlock'
 import { DevNoticeBlock } from './NoticeBlock'
 import { DevProgressBlock } from './ProgressBlock'
 import { DevSystemBlock } from './SystemBlock'
+import { DevTeamTranscriptBlock } from './TeamTranscriptBlock'
 import { DevTurnBoundary } from './TurnBoundary'
 import { DevUserBlock } from './UserBlock'
 
@@ -15,4 +16,5 @@ export const developerRegistry: BlockRenderers = {
   notice: DevNoticeBlock as BlockRenderer,
   system: DevSystemBlock as BlockRenderer,
   progress: DevProgressBlock as BlockRenderer,
+  team_transcript: DevTeamTranscriptBlock as BlockRenderer,
 }
