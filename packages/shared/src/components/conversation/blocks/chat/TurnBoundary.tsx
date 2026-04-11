@@ -1,5 +1,8 @@
 import type { TurnBoundaryBlock } from '../../../../types/blocks'
-import { AlertTriangle, ShieldOff } from 'lucide-react'
+import { AlertTriangle, ChevronDown, ChevronRight, ShieldOff } from 'lucide-react'
+import { useState } from 'react'
+import { CollapsibleJson } from '../shared/CollapsibleJson'
+import { StatusBadge } from '../shared/StatusBadge'
 
 interface TurnBoundaryProps {
   block: TurnBoundaryBlock
@@ -25,10 +28,8 @@ function formatTokens(n: number): string {
 
 /** Extract short model label from model key (e.g. "claude-sonnet-4-5-20250514" → "sonnet-4.5") */
 function shortModelName(key: string): string {
-  // Match common patterns: claude-{family}-{major}-{minor}
   const m = key.match(/claude-(\w+)-(\d+)-(\d+)/)
   if (m) return `${m[1]}-${m[2]}.${m[3]}`
-  // Fallback: strip "claude-" prefix and date suffix
   return key.replace(/^claude-/, '').replace(/-\d{8}$/, '')
 }
 
@@ -36,13 +37,11 @@ function shortModelName(key: string): string {
 function buildInfoSegments(block: TurnBoundaryBlock): string[] {
   const segments: string[] = []
 
-  // Model name — pick the first (usually only) model from modelUsage
   const modelKeys = Object.keys(block.modelUsage ?? {})
   if (modelKeys.length > 0) {
     segments.push(shortModelName(modelKeys[0]))
   }
 
-  // Token flow — aggregate input→output across all models
   const usage = Object.values(block.modelUsage ?? {})
   if (usage.length > 0) {
     const totalIn = usage.reduce((sum, u) => sum + u.inputTokens, 0)
@@ -60,9 +59,26 @@ function buildInfoSegments(block: TurnBoundaryBlock): string[] {
   return segments
 }
 
+function fastModeColor(state: string): 'green' | 'amber' | 'gray' {
+  if (state === 'on') return 'green'
+  if (state === 'cooldown') return 'amber'
+  return 'gray'
+}
+
 export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
   const infoSegments = buildInfoSegments(block)
   const hasHookErrors = block.hookErrors && block.hookErrors.length > 0
+  const [detailsOpen, setDetailsOpen] = useState(false)
+
+  const hasDetails =
+    !!block.stopReason ||
+    !!block.fastModeState ||
+    (block.durationApiMs != null && block.durationApiMs > 0) ||
+    block.permissionDenials.length > 0 ||
+    !!block.result ||
+    block.structuredOutput != null ||
+    (block.hookInfos?.length ?? 0) > 0 ||
+    !!block.error
 
   return (
     <div className="space-y-0">
@@ -86,13 +102,128 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
         <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
       </div>
 
-      {/* Hook error details — shown below the line when hooks failed */}
+      {/* Collapsible details section */}
+      {hasDetails && (
+        <div className="px-4 pb-1">
+          <button
+            type="button"
+            onClick={() => setDetailsOpen(!detailsOpen)}
+            className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors cursor-pointer"
+          >
+            {detailsOpen ? (
+              <ChevronDown className="w-3 h-3" />
+            ) : (
+              <ChevronRight className="w-3 h-3" />
+            )}
+            Details
+          </button>
+          {detailsOpen && (
+            <div className="mt-1 space-y-1.5 text-xs">
+              {/* stopReason */}
+              {block.stopReason && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 dark:text-gray-400">Stop:</span>
+                  <StatusBadge label={block.stopReason} color="gray" />
+                </div>
+              )}
+
+              {/* fastModeState */}
+              {block.fastModeState && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 dark:text-gray-400">Fast mode:</span>
+                  <StatusBadge
+                    label={block.fastModeState}
+                    color={fastModeColor(block.fastModeState)}
+                  />
+                </div>
+              )}
+
+              {/* durationApiMs */}
+              {block.durationApiMs != null && block.durationApiMs > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-500 dark:text-gray-400">API duration:</span>
+                  <span className="font-mono text-gray-600 dark:text-gray-300">
+                    {formatDuration(block.durationApiMs)}
+                  </span>
+                </div>
+              )}
+
+              {/* error subtype + messages */}
+              {block.error && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-500 dark:text-gray-400">Error:</span>
+                    <StatusBadge label={block.error.subtype} color="red" />
+                  </div>
+                  {block.error.messages.length > 0 && (
+                    <ul className="space-y-0.5 pl-2">
+                      {block.error.messages.map((msg) => (
+                        <li key={msg} className="text-red-600 dark:text-red-400">
+                          {msg}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* result */}
+              {block.result && (
+                <div className="flex items-start gap-2">
+                  <span className="text-gray-500 dark:text-gray-400 shrink-0">Result:</span>
+                  <span className="text-gray-700 dark:text-gray-300 break-all">{block.result}</span>
+                </div>
+              )}
+
+              {/* structuredOutput */}
+              {block.structuredOutput != null && (
+                <CollapsibleJson data={block.structuredOutput} label="structuredOutput" />
+              )}
+
+              {/* hookInfos */}
+              {block.hookInfos && block.hookInfos.length > 0 && (
+                <CollapsibleJson
+                  data={block.hookInfos}
+                  label={`hookInfos (${block.hookInfos.length})`}
+                />
+              )}
+
+              {/* permissionDenials */}
+              {block.permissionDenials.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-gray-500 dark:text-gray-400">
+                    Permission denials ({block.permissionDenials.length}):
+                  </span>
+                  {block.permissionDenials.map((d) => (
+                    <div
+                      key={d.toolUseId}
+                      className="pl-2 space-y-1 border-l-2 border-red-200 dark:border-red-800/40"
+                    >
+                      <div className="flex items-center gap-2">
+                        <StatusBadge label={d.toolName} color="red" />
+                        <span className="font-mono text-gray-500 dark:text-gray-400 truncate">
+                          {d.toolUseId}
+                        </span>
+                      </div>
+                      {Object.keys(d.toolInput ?? {}).length > 0 && (
+                        <CollapsibleJson data={d.toolInput} label="toolInput" />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Hook error details */}
       {hasHookErrors && (
         <div className="flex items-start gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-amber-600/30">
           <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
           <div className="space-y-0.5">
-            {block.hookErrors!.map((err, i) => (
-              <p key={i} className="text-xs text-amber-700 dark:text-amber-300/90">
+            {block.hookErrors!.map((err) => (
+              <p key={err} className="text-xs text-amber-700 dark:text-amber-300/90">
                 {err}
               </p>
             ))}
@@ -100,7 +231,7 @@ export function ChatTurnBoundary({ block }: TurnBoundaryProps) {
         </div>
       )}
 
-      {/* Prevented continuation — shown when hooks blocked the agent */}
+      {/* Prevented continuation */}
       {block.preventedContinuation && (
         <div className="flex items-center gap-1.5 px-4 py-1.5 mx-auto max-w-[90%] rounded bg-orange-50 dark:bg-gray-800 border border-orange-200 dark:border-orange-500/30">
           <ShieldOff className="w-3 h-3 text-orange-600 dark:text-orange-400 flex-shrink-0" />

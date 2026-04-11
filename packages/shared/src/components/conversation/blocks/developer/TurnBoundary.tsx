@@ -1,5 +1,8 @@
 import type { TurnBoundaryBlock } from '../../../../types/blocks'
+import { AlertTriangle, ShieldOff } from 'lucide-react'
 import { TurnDurationCard } from '../../../TurnDurationCard'
+import { CollapsibleJson } from '../shared/CollapsibleJson'
+import { StatusBadge } from '../shared/StatusBadge'
 import { EventCard } from './EventCard'
 
 interface TurnBoundaryProps {
@@ -25,7 +28,7 @@ function formatTokens(usage: Record<string, number>): string {
 }
 
 export function DevTurnBoundary({ block }: TurnBoundaryProps) {
-  const models = Object.keys(block.modelUsage)
+  const models = Object.keys(block.modelUsage ?? {})
   const tokens = formatTokens(block.usage)
 
   return (
@@ -91,25 +94,99 @@ export function DevTurnBoundary({ block }: TurnBoundaryProps) {
               </span>
             </>
           )}
+          {block.hookCount != null && (
+            <>
+              <span className="text-gray-300 dark:text-gray-600">|</span>
+              <StatusBadge
+                label={`${block.hookCount} hook${block.hookCount !== 1 ? 's' : ''}`}
+                color="gray"
+              />
+            </>
+          )}
         </div>
+
+        {/* Prevented continuation */}
+        {block.preventedContinuation && (
+          <div className="flex items-center gap-1.5 py-1.5 px-2 rounded bg-orange-50 dark:bg-gray-800 border border-orange-200 dark:border-orange-500/30">
+            <ShieldOff className="w-3 h-3 text-orange-600 dark:text-orange-400 flex-shrink-0" />
+            <span className="text-xs text-orange-700 dark:text-orange-300/90">
+              Hook blocked continuation
+            </span>
+          </div>
+        )}
+
+        {/* Hook errors */}
+        {block.hookErrors && block.hookErrors.length > 0 && (
+          <div className="flex items-start gap-1.5 py-1.5 px-2 rounded bg-amber-50 dark:bg-gray-800 border border-amber-200 dark:border-amber-600/30">
+            <AlertTriangle className="w-3 h-3 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              {block.hookErrors.map((err) => (
+                <p key={err} className="text-xs text-amber-700 dark:text-amber-300/90">
+                  {err}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* result */}
+        {block.result && (
+          <div className="pt-1.5 border-t border-gray-200/30 dark:border-gray-700/30 text-xs">
+            <span className="text-gray-500 dark:text-gray-400">Result: </span>
+            <span className="text-gray-700 dark:text-gray-300">{block.result}</span>
+          </div>
+        )}
+
+        {/* structuredOutput */}
+        {block.structuredOutput != null && (
+          <div className="pt-1.5 border-t border-gray-200/30 dark:border-gray-700/30">
+            <CollapsibleJson data={block.structuredOutput} label="structuredOutput" />
+          </div>
+        )}
+
+        {/* hookInfos */}
+        {block.hookInfos && block.hookInfos.length > 0 && (
+          <div className="pt-1.5 border-t border-gray-200/30 dark:border-gray-700/30">
+            <CollapsibleJson
+              data={block.hookInfos}
+              label={`hookInfos (${block.hookInfos.length})`}
+            />
+          </div>
+        )}
 
         {/* Permission denials */}
         {block.permissionDenials.length > 0 && (
           <div className="pt-1.5 border-t border-gray-200/30 dark:border-gray-700/30">
-            <div className="text-xs font-medium text-red-600 dark:text-red-400 mb-1">
+            <div className="text-xs font-medium text-red-600 dark:text-red-400 mb-1.5">
               Permission Denials
             </div>
-            {block.permissionDenials.map((d) => (
-              <div key={d.toolUseId} className="text-xs font-mono text-gray-600 dark:text-gray-400">
-                {d.toolName}
-              </div>
-            ))}
+            <div className="space-y-2">
+              {block.permissionDenials.map((d) => (
+                <div
+                  key={d.toolUseId}
+                  className="pl-2 border-l-2 border-red-200 dark:border-red-800/40 space-y-1"
+                >
+                  <div className="flex items-center gap-2 text-xs">
+                    <StatusBadge label={d.toolName} color="red" />
+                    <span className="font-mono text-gray-500 dark:text-gray-400 truncate">
+                      {d.toolUseId}
+                    </span>
+                  </div>
+                  {Object.keys(d.toolInput ?? {}).length > 0 && (
+                    <CollapsibleJson data={d.toolInput} label="toolInput" />
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Error messages */}
         {block.error && (
-          <div className="pt-1.5 border-t border-red-200/30 dark:border-red-800/30">
+          <div className="pt-1.5 border-t border-red-200/30 dark:border-red-800/30 space-y-1">
+            <div className="flex items-center gap-2">
+              <StatusBadge label={block.error.subtype} color="red" />
+            </div>
             {block.error.messages.map((msg) => (
               <p key={msg} className="text-xs text-red-600 dark:text-red-400">
                 {msg}
