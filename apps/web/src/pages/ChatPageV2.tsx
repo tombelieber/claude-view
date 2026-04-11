@@ -2,13 +2,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { DockviewApi, SerializedDockview } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useOutletContext, useParams } from 'react-router-dom'
-import { useCliSessions, useCreateCliSession } from '../hooks/use-cli-sessions'
+import { useCreateCliSession } from '../hooks/use-cli-sessions'
 import { ChatDockLayout, readSavedChatLayout } from '../components/chat/ChatDockLayout'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
 import type { LiveContextData } from '../hooks/use-context-percent'
-import { deriveLiveStatus } from '../lib/live-status'
+import type { OwnershipTier } from '../lib/derive-panel-mode'
 import type { SessionInfo } from '../types/generated/SessionInfo'
 
 /** Derive tab title using the same logic as the sidebar's SessionListItem. */
@@ -56,7 +56,7 @@ function makeSessionPanelArgs(
     title: deriveTabTitle(sid, cachedSessions, live),
     params: {
       sessionId: sid,
-      liveStatus: deriveLiveStatus(liveSession),
+      ownershipTier: (liveSession?.ownership?.tier ?? null) as OwnershipTier,
       liveProjectPath: liveSession?.projectPath,
       liveContextData,
       agentStateGroup: liveSession?.agentState?.group ?? null,
@@ -97,11 +97,6 @@ export function ChatPageV2() {
   const queryClientRef = useRef(queryClient)
   queryClientRef.current = queryClient
 
-  // CLI session data — used to detect tmux-owned sessions and open them as xterm.
-  const { data: cliSessions } = useCliSessions()
-  const cliSessionsRef = useRef(cliSessions)
-  cliSessionsRef.current = cliSessions
-
   useChatKeyboardShortcuts(dockApi)
 
   const handleDockReady = useCallback((api: DockviewApi) => {
@@ -111,10 +106,11 @@ export function ChatPageV2() {
     // If dockview restored from layout but URL has a specific session, ensure it's open
     const urlSessionId = sessionIdRef.current
     if (urlSessionId) {
-      // Check if this is a CLI (tmux) session — open as xterm instead
-      const cliMatch = cliSessionsRef.current?.find((c) => c.claudeSessionId === urlSessionId)
-      if (cliMatch) {
-        const panelId = `cli-${cliMatch.id}`
+      // Check if this is a tmux-owned session — open as xterm instead
+      const urlLive = liveSessionsRef.current.find((s) => s.id === urlSessionId)
+      if (urlLive?.ownership?.tier === 'tmux') {
+        const cliId = urlLive.ownership.cliSessionId
+        const panelId = `cli-${cliId}`
         const existingCli = api.panels.find((p) => p.id === panelId)
         if (existingCli) {
           if (!existingCli.api.isActive) existingCli.api.setActive()
@@ -123,8 +119,8 @@ export function ChatPageV2() {
             id: panelId,
             component: 'cliTerminal',
             tabComponent: 'cliTerminal',
-            title: `CLI: ${cliMatch.id.slice(0, 11)}`,
-            params: { tmuxSessionId: cliMatch.id },
+            title: `CLI: ${cliId.slice(0, 11)}`,
+            params: { tmuxSessionId: cliId },
           })
         }
       } else {
@@ -155,10 +151,11 @@ export function ChatPageV2() {
       const api = dockApiRef.current
       if (!api) return
 
-      // Check if this session belongs to a CLI (tmux) session → open as xterm
-      const cliMatch = cliSessionsRef.current?.find((c) => c.claudeSessionId === sid)
-      if (cliMatch) {
-        const panelId = `cli-${cliMatch.id}`
+      // Check if this session is tmux-owned → open as xterm
+      const sLive = liveSessionsRef.current.find((s) => s.id === sid)
+      if (sLive?.ownership?.tier === 'tmux') {
+        const cliId = sLive.ownership.cliSessionId
+        const panelId = `cli-${cliId}`
         const existingCli = api.panels.find((p) => p.id === panelId)
         if (existingCli) {
           if (!existingCli.api.isActive) existingCli.api.setActive()
@@ -168,8 +165,8 @@ export function ChatPageV2() {
           id: panelId,
           component: 'cliTerminal',
           tabComponent: 'cliTerminal',
-          title: `CLI: ${cliMatch.id.slice(0, 11)}`,
-          params: { tmuxSessionId: cliMatch.id },
+          title: `CLI: ${cliId.slice(0, 11)}`,
+          params: { tmuxSessionId: cliId },
         })
         const added = api.panels.find((p) => p.id === panelId)
         if (added && !added.api.isActive) added.api.setActive()
@@ -256,7 +253,7 @@ export function ChatPageV2() {
           }
         : undefined
       panel.api.updateParameters({
-        liveStatus: deriveLiveStatus(live),
+        ownershipTier: (live?.ownership?.tier ?? null) as OwnershipTier,
         liveProjectPath: live?.projectPath,
         liveContextData: liveCtx,
         agentStateGroup: live?.agentState?.group ?? null,
@@ -267,47 +264,6 @@ export function ChatPageV2() {
       }
     }
   }, [liveSessions.sessions, queryClient])
-
-  // Replace chat panels with xterm panels when CLI session data arrives.
-  // Handles the race where dockview restores/opens a panel before useCliSessions resolves.
-  useEffect(() => {
-    const api = dockApiRef.current
-    if (!api || !cliSessions?.length) return
-
-    // Build reverse map: claudeSessionId → cliSession
-    const claudeToTmux = new Map<string, { id: string }>(
-      cliSessions
-        .filter((c) => c.claudeSessionId && c.status === 'running')
-        .map((c) => [c.claudeSessionId!, { id: c.id }]),
-    )
-    if (claudeToTmux.size === 0) return
-
-    for (const panel of [...api.panels]) {
-      if (panel.id.startsWith('cli-')) continue
-      const sid = (panel.params as { sessionId?: string })?.sessionId
-      if (!sid) continue
-      const cli = claudeToTmux.get(sid)
-      if (!cli) continue
-
-      // This chat panel belongs to a CLI session — replace with xterm
-      const panelId = `cli-${cli.id}`
-      if (api.panels.some((p) => p.id === panelId)) {
-        // xterm panel already exists, just remove the chat one
-        api.removePanel(panel)
-        continue
-      }
-      const wasActive = panel.api.isActive
-      api.removePanel(panel)
-      api.addPanel({
-        id: panelId,
-        component: 'cliTerminal',
-        tabComponent: 'cliTerminal',
-        title: `CLI: ${cli.id.slice(0, 11)}`,
-        params: { tmuxSessionId: cli.id },
-        inactive: !wasActive,
-      })
-    }
-  }, [cliSessions])
 
   return (
     <div className="flex h-full overflow-hidden">

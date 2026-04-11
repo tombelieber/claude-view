@@ -22,7 +22,7 @@ import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
 import { useSessionDetail } from '../hooks/use-session-detail'
-import { deriveLiveStatus } from '../lib/derive-panel-mode'
+import type { OwnershipTier } from '../lib/derive-panel-mode'
 import {
   type ExportMetadata,
   downloadHtml,
@@ -57,7 +57,8 @@ export function ConversationView() {
     summaries: ProjectSummary[]
     liveSessions: UseLiveSessionsResult
   }>()
-  const liveStatus = deriveLiveStatus(liveSessions.sessions.find((s) => s.id === sessionId))
+  const liveSession = liveSessions.sessions.find((s) => s.id === sessionId)
+  const ownershipTier: OwnershipTier = liveSession?.ownership?.tier ?? null
 
   // Session metadata
   const { data: sessionDetail, error: detailError } = useSessionDetail(sessionId || null)
@@ -77,10 +78,10 @@ export function ConversationView() {
     useChatPanel(sessionId)
   useCommandExecutor(store, dispatch, pendingCmdsRef)
 
-  // Dispatch live status so FSM transitions to cc_cli.watching when CLI-owned
+  // Dispatch ownership so FSM transitions to cc_cli.watching when CLI-owned
   useEffect(() => {
-    dispatch({ type: 'LIVE_STATUS_CHANGED', status: liveStatus })
-  }, [liveStatus, dispatch])
+    dispatch({ type: 'OWNERSHIP_CHANGED', tier: ownershipTier })
+  }, [ownershipTier, dispatch])
 
   // Pagination: stable callback — matches ChatSession pattern
   const handleLoadOlderHistory = useCallback(() => {
@@ -305,7 +306,7 @@ export function ConversationView() {
     )
   }
 
-  if (!blocks.length && liveStatus === 'inactive' && !sessionDetail) {
+  if (!blocks.length && ownershipTier === null && !sessionDetail) {
     return (
       <div className="h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <EmptyState

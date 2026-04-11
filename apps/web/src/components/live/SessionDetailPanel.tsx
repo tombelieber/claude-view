@@ -29,7 +29,7 @@ import { useFileHistory } from '../../hooks/use-file-history'
 import { useTeamSidechains } from '../../hooks/use-teams'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
-import { deriveLiveStatus } from '../../lib/derive-panel-mode'
+import type { OwnershipTier } from '../../lib/derive-panel-mode'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
@@ -184,8 +184,8 @@ export function SessionDetailPanel({
   )
   const hasPlans = planDocuments && planDocuments.length > 0
 
-  // Derive liveStatus from SSE session data (falls back to 'inactive' when undefined)
-  const detailLiveStatus = deriveLiveStatus(session)
+  // Derive ownership tier from SSE session data (null when no live data)
+  const detailOwnershipTier: OwnershipTier = session?.ownership?.tier ?? null
 
   // ---- FSM: single state machine replaces useConversation + TanStack chain ----
   const {
@@ -204,10 +204,10 @@ export function SessionDetailPanel({
       b.type === 'team_transcript' && (!data.teamName || b.teamName === data.teamName),
   ) as (GeneratedTeamTranscriptBlock & { type: 'team_transcript' }) | undefined
 
-  // Dispatch live status so FSM transitions correctly for CLI-owned sessions
+  // Dispatch ownership so FSM transitions correctly for CLI-owned sessions
   useEffect(() => {
-    convDispatch({ type: 'LIVE_STATUS_CHANGED', status: detailLiveStatus })
-  }, [detailLiveStatus, convDispatch])
+    convDispatch({ type: 'OWNERSHIP_CHANGED', tier: detailOwnershipTier })
+  }, [detailOwnershipTier, convDispatch])
 
   // Pagination: stable callback — matches ChatSession pattern
   const handleLoadOlderHistory = useCallback(() => {

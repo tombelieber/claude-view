@@ -1,6 +1,6 @@
 import type { IDockviewPanelHeaderProps } from 'dockview-react'
 import { X } from 'lucide-react'
-import type { LiveStatus } from '../../lib/live-status'
+import type { OwnershipTier } from '../../lib/derive-panel-mode'
 import { cn } from '../../lib/utils'
 import { ChatTabContextMenu } from './ChatTabContextMenu'
 
@@ -10,19 +10,19 @@ import { ChatTabContextMenu } from './ChatTabContextMenu'
  * - autonomous / other active → green
  * - inactive → gray
  */
-function getTabDotColor(agentStateGroup: string | null, liveStatus: LiveStatus): string {
-  if (liveStatus === 'inactive') return 'bg-gray-300 dark:bg-gray-600'
+function getTabDotColor(agentStateGroup: string | null, ownershipTier: OwnershipTier): string {
+  if (ownershipTier === null) return 'bg-gray-300 dark:bg-gray-600'
   if (agentStateGroup === 'needs_you') return 'bg-amber-500'
   return 'bg-green-500'
 }
 
 export function ChatTabRenderer({ api, params, containerApi }: IDockviewPanelHeaderProps) {
   const agentStateGroup = (params.agentStateGroup as string | null) ?? null
-  const liveStatus = (params.liveStatus as LiveStatus) ?? 'inactive'
+  const ownershipTier = (params.ownershipTier as OwnershipTier) ?? null
 
-  const dotColor = getTabDotColor(agentStateGroup, liveStatus)
+  const dotColor = getTabDotColor(agentStateGroup, ownershipTier)
   const isAutonomous = agentStateGroup === 'autonomous'
-  const showPulse = isAutonomous && liveStatus !== 'inactive'
+  const showPulse = isAutonomous && ownershipTier !== null
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()

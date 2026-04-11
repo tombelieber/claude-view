@@ -40,7 +40,7 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
       title: panel.title ?? sessionId.slice(0, 8),
       params: {
         sessionId,
-        liveStatus: (panel.params as { liveStatus?: string })?.liveStatus ?? 'inactive',
+        ownershipTier: (panel.params as { ownershipTier?: string })?.ownershipTier ?? null,
       },
       position: { referencePanel: panel.id, direction: 'right' },
     })
@@ -54,7 +54,7 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
       title: panel.title ?? sessionId.slice(0, 8),
       params: {
         sessionId,
-        liveStatus: (panel.params as { liveStatus?: string })?.liveStatus ?? 'inactive',
+        ownershipTier: (panel.params as { ownershipTier?: string })?.ownershipTier ?? null,
       },
       position: { referencePanel: panel.id, direction: 'below' },
     })
