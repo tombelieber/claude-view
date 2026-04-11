@@ -130,11 +130,21 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           break
 
         case 'permission_response':
-          session.permissions.resolvePermission(
-            msg.requestId,
-            msg.allowed,
-            msg.updatedPermissions as PermissionUpdate[] | undefined,
-          )
+          if (
+            !session.permissions.resolvePermission(
+              msg.requestId,
+              msg.allowed,
+              msg.updatedPermissions as PermissionUpdate[] | undefined,
+            )
+          ) {
+            ws.send(
+              JSON.stringify({
+                type: 'error',
+                message: 'Unknown permission requestId',
+                fatal: false,
+              }),
+            )
+          }
           break
 
         case 'question_response':
@@ -150,7 +160,14 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           break
 
         case 'plan_response':
-          if (!session.permissions.resolvePlan(msg.requestId, msg.approved, msg.feedback)) {
+          if (
+            !session.permissions.resolvePlan(
+              msg.requestId,
+              msg.approved,
+              msg.feedback,
+              msg.bypassPermissions,
+            )
+          ) {
             ws.send(
               JSON.stringify({ type: 'error', message: 'Unknown plan requestId', fatal: false }),
             )

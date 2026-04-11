@@ -443,6 +443,7 @@ export interface PlanResponseMsg {
   requestId: string
   approved: boolean
   feedback?: string
+  bypassPermissions?: boolean
 }
 
 export interface ElicitationResponse {
