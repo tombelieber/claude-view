@@ -58,7 +58,7 @@ pub(super) fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     group: AgentStateGroup::NeedsYou,
                     state: "awaiting_approval".into(),
                     label: "Plan ready for review".into(),
-                    context: None,
+                    context: payload.tool_input.clone(),
                 },
                 "EnterPlanMode" => AgentState {
                     group: AgentStateGroup::Autonomous,
@@ -151,7 +151,7 @@ pub(super) fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                     .as_deref()
                     .map(|m| m.chars().take(100).collect::<String>())
                     .unwrap_or_else(|| "Awaiting input".into()),
-                context: None,
+                context: payload.tool_input.clone(),
             },
             // Unknown notification types → preserve state (Observability path).
             // This AgentState is a defensive fallback only.

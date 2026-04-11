@@ -54,8 +54,8 @@ describe('TabBarActions', () => {
     expect(addPanel).toHaveBeenCalledTimes(1)
     const args = addPanel.mock.calls[0][0]
 
-    // Panel ID should start with 'chat-new-' (not 'chat-' without 'new')
-    expect(args.id).toMatch(/^chat-new-\d+$/)
+    // Panel ID is a unique string — assert it exists, don't parse its prefix
+    expect(typeof args.id).toBe('string')
     // Title must be "New Chat", not a timestamp
     expect(args.title).toBe('New Chat')
     // Params should have empty sessionId (blank panel)

@@ -15,9 +15,11 @@ function extractPlanContent(planData: unknown): string {
     return typeof planData === 'string' ? planData : JSON.stringify(planData, null, 2)
   }
   const d = planData as Record<string, unknown>
-  // ExitPlanMode tool_use may carry plan text in different fields
-  if (typeof d.allowedPrompts === 'string') return d.allowedPrompts
+  // Sidecar shape: planData.plan (string)
   if (typeof d.plan === 'string') return d.plan
+  // Historical Rust synthesizer shape: planContent (string)
+  if (typeof d.planContent === 'string') return d.planContent
+  if (typeof d.allowedPrompts === 'string') return d.allowedPrompts
   if (typeof d.content === 'string') return d.content
   if (typeof d.message === 'string') return d.message
   return JSON.stringify(planData, null, 2)
