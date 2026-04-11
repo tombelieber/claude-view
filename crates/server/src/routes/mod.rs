@@ -19,6 +19,7 @@ pub mod hooks;
 pub mod ide;
 pub mod indexing;
 pub mod insights;
+pub mod interaction_tap;
 pub mod invocables;
 pub mod jobs;
 pub mod live;

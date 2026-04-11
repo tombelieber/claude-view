@@ -26,6 +26,9 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 
+use crate::live::coordinator::SessionCoordinator;
+use crate::live::mutation::types::{InteractionAction, SessionMutation};
+use crate::routes::interaction_tap;
 use crate::state::AppState;
 
 /// Shared reqwest client — connection pooling + timeout, created once.
@@ -184,11 +187,20 @@ async fn ws_proxy_handler(
         .replace("https://", "wss://");
     let target = format!("{ws_url}/ws/chat/{session_id}");
 
-    ws.on_upgrade(move |client_ws| relay_websocket(client_ws, target))
+    ws.on_upgrade(move |client_ws| relay_websocket(client_ws, target, session_id, state))
 }
 
 /// Bidirectional WebSocket relay between the browser and the sidecar.
-async fn relay_websocket(client_ws: WebSocket, target_url: String) {
+///
+/// The sidecar→client direction is tapped to detect interaction events
+/// (permission_request, ask_question, plan_approval, elicitation) and
+/// emit coordinator mutations so the Live Monitor can show pending state.
+async fn relay_websocket(
+    client_ws: WebSocket,
+    target_url: String,
+    session_id: String,
+    state: Arc<AppState>,
+) {
     let sidecar_ws = match tokio_tungstenite::connect_async(&target_url).await {
         Ok((ws, _)) => ws,
         Err(e) => {
@@ -200,7 +212,7 @@ async fn relay_websocket(client_ws: WebSocket, target_url: String) {
     let (mut client_tx, mut client_rx) = client_ws.split();
     let (mut sidecar_tx, mut sidecar_rx) = sidecar_ws.split();
 
-    // Client → Sidecar
+    // Client → Sidecar (passthrough, no tap)
     let client_to_sidecar = async {
         while let Some(msg) = client_rx.next().await {
             let msg = match msg {
@@ -218,8 +230,13 @@ async fn relay_websocket(client_ws: WebSocket, target_url: String) {
         }
     };
 
-    // Sidecar → Client
+    // Sidecar → Client (tapped for interaction events)
+    let coordinator = state.coordinator.clone();
+    let sid = session_id.clone();
     let sidecar_to_client = async {
+        // Track last pending request_id locally so turn_complete can clear it.
+        let mut last_request_id: Option<String> = None;
+
         while let Some(msg) = sidecar_rx.next().await {
             let msg = match msg {
                 Ok(m) => m,
@@ -228,6 +245,14 @@ async fn relay_websocket(client_ws: WebSocket, target_url: String) {
                     break;
                 }
             };
+
+            // Tap: inspect text messages for interaction events
+            if let tokio_tungstenite::tungstenite::Message::Text(ref text) = msg {
+                tap_interaction_events(text, &sid, &coordinator, &state, &mut last_request_id)
+                    .await;
+            }
+
+            // Always forward the original message to the browser
             if let Some(axum_msg) = tungstenite_to_axum(msg) {
                 if client_tx.send(axum_msg).await.is_err() {
                     break;
@@ -240,6 +265,71 @@ async fn relay_websocket(client_ws: WebSocket, target_url: String) {
     tokio::select! {
         _ = client_to_sidecar => {},
         _ = sidecar_to_client => {},
+    }
+}
+
+/// Inspect a sidecar message for interaction or turn-end events and emit
+/// coordinator mutations. Fire-and-forget — never blocks the relay.
+async fn tap_interaction_events(
+    text: &str,
+    session_id: &str,
+    coordinator: &SessionCoordinator,
+    state: &AppState,
+    last_request_id: &mut Option<String>,
+) {
+    // Check for interaction events (permission, question, plan, elicitation)
+    if let Some((meta, block)) = interaction_tap::try_extract_interaction(text) {
+        tracing::debug!(
+            session_id,
+            variant = ?meta.variant,
+            request_id = %meta.request_id,
+            "Tapped interaction event from sidecar"
+        );
+        *last_request_id = Some(meta.request_id.clone());
+
+        let ctx = state.mutation_context();
+        let now = chrono::Utc::now().timestamp();
+        coordinator
+            .handle(
+                &ctx,
+                session_id,
+                SessionMutation::Interaction(InteractionAction::Set {
+                    meta,
+                    full_data: block,
+                }),
+                None, // no pid from WS relay
+                now,
+                None, // no hook event
+                None, // no cwd
+                None, // no transcript_path
+            )
+            .await;
+        return;
+    }
+
+    // Check for turn_complete / turn_error — clears any pending interaction
+    if interaction_tap::is_turn_end(text) {
+        if let Some(req_id) = last_request_id.take() {
+            tracing::debug!(
+                session_id,
+                request_id = %req_id,
+                "Turn ended, clearing pending interaction"
+            );
+            let ctx = state.mutation_context();
+            let now = chrono::Utc::now().timestamp();
+            coordinator
+                .handle(
+                    &ctx,
+                    session_id,
+                    SessionMutation::Interaction(InteractionAction::Clear { request_id: req_id }),
+                    None,
+                    now,
+                    None,
+                    None,
+                    None,
+                )
+                .await;
+        }
     }
 }
 
