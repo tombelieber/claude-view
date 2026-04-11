@@ -20,12 +20,24 @@ vi.mock('../../../pages/ChatSession', () => ({
   ),
 }))
 
+// Mock CliTerminal
+vi.mock('../../cli-terminal/CliTerminal', () => ({
+  CliTerminal: ({ tmuxSessionId }: { tmuxSessionId: string }) => (
+    <div data-testid="cli-terminal" data-tmux-session-id={tmuxSessionId} />
+  ),
+}))
+
 import { ChatPanel } from '../ChatPanel'
 
-function renderPanel(overrides?: { sessionId?: string; ownershipTier?: string | null }) {
+function renderPanel(overrides?: {
+  sessionId?: string
+  ownershipTier?: string | null
+  tmuxSessionId?: string
+}) {
   const params = {
     sessionId: overrides?.sessionId ?? 'sess-123',
     ownershipTier: overrides?.ownershipTier ?? null,
+    tmuxSessionId: overrides?.tmuxSessionId,
   }
   const props = {
     params,
@@ -59,6 +71,28 @@ describe('ChatPanel', () => {
     renderPanel()
     const el = screen.getByTestId('chat-session')
     expect(el.getAttribute('data-ownership-tier')).toBe('')
+  })
+
+  it('renders CliTerminal when ownershipTier is tmux and tmuxSessionId is set', () => {
+    renderPanel({ ownershipTier: 'tmux', tmuxSessionId: 'cv-abc123' })
+    expect(screen.getByTestId('cli-terminal')).toBeInTheDocument()
+    expect(screen.getByTestId('cli-terminal').getAttribute('data-tmux-session-id')).toBe(
+      'cv-abc123',
+    )
+    expect(screen.queryByTestId('chat-session')).not.toBeInTheDocument()
+  })
+
+  it('renders ChatSession when ownershipTier is tmux but tmuxSessionId is missing', () => {
+    // Edge case: ownership resolved but tmuxSessionId not yet in params
+    renderPanel({ ownershipTier: 'tmux' })
+    expect(screen.getByTestId('chat-session')).toBeInTheDocument()
+    expect(screen.queryByTestId('cli-terminal')).not.toBeInTheDocument()
+  })
+
+  it('renders ChatSession for sdk ownership', () => {
+    renderPanel({ ownershipTier: 'sdk' })
+    expect(screen.getByTestId('chat-session')).toBeInTheDocument()
+    expect(screen.queryByTestId('cli-terminal')).not.toBeInTheDocument()
   })
 
   it('panel container has min-w-0 and overflow-hidden for responsive shrinking', () => {

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { LiveContextData } from '../../hooks/use-context-percent'
 import type { OwnershipTier } from '../../lib/derive-panel-mode'
+import { CliTerminal } from '../cli-terminal/CliTerminal'
 import { ChatSession } from '../../pages/ChatSession'
 
 interface ChatPanelParams {
@@ -10,6 +11,8 @@ interface ChatPanelParams {
   ownershipTier?: OwnershipTier
   liveProjectPath?: string
   liveContextData?: LiveContextData
+  /** Tmux session ID — when set with ownershipTier='tmux', renders xterm terminal. */
+  tmuxSessionId?: string
 }
 
 /**
@@ -19,7 +22,7 @@ interface ChatPanelParams {
  * permission handling, model selection, and command palette.
  */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>) {
-  const { sessionId, ownershipTier, liveProjectPath, liveContextData } = params
+  const { sessionId, ownershipTier, liveProjectPath, liveContextData, tmuxSessionId } = params
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -67,6 +70,16 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     },
     [api, navigate],
   )
+
+  // Tmux-owned session with resolved tmuxSessionId → render xterm terminal.
+  // React handles the swap when ownership arrives via SSE param update.
+  if (ownershipTier === 'tmux' && tmuxSessionId) {
+    return (
+      <div ref={containerRef} className="flex flex-col h-full min-w-0 overflow-hidden">
+        <CliTerminal tmuxSessionId={tmuxSessionId} className="h-full" />
+      </div>
+    )
+  }
 
   return (
     <div ref={containerRef} className="flex flex-col h-full min-w-0 overflow-hidden">

@@ -3820,6 +3820,80 @@
         }
       }
     },
+    "/api/sessions/{session_id}/interact": {
+      "post": {
+        "tags": [
+          "crate::routes::interact::handlers"
+        ],
+        "summary": "Resolve a pending interaction (permission, question, plan, elicitation).",
+        "description": "1. Parse InteractRequest from body\n2. Look up session in live_sessions — 404 if not found\n3. Resolve ownership — 400 if Observed\n4. Check interaction_data side-map — 409 if request_id not found (stale)\n5. For SDK: forward to sidecar HTTP API\n6. Clear pending interaction via coordinator",
+        "operationId": "interact_handler",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InteractRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Interaction resolved"
+          },
+          "400": {
+            "description": "Observed session or invalid request"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "409": {
+            "description": "Request ID stale or already resolved"
+          }
+        }
+      }
+    },
+    "/api/sessions/{session_id}/interaction": {
+      "get": {
+        "tags": [
+          "crate::routes::interact::handlers"
+        ],
+        "summary": "Fetch the full interaction data for a session's pending interaction.",
+        "description": "1. Look up session in live_sessions — 404 if not found\n2. Read pending_interaction — 404 if None (no pending interaction)\n3. Look up full data in interaction_data side-map — 404 if not found",
+        "operationId": "get_interaction_handler",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session UUID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full interaction data"
+          },
+          "404": {
+            "description": "Session or interaction not found"
+          }
+        }
+      }
+    },
     "/api/sessions/{session_id}/share": {
       "post": {
         "tags": [
@@ -5107,6 +5181,13 @@
           "kind": {
             "type": "string",
             "description": "Session kind: \"interactive\" or \"background\" (subagent)."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional session name (from `claude --name \"foo\"`).\nPresent when user starts session with explicit name."
           },
           "pid": {
             "type": "integer",
@@ -9258,6 +9339,124 @@
             "$ref": "#/components/schemas/IntegrityCounterInfo"
           }
         }
+      },
+      "InteractRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "requestId",
+              "allowed",
+              "variant"
+            ],
+            "properties": {
+              "allowed": {
+                "type": "boolean"
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "updatedPermissions": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {}
+              },
+              "variant": {
+                "type": "string",
+                "enum": [
+                  "permission"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "requestId",
+              "answers",
+              "variant"
+            ],
+            "properties": {
+              "answers": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "propertyNames": {
+                  "type": "string"
+                }
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string",
+                "enum": [
+                  "question"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "requestId",
+              "approved",
+              "variant"
+            ],
+            "properties": {
+              "approved": {
+                "type": "boolean"
+              },
+              "bypassPermissions": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              },
+              "feedback": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "requestId": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string",
+                "enum": [
+                  "plan"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "requestId",
+              "response",
+              "variant"
+            ],
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "response": {
+                "type": "string"
+              },
+              "variant": {
+                "type": "string",
+                "enum": [
+                  "elicitation"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Request body for the interact endpoint. Tagged by `variant`."
       },
       "InvocableWithCount": {
         "type": "object",
