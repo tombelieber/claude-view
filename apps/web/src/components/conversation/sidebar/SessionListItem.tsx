@@ -5,14 +5,11 @@ import { forwardRef, useCallback, useState } from 'react'
 import type { SessionInfo } from '../../../types/generated/SessionInfo'
 import { SourceBadge } from '../../shared/SourceBadge'
 import { deriveDropdownActions, getStatusDotColor } from './session-list-helpers'
-
-import type { LiveStatus } from '../../../lib/live-status'
 import { PhaseBadge } from '../../PhaseBadge'
 
 interface Props {
   session: SessionInfo & {
     isActive?: boolean
-    liveStatus?: LiveStatus
     liveData?: LiveSession | null
   }
   isSelected: boolean
@@ -66,7 +63,8 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
   const dotColor = getStatusDotColor(session)
   const isAutonomous = session.liveData?.agentState?.group === 'autonomous'
   const showPulse = isAutonomous && session.liveData != null
-  const actions = deriveDropdownActions(session)
+  const ownership = session.liveData?.ownership
+  const actions = deriveDropdownActions(session, ownership)
 
   const rowClasses = [
     'group relative flex items-start gap-2 px-3 py-2 rounded-md cursor-pointer transition-colors',
@@ -102,7 +100,9 @@ export const SessionListItem = forwardRef<HTMLDivElement, Props>(function Sessio
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
-          {session.liveData && <SourceBadge source={session.liveData.source} />}
+          {(session.liveData || ownership) && (
+            <SourceBadge source={session.liveData?.source} ownership={ownership} />
+          )}
           <PhaseBadge
             phase={session.liveData?.phase?.current?.phase}
             freshness={session.liveData?.phase?.freshness}
