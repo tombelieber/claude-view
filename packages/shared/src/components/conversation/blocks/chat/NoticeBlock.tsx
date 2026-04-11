@@ -9,6 +9,7 @@ import type {
   SessionClosed,
 } from '../../../../types/sidecar-protocol'
 import { AlertCircle, Info, Loader2 } from 'lucide-react'
+import { StatusBadge } from '../shared/StatusBadge'
 
 interface NoticeBlockProps {
   block: NoticeBlockType
@@ -31,6 +32,11 @@ function AssistantErrorNotice({ data }: { data: AssistantError }) {
       <span className="text-xs text-red-700 dark:text-red-300">
         {labels[data.error] ?? data.error}
       </span>
+      {data.messageId && (
+        <span className="text-xs font-mono text-gray-400 dark:text-gray-500 ml-auto">
+          {data.messageId.slice(0, 12)}
+        </span>
+      )}
     </div>
   )
 }
@@ -73,10 +79,22 @@ function RateLimitNotice({
           : ''}
       </span>
       {hasRetry && (
-        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 ml-auto tabular-nums">
+        <span className="text-xs font-mono text-gray-500 dark:text-gray-400 tabular-nums">
           retry {retryAttempt ?? '?'}/{maxRetries ?? '?'} in {(retryInMs / 1000).toFixed(0)}s
         </span>
       )}
+      <div className="flex items-center gap-1.5 ml-auto">
+        {data.rateLimitType && <StatusBadge label={data.rateLimitType} color="gray" />}
+        {data.utilization != null && (
+          <span className="text-xs font-mono text-gray-500 dark:text-gray-400">
+            {(data.utilization * 100).toFixed(0)}%
+          </span>
+        )}
+        {data.overageStatus && <StatusBadge label={data.overageStatus} color="amber" />}
+        {data.isUsingOverage && (
+          <span className="text-xs text-amber-600 dark:text-amber-400">Overage</span>
+        )}
+      </div>
     </div>
   )
 }
@@ -87,7 +105,8 @@ function ContextCompactedNotice({ data }: { data: ContextCompacted }) {
       <div className="flex-1 h-px bg-gray-300/50 dark:bg-gray-600/50" />
       <span className="inline-flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
         <Info className="w-3 h-3 flex-shrink-0" />
-        Context compacted{data.trigger === 'manual' ? ' (manual)' : ''}
+        Context compacted{data.trigger === 'manual' ? ' (manual)' : ''} —{' '}
+        {(data.preTokens ?? 0).toLocaleString()} tokens
       </span>
       <div className="flex-1 h-px bg-gray-300/50 dark:bg-gray-600/50" />
     </div>
@@ -97,17 +116,26 @@ function ContextCompactedNotice({ data }: { data: ContextCompacted }) {
 function AuthStatusNotice({ data }: { data: AuthStatus }) {
   if (!data.isAuthenticating && !data.error) return null
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 text-xs">
-      {data.isAuthenticating ? (
-        <>
-          <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />
-          <span className="text-gray-500 dark:text-gray-400">Authenticating...</span>
-        </>
-      ) : (
-        <>
-          <AlertCircle className="w-3.5 h-3.5 text-red-500 dark:text-red-400" />
-          <span className="text-red-600 dark:text-red-400">{data.error}</span>
-        </>
+    <div className="py-1.5">
+      <div className="flex items-center gap-2 px-3 text-xs">
+        {data.isAuthenticating ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 text-gray-400 animate-spin" />
+            <span className="text-gray-500 dark:text-gray-400">Authenticating...</span>
+          </>
+        ) : (
+          <>
+            <AlertCircle className="w-3.5 h-3.5 text-red-500 dark:text-red-400" />
+            <span className="text-red-600 dark:text-red-400">{data.error}</span>
+          </>
+        )}
+      </div>
+      {data.output.length > 0 && (
+        <div className="mt-1 px-3 text-xs font-mono text-gray-500 dark:text-gray-400 space-y-0.5">
+          {data.output.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -151,6 +179,7 @@ function ErrorNotice({ data }: { data: ErrorEvent }) {
       }`}
     >
       <AlertCircle className="w-4 h-4 text-red-500 dark:text-red-400 flex-shrink-0" />
+      {data.fatal && <StatusBadge label="FATAL" color="red" />}
       <span className="text-xs text-red-700 dark:text-red-300">{extractErrorMessage(data)}</span>
     </div>
   )

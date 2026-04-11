@@ -26,25 +26,36 @@ function AssistantErrorDetail({ data }: { data: AssistantError }) {
   )
 }
 
-function RateLimitDetail({ data }: { data: RateLimit }) {
+function RateLimitDetail({
+  data,
+  retryInMs,
+  retryAttempt,
+  maxRetries,
+}: {
+  data: RateLimit
+  retryInMs?: number
+  retryAttempt?: number
+  maxRetries?: number
+}) {
   const isRejected = data.status === 'rejected'
   const isWarning = data.status === 'allowed_warning'
   const dot = isRejected ? ('red' as const) : isWarning ? ('amber' as const) : ('gray' as const)
+  const hasRetry = retryInMs != null && retryInMs > 0
 
   return (
-    <EventCard
-      dot={dot}
-      chip="Rate Limit"
-      chipColor={isRejected ? undefined : undefined}
-      label={data.status}
-      error={isRejected}
-      rawData={data}
-    >
+    <EventCard dot={dot} chip="Rate Limit" label={data.status} error={isRejected} rawData={data}>
       <div className="text-xs space-y-0.5 text-gray-500 dark:text-gray-400">
         {data.rateLimitType && <div>Type: {data.rateLimitType}</div>}
         {data.utilization != null && <div>Utilization: {(data.utilization * 100).toFixed(0)}%</div>}
+        {data.overageStatus && <div>Overage status: {data.overageStatus}</div>}
+        {data.isUsingOverage && <div>Using overage</div>}
         {data.resetsAt && data.resetsAt > 0 && (
           <div>Resets: {new Date(data.resetsAt * 1000).toLocaleTimeString()}</div>
+        )}
+        {hasRetry && (
+          <div className="font-mono tabular-nums">
+            Retry {retryAttempt ?? '?'}/{maxRetries ?? '?'} in {(retryInMs / 1000).toFixed(0)}s
+          </div>
         )}
       </div>
     </EventCard>
@@ -136,7 +147,14 @@ export function DevNoticeBlock({ block, onSuggestion }: NoticeBlockProps) {
     case 'assistant_error':
       return <AssistantErrorDetail data={block.data as AssistantError} />
     case 'rate_limit':
-      return <RateLimitDetail data={block.data as RateLimit} />
+      return (
+        <RateLimitDetail
+          data={block.data as RateLimit}
+          retryInMs={block.retryInMs}
+          retryAttempt={block.retryAttempt}
+          maxRetries={block.maxRetries}
+        />
+      )
     case 'context_compacted':
       return <ContextCompactedDetail data={block.data as ContextCompacted} />
     case 'auth_status':
