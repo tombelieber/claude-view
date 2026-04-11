@@ -66,10 +66,6 @@ clap = { version = "4", features = ["derive"] }
 crc32fast = "1"
 hex = "0.4"
 
-# Checksums and encoding
-crc32fast = "1"
-hex = "0.4"
-
 # Utilities
 base64 = "0.22"
 dirs = "5"
