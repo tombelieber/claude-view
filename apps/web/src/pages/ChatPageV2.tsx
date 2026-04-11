@@ -232,7 +232,7 @@ export function ChatPageV2() {
     openSession(sessionId)
   }, [sessionId, openSession])
 
-  // Sync live data (dot color, title, liveStatus) into existing tab params when SSE ticks.
+  // Sync live data (dot color, title, ownershipTier) into existing tab params when SSE ticks.
   // This corrects any stale values from layout-restore time (SSE hadn't delivered data yet).
   // CLI terminal panels (id starts with "cli-") have their own lifecycle — skip them.
   useEffect(() => {
