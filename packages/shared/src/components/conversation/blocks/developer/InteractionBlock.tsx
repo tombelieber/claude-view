@@ -9,6 +9,7 @@ import { AskUserQuestionCard } from '../shared/AskUserQuestionCard'
 import { ElicitationCard } from '../shared/ElicitationCard'
 import { PermissionCard } from '../shared/PermissionCard'
 import { PlanApprovalCard } from '../shared/PlanApprovalCard'
+import { StatusBadge } from '../shared/StatusBadge'
 import { useInteractionHandlers } from '../shared/use-interaction-handlers'
 import { EventCard } from './EventCard'
 
@@ -103,6 +104,15 @@ export function DevInteractionBlock({ block }: InteractionBlockProps) {
     }
   })()
 
+  const provenanceBadge = block.historicalSource ? (
+    <div className="mb-1">
+      <StatusBadge
+        label={block.historicalSource === 'system_variant' ? 'system_variant' : 'inferred'}
+        color={block.historicalSource === 'system_variant' ? 'green' : 'amber'}
+      />
+    </div>
+  ) : null
+
   return (
     <EventCard
       dot={config.dot}
@@ -132,6 +142,7 @@ export function DevInteractionBlock({ block }: InteractionBlockProps) {
       })()}
       rawData={block}
     >
+      {provenanceBadge}
       {richContent}
     </EventCard>
   )

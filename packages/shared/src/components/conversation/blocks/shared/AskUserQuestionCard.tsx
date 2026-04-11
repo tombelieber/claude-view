@@ -2,6 +2,7 @@ import { CheckCircle2, Circle, HelpCircle, Send } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import type { AskQuestion } from '../../../../types/sidecar-protocol'
 import { InteractiveCardShell } from './InteractiveCardShell'
+import { Markdown } from './Markdown'
 
 export interface AskUserQuestionCardProps {
   question: AskQuestion
@@ -190,6 +191,11 @@ export function AskUserQuestionCard({
                         {opt.description && (
                           <div className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 leading-relaxed">
                             {opt.description}
+                          </div>
+                        )}
+                        {opt.markdown && (
+                          <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                            <Markdown content={opt.markdown} />
                           </div>
                         )}
                       </div>

@@ -163,6 +163,22 @@ export function PermissionCard({
           </pre>
         </div>
 
+        <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
+          ID: {permission.toolUseID}
+        </span>
+
+        {permission.blockedPath && (
+          <div className="text-xs text-red-600 dark:text-red-400">
+            Blocked: {permission.blockedPath}
+          </div>
+        )}
+
+        {permission.agentID && (
+          <div className="text-xs text-indigo-600 dark:text-indigo-400">
+            Agent: {permission.agentID}
+          </div>
+        )}
+
         {!resolved && (
           <div className="flex items-center gap-2">
             <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">

@@ -1,6 +1,7 @@
 import type { Elicitation } from '../../../../types/sidecar-protocol'
 import { MessageCircle, Send } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { CollapsibleJson } from './CollapsibleJson'
 import { InteractiveCardShell } from './InteractiveCardShell'
 
 export interface ElicitationCardProps {
@@ -66,6 +67,14 @@ export function ElicitationCard({
         <p className="text-xs text-gray-800 dark:text-gray-200 leading-relaxed">
           {elicitation.prompt}
         </p>
+
+        <div className="text-xs">
+          <span className="text-gray-500 dark:text-gray-400">Tool:</span>{' '}
+          <span className="font-mono text-gray-700 dark:text-gray-300">{elicitation.toolName}</span>
+        </div>
+
+        <CollapsibleJson data={elicitation.toolInput} label="Tool Input" />
+
         {!resolved && (
           <input
             type="text"
