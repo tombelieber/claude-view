@@ -1,12 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { SKIP_OPERATION_IDS, SSE_OPERATION_IDS } from '../shared.js'
 import {
   HAND_WRITTEN_GROUPS,
   buildToolTable,
   extractGeneratedToolGroups,
 } from '../gen-skill-docs.js'
+import { SKIP_OPERATION_IDS, SSE_OPERATION_IDS } from '../shared.js'
 
 const SPEC_PATH = join(import.meta.dir, '..', 'openapi.json')
 const spec = JSON.parse(readFileSync(SPEC_PATH, 'utf-8'))

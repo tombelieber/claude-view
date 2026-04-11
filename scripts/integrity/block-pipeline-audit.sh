@@ -104,7 +104,7 @@ JSONL_PATH_COUNT=$(wc -l < "$JSONL_PATHS" | tr -d ' ')
 
 step "Step 2/7: Extracting Rust struct fields..."
 
-BLOCK_TYPES="crates/core/src/block_types.rs"
+BLOCK_TYPES="crates/types/src/block_types.rs"
 RUST_FIELDS="$TMPDIR_AUDIT/rust-fields.json"
 
 # Extract struct name → fields mapping
