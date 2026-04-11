@@ -25,12 +25,17 @@ const liveNeedsYou = {
 
 const liveSdkManaged = {
   ...liveAutonomous,
-  ownership: { tier: 'sdk' as const },
+  ownership: { tier: 'sdk' as const, controlId: 'ctrl-1', source: null, entrypoint: null },
 }
 
 const liveTmuxManaged = {
   ...liveAutonomous,
-  ownership: { tier: 'tmux' as const },
+  ownership: {
+    tier: 'tmux' as const,
+    cliSessionId: 'cv-test-1',
+    source: null,
+    entrypoint: null,
+  },
 }
 
 // ---------------------------------------------------------------------------
@@ -134,7 +139,7 @@ describe('deriveDropdownActions', () => {
         isActive: true,
         liveData: liveAutonomous,
       },
-      { tier: 'tmux' },
+      liveTmuxManaged.ownership,
     )
     expect(actions.openInMonitor).toBe(true)
     expect(actions.takeOver).toBe(false)
@@ -150,7 +155,7 @@ describe('deriveDropdownActions', () => {
         isActive: true,
         liveData: liveSdkManaged,
       },
-      { tier: 'sdk' },
+      liveSdkManaged.ownership,
     )
     expect(actions.shutDown).toBe(true)
     expect(actions.openInMonitor).toBe(true)
