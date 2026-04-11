@@ -83,6 +83,11 @@ pub fn apply_mutation_to_session(
             apply_interaction(&mut session.pending_interaction, action);
             None
         }
+        SessionMutation::Birth(_) => {
+            // Birth is creation-only — factory sets Working status.
+            // No status change or field mutation needed.
+            None
+        }
     }
 }
 

@@ -19,4 +19,6 @@ pub use git::{
 pub use metadata::{extract_session_metadata, ExtractedMetadata};
 pub use paths::{claude_projects_dir, truncate_preview};
 pub use projects::{count_active_sessions, get_projects};
-pub use resolve::{resolve_project_path_with_cwd, resolve_worktree_parent, ResolvedProject};
+pub use resolve::{
+    encode_project_name, resolve_project_path_with_cwd, resolve_worktree_parent, ResolvedProject,
+};

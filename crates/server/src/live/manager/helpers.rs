@@ -183,6 +183,23 @@ pub(super) fn load_session_snapshot_from_str(content: &str) -> SessionSnapshot {
 }
 
 // =============================================================================
+// Epoch helpers (shared by handle_session_birth + reconciler)
+// =============================================================================
+
+/// Current Unix timestamp in seconds.
+pub(crate) fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64
+}
+
+/// Convert milliseconds (as used in pid.json startedAt) to seconds.
+pub(crate) fn ms_to_secs(ms: i64) -> i64 {
+    ms / 1000
+}
+
+// =============================================================================
 // Session file enrichment (kind + entrypoint from ~/.claude/sessions/)
 // =============================================================================
 

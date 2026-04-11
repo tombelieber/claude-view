@@ -49,6 +49,11 @@ pub fn plan_side_effects(
                 request_id: request_id.clone(),
             });
         }
+        SessionMutation::Birth(_) => {
+            // Birth is creation-only. No deferred side effects needed —
+            // accumulator creation handled by JSONL watcher on first file event.
+            // Death watcher registration handled in handle_session_birth().
+        }
         _ => {}
     }
 

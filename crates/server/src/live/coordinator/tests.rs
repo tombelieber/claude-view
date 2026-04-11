@@ -271,29 +271,32 @@ mod tests {
             "Expected Buffered, got different result"
         );
 
-        // Now send a Start event which can create the session
+        // Now send a Birth event which can create the session
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 111,
+            session_id: "buffered-session".to_string(),
+            cwd: "/tmp".to_string(),
+            started_at: 1700000001000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
         let result = coordinator
             .handle(
                 &ctx,
                 "buffered-session",
-                SessionMutation::Lifecycle(LifecycleEvent::Start {
-                    cwd: Some("/tmp".into()),
-                    model: None,
-                    source: None,
-                    pid: Some(111),
-                    transcript_path: None,
-                }),
+                SessionMutation::Birth(active),
                 Some(111),
                 1700000001,
                 None,
-                None, // Start carries cwd internally
+                Some("/tmp"),
                 None,
             )
             .await;
 
         assert!(
             matches!(result, MutationResult::Created(_)),
-            "Expected Created after Start"
+            "Expected Created after Birth"
         );
 
         // Verify the buffered statusline was drained and applied
@@ -346,7 +349,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_state_change_with_cwd_creates_session() {
+    async fn hook_with_cwd_buffers_without_birth() {
+        // After pid.json change: hooks with cwd are BUFFERED, not upserted.
+        // Only Birth and Reconcile can create sessions.
         let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
             make_upsert_ctx().await;
         let ctx = MutationContext {
@@ -360,7 +365,7 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // PreToolUse with cwd — should upsert, not buffer
+        // PreToolUse with cwd — was upsert, now buffered
         let result = coordinator
             .handle(
                 &ctx,
@@ -384,24 +389,14 @@ mod tests {
             .await;
 
         assert!(
-            matches!(result, MutationResult::Created(_)),
-            "StateChange with cwd must upsert, not buffer"
+            matches!(result, MutationResult::Buffered),
+            "Hooks with cwd must buffer after pid.json change"
         );
-
-        let sessions = ctx.sessions.read().await;
-        let session = sessions.get("upsert-session").unwrap();
-        assert_eq!(session.jsonl.project_path, "/tmp/my-project");
-        assert_eq!(
-            session.jsonl.file_path,
-            "/home/user/.claude/projects/my-project/upsert-session.jsonl"
-        );
-        // State should reflect the StateChange mutation
-        assert_eq!(session.hook.agent_state.state, "acting");
-        assert_eq!(session.hook.agent_state.label, "Running Bash");
     }
 
     #[tokio::test]
-    async fn upsert_observability_with_cwd_creates_session() {
+    async fn observability_with_cwd_buffers_without_birth() {
+        // After pid.json change: observability hooks with cwd are BUFFERED.
         let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
             make_upsert_ctx().await;
         let ctx = MutationContext {
@@ -415,7 +410,7 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // ConfigChange (Observability) with cwd — must still upsert
+        // ConfigChange (Observability) with cwd — was upsert, now buffered
         let result = coordinator
             .handle(
                 &ctx,
@@ -433,13 +428,9 @@ mod tests {
             .await;
 
         assert!(
-            matches!(result, MutationResult::Created(_)),
-            "Observability with cwd must upsert, not buffer"
+            matches!(result, MutationResult::Buffered),
+            "Observability with cwd must buffer after pid.json change"
         );
-
-        let sessions = ctx.sessions.read().await;
-        let session = sessions.get("obs-upsert").unwrap();
-        assert_eq!(session.jsonl.project_path, "/tmp/project");
     }
 
     #[tokio::test]
@@ -488,7 +479,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn upsert_drains_previously_buffered_events() {
+    async fn birth_drains_previously_buffered_events() {
         let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
             make_upsert_ctx().await;
         let ctx = MutationContext {
@@ -502,7 +493,7 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // 1) First event: no cwd -> buffered
+        // 1) First event: hook without Birth -> buffered
         coordinator
             .handle(
                 &ctx,
@@ -520,22 +511,22 @@ mod tests {
             .await;
         assert!(ctx.sessions.read().await.get("drain-test").is_none());
 
-        // 2) Second event: has cwd -> upsert + drain buffered Prompt
+        // 2) Birth event -> creates session + drains buffered Prompt
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 100,
+            session_id: "drain-test".to_string(),
+            cwd: "/tmp/proj".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
         coordinator
             .handle(
                 &ctx,
                 "drain-test",
-                SessionMutation::Lifecycle(LifecycleEvent::StateChange {
-                    agent_state: crate::live::state::AgentState {
-                        group: crate::live::state::AgentStateGroup::Autonomous,
-                        state: "acting".into(),
-                        label: "Working".into(),
-                        context: None,
-                    },
-                    event_name: "PreToolUse".into(),
-                    pid: None,
-                }),
-                None,
+                SessionMutation::Birth(active),
+                Some(100),
                 1700000001,
                 None,
                 Some("/tmp/proj"),
@@ -548,13 +539,13 @@ mod tests {
         // Buffered Prompt should have been drained -> turn_count incremented
         assert_eq!(
             session.hook.turn_count, 1,
-            "Buffered Prompt must be drained on upsert"
+            "Buffered Prompt must be drained on Birth"
         );
         assert_eq!(session.hook.last_user_message, "Hello world");
     }
 
     #[tokio::test]
-    async fn upsert_does_not_force_autonomous_state() {
+    async fn birth_then_stop_sets_needs_you_state() {
         let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
             make_upsert_ctx().await;
         let ctx = MutationContext {
@@ -568,7 +559,30 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // Stop event with cwd -> should upsert with NeedsYou/idle, NOT Autonomous
+        // 1) Birth creates session
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 100,
+            session_id: "stop-upsert".to_string(),
+            cwd: "/tmp/proj".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+        coordinator
+            .handle(
+                &ctx,
+                "stop-upsert",
+                SessionMutation::Birth(active),
+                Some(100),
+                1700000000,
+                None,
+                Some("/tmp/proj"),
+                None,
+            )
+            .await;
+
+        // 2) Stop event enriches with NeedsYou state
         let result = coordinator
             .handle(
                 &ctx,
@@ -584,20 +598,25 @@ mod tests {
                     pid: None,
                 }),
                 None,
-                1700000000,
+                1700000001,
                 None,
-                Some("/tmp/proj"),
+                None,
                 None,
             )
             .await;
 
-        assert!(matches!(result, MutationResult::Created(_)));
+        // Stop on an existing session = Closed (status -> Paused -> Done)
+        // Actually Stop sets Paused which is != Done, so it's Updated
+        assert!(
+            matches!(result, MutationResult::Updated(_)),
+            "Stop on existing session should return Updated"
+        );
 
         let sessions = ctx.sessions.read().await;
         let session = sessions.get("stop-upsert").unwrap();
         assert_eq!(
             session.hook.agent_state.state, "idle",
-            "Stop upsert must reflect idle state, not forced acting"
+            "Stop must reflect idle state, not forced acting"
         );
         assert!(matches!(
             session.hook.agent_state.group,
@@ -648,8 +667,95 @@ mod tests {
     }
 
     // =========================================================================
+    // Birth pipeline integration test
+    // =========================================================================
+
+    #[tokio::test]
+    async fn birth_mutation_creates_session_through_pipeline() {
+        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
+            make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+            cli_sessions: &cli_sessions,
+            interaction_data: &idata,
+        };
+
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 46567,
+            session_id: "birth-pipeline-test".to_string(),
+            cwd: "/Users/test/project".to_string(),
+            started_at: 1775492920444,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+
+        let result = coordinator
+            .handle(
+                &ctx,
+                "birth-pipeline-test",
+                SessionMutation::Birth(active),
+                Some(46567),
+                1700000000,
+                None,
+                Some("/Users/test/project"),
+                None,
+            )
+            .await;
+
+        assert!(
+            matches!(result, MutationResult::Created(_)),
+            "Birth mutation must create session"
+        );
+
+        let sessions = ctx.sessions.read().await;
+        let session = sessions.get("birth-pipeline-test").unwrap();
+        assert_eq!(session.jsonl.project_path, "/Users/test/project");
+        assert_eq!(session.jsonl.project_display_name, "project");
+        assert_eq!(session.session_kind.as_deref(), Some("interactive"));
+        assert_eq!(session.entrypoint.as_deref(), Some("cli"));
+        assert_eq!(session.hook.pid, Some(46567));
+    }
+
+    // =========================================================================
     // Interaction mutation tests
     // =========================================================================
+
+    /// Helper: create a session via Birth mutation. Use this in all tests that
+    /// need a pre-existing session — Start can no longer create sessions.
+    async fn create_session_via_birth(
+        coordinator: &SessionCoordinator,
+        ctx: &MutationContext<'_>,
+        session_id: &str,
+        pid: u32,
+    ) {
+        let active = claude_view_core::session_files::ActiveSession {
+            pid,
+            session_id: session_id.to_string(),
+            cwd: "/tmp".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+        coordinator
+            .handle(
+                ctx,
+                session_id,
+                SessionMutation::Birth(active),
+                Some(pid),
+                1700000000,
+                None,
+                Some("/tmp"),
+                None,
+            )
+            .await;
+    }
 
     fn make_interaction_meta(request_id: &str) -> claude_view_types::PendingInteractionMeta {
         claude_view_types::PendingInteractionMeta {
@@ -741,6 +847,152 @@ mod tests {
         );
     }
 
+    // =========================================================================
+    // Birth mutation tests — pid.json as single root for session detection
+    // =========================================================================
+
+    #[test]
+    fn birth_can_create_session_with_cwd() {
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 12345,
+            session_id: "birth-test".to_string(),
+            cwd: "/Users/test/project".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+        let mutation = SessionMutation::Birth(active);
+        assert!(mutation.can_create_session(), "Birth with cwd must create");
+    }
+
+    #[test]
+    fn birth_cannot_create_session_with_empty_cwd() {
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 12345,
+            session_id: "birth-empty".to_string(),
+            cwd: "".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+        let mutation = SessionMutation::Birth(active);
+        assert!(
+            !mutation.can_create_session(),
+            "Birth with empty cwd must not create"
+        );
+    }
+
+    #[test]
+    fn create_session_from_birth_sets_all_fields() {
+        use crate::live::coordinator::session_factory::create_session_from_birth;
+
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 46567,
+            session_id: "79a5eefa-1234".to_string(),
+            cwd: "/Users/dev/@acme/my-project".to_string(),
+            started_at: 1775492920444,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: Some("my-feature".to_string()),
+        };
+
+        let session = create_session_from_birth(&active, 1700000000);
+
+        assert_eq!(session.id, "79a5eefa-1234");
+        assert_eq!(session.status, SessionStatus::Working);
+        assert_eq!(session.started_at, Some(1775492920)); // ms -> s
+        assert_eq!(session.hook.pid, Some(46567));
+        assert_eq!(session.hook.last_activity_at, 1700000000);
+        assert_eq!(session.hook.title, "my-feature"); // from name field
+        assert_eq!(session.jsonl.project_path, "/Users/dev/@acme/my-project");
+        assert_eq!(session.jsonl.project, "-Users-dev--acme-my-project");
+        assert_eq!(session.jsonl.project_display_name, "my-project");
+        assert_eq!(session.session_kind.as_deref(), Some("interactive"));
+        assert_eq!(session.entrypoint.as_deref(), Some("cli"));
+        assert!(session.model.is_none());
+        assert!(session.closed_at.is_none());
+        assert!(session.pending_interaction.is_none());
+    }
+
+    #[test]
+    fn create_session_from_birth_without_name() {
+        use crate::live::coordinator::session_factory::create_session_from_birth;
+
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 100,
+            session_id: "no-name-sess".to_string(),
+            cwd: "/tmp/project".to_string(),
+            started_at: 1700000000000,
+            kind: "background".to_string(),
+            entrypoint: "claude-vscode".to_string(),
+            name: None,
+        };
+
+        let session = create_session_from_birth(&active, 1700000000);
+        assert_eq!(session.hook.title, ""); // no name -> empty
+        assert_eq!(session.session_kind.as_deref(), Some("background"));
+        assert_eq!(session.entrypoint.as_deref(), Some("claude-vscode"));
+    }
+
+    #[test]
+    fn lifecycle_start_cannot_create_session() {
+        // After the change, hooks can no longer create sessions
+        let mutation = SessionMutation::Lifecycle(LifecycleEvent::Start {
+            cwd: Some("/tmp".into()),
+            model: None,
+            source: None,
+            pid: Some(111),
+            transcript_path: None,
+        });
+        assert!(
+            !mutation.can_create_session(),
+            "Lifecycle::Start must NOT create sessions after pid.json change"
+        );
+    }
+
+    #[test]
+    fn plan_side_effects_for_birth_is_empty() {
+        use crate::live::coordinator::session_factory::create_session_from_birth;
+
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 100,
+            session_id: "birth-plan".to_string(),
+            cwd: "/tmp".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+
+        let session = create_session_from_birth(&active, 1700000000);
+        let mutation = SessionMutation::Birth(active);
+        let effects = plan_side_effects("birth-plan", &session, &mutation, 1700000000);
+        assert!(effects.is_empty(), "Birth should have no side effects");
+    }
+
+    #[test]
+    fn apply_birth_mutation_returns_none() {
+        use crate::live::coordinator::session_factory::create_session_from_birth;
+
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 100,
+            session_id: "birth-apply".to_string(),
+            cwd: "/tmp".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+
+        let mut session = create_session_from_birth(&active, 1700000000);
+        let mutation = SessionMutation::Birth(active);
+        let result = apply_mutation_to_session(&mut session, &mutation, 1700000001);
+        assert!(result.is_none(), "Birth mutation should not change status");
+        assert_eq!(session.status, SessionStatus::Working);
+    }
+
     #[test]
     fn interaction_cannot_create_session() {
         let set_mutation = SessionMutation::Interaction(InteractionAction::Set {
@@ -777,28 +1029,9 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // First create a session so it exists
-        coordinator
-            .handle(
-                &ctx,
-                "int-bc",
-                SessionMutation::Lifecycle(LifecycleEvent::Start {
-                    cwd: Some("/tmp".into()),
-                    model: None,
-                    source: None,
-                    pid: Some(111),
-                    transcript_path: None,
-                }),
-                Some(111),
-                1700000000,
-                None,
-                None,
-                None,
-            )
-            .await;
-
-        // Drain the Created event
-        let _ = rx.recv().await;
+        // First create a session so it exists (via Birth)
+        create_session_via_birth(&coordinator, &ctx, "int-bc", 111).await;
+        let _ = rx.recv().await; // drain Created
 
         // Now send an interaction Set
         let result = coordinator
@@ -855,25 +1088,8 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // Create session + set interaction
-        coordinator
-            .handle(
-                &ctx,
-                "int-bc2",
-                SessionMutation::Lifecycle(LifecycleEvent::Start {
-                    cwd: Some("/tmp".into()),
-                    model: None,
-                    source: None,
-                    pid: Some(222),
-                    transcript_path: None,
-                }),
-                Some(222),
-                1700000000,
-                None,
-                None,
-                None,
-            )
-            .await;
+        // Create session via Birth + set interaction
+        create_session_via_birth(&coordinator, &ctx, "int-bc2", 222).await;
         let _ = rx.recv().await; // drain Created
 
         coordinator
@@ -941,25 +1157,8 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // Create session
-        coordinator
-            .handle(
-                &ctx,
-                "int-side",
-                SessionMutation::Lifecycle(LifecycleEvent::Start {
-                    cwd: Some("/tmp".into()),
-                    model: None,
-                    source: None,
-                    pid: Some(333),
-                    transcript_path: None,
-                }),
-                Some(333),
-                1700000000,
-                None,
-                None,
-                None,
-            )
-            .await;
+        // Create session via Birth
+        create_session_via_birth(&coordinator, &ctx, "int-side", 333).await;
 
         // Set interaction
         coordinator
@@ -1004,25 +1203,8 @@ mod tests {
             interaction_data: &idata,
         };
 
-        // Create session + set interaction
-        coordinator
-            .handle(
-                &ctx,
-                "int-rm",
-                SessionMutation::Lifecycle(LifecycleEvent::Start {
-                    cwd: Some("/tmp".into()),
-                    model: None,
-                    source: None,
-                    pid: Some(444),
-                    transcript_path: None,
-                }),
-                Some(444),
-                1700000000,
-                None,
-                None,
-                None,
-            )
-            .await;
+        // Create session via Birth + set interaction
+        create_session_via_birth(&coordinator, &ctx, "int-rm", 444).await;
 
         coordinator
             .handle(

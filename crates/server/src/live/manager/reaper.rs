@@ -183,6 +183,7 @@ mod tests {
             recently_closed: Arc::new(RwLock::new(HashMap::new())),
             cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
             interaction_data: Arc::new(RwLock::new(HashMap::new())),
+            backfill_miss_count: std::sync::atomic::AtomicU64::new(0),
         });
 
         (manager, rx, snapshot_rx)

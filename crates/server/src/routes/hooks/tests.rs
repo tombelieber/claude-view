@@ -118,6 +118,30 @@ fn make_autonomous_session(id: &str) -> crate::live::state::LiveSession {
 // Helpers
 // =========================================================================
 
+/// Simulate a pid.json Birth event by directly inserting a session into the map.
+/// After the pid.json-as-single-root change, hooks can no longer create sessions —
+/// only Birth (pid.json) does. Tests that need a session to exist use this helper.
+async fn birth_into_map(
+    state: &crate::state::AppState,
+    session_id: &str,
+    cwd: &str,
+    pid: Option<u32>,
+) {
+    let mut session = make_autonomous_session(session_id);
+    session.hook.pid = pid;
+    session.hook.turn_count = 0;
+    session.hook.hook_events.clear();
+    session.hook.agent_state = AgentState {
+        group: AgentStateGroup::Autonomous,
+        state: "acting".into(),
+        label: "Working".into(),
+        context: None,
+    };
+    session.jsonl.project_path = cwd.to_string();
+    let mut sessions = state.live_sessions.write().await;
+    sessions.insert(session_id.to_string(), session);
+}
+
 async fn send_session_start(
     app: &axum::Router,
     session_id: &str,
@@ -264,61 +288,34 @@ async fn session_start_missing_cwd_buffers_without_creating_session() {
 }
 
 #[tokio::test]
-async fn buffered_events_promote_on_session_start_with_cwd() {
+async fn start_with_cwd_also_buffers_after_pid_json_change() {
+    // After pid.json-as-single-root: SessionStart with cwd is ALSO buffered.
+    // Only Birth (pid.json) creates sessions. Both events stay buffered until
+    // a Birth event creates the session and drains them.
     let session_id = "promote-on-valid-cwd";
     let db = claude_view_db::Database::new_in_memory().await.unwrap();
     let state = crate::state::AppState::new(db);
     let app = crate::api_routes(state.clone());
 
-    let body_buffered = serde_json::json!({
-        "session_id": session_id,
-        "hook_event_name": "PreToolUse",
-        "tool_name": "Bash",
-        "tool_input": {"command": "git status"}
-    });
-    let response = app
-        .clone()
-        .oneshot(
-            axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/live/hook")
-                .header("content-type", "application/json")
-                .body(axum::body::Body::from(
-                    serde_json::to_string(&body_buffered).unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), axum::http::StatusCode::OK);
+    // PreToolUse for unknown session → buffered
+    send_hook_event(
+        &app,
+        serde_json::json!({
+            "session_id": session_id,
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": "git status"}
+        }),
+    )
+    .await;
     assert!(state.live_sessions.read().await.get(session_id).is_none());
 
-    let body_start = serde_json::json!({
-        "session_id": session_id,
-        "hook_event_name": "SessionStart",
-        "cwd": "/tmp/promoted-project"
-    });
-    let response = app
-        .oneshot(
-            axum::http::Request::builder()
-                .method("POST")
-                .uri("/api/live/hook")
-                .header("content-type", "application/json")
-                .body(axum::body::Body::from(
-                    serde_json::to_string(&body_start).unwrap(),
-                ))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), axum::http::StatusCode::OK);
-
-    let sessions = state.live_sessions.read().await;
-    let session = sessions.get(session_id).expect("session should be created");
-    assert_eq!(session.jsonl.project_path, "/tmp/promoted-project");
-    assert_eq!(session.hook.hook_events.len(), 2);
-    assert_eq!(session.hook.hook_events[0].event_name, "PreToolUse");
-    assert_eq!(session.hook.hook_events[1].event_name, "SessionStart");
+    // SessionStart with cwd → ALSO buffered (no longer creates)
+    send_session_start(&app, session_id, "/tmp/promoted-project", None).await;
+    assert!(
+        state.live_sessions.read().await.get(session_id).is_none(),
+        "SessionStart must NOT create session after pid.json change — hooks are enrichment-only"
+    );
 }
 
 #[tokio::test]
@@ -573,16 +570,14 @@ async fn pid_uniqueness_evicts_ghost_session_on_same_pid() {
     let state = crate::state::AppState::new(db);
     let app = crate::api_routes(state.clone());
 
-    let status = send_session_start(&app, "session-a", "/tmp/proj", Some(99999)).await;
-    assert_eq!(status, axum::http::StatusCode::OK);
-    {
-        let sessions = state.live_sessions.read().await;
-        let a = sessions.get("session-a").expect("session-a must exist");
-        assert_eq!(a.hook.pid, Some(99999));
-    }
+    // Pre-insert sessions (simulating Birth from pid.json)
+    birth_into_map(&state, "session-a", "/tmp/proj", Some(99999)).await;
+    birth_into_map(&state, "session-b", "/tmp/proj2", Some(99999)).await;
 
-    let status = send_session_start(&app, "session-b", "/tmp/proj2", Some(99999)).await;
-    assert_eq!(status, axum::http::StatusCode::OK);
+    // Send Start hooks for enrichment
+    send_session_start(&app, "session-a", "/tmp/proj", Some(99999)).await;
+    send_session_start(&app, "session-b", "/tmp/proj2", Some(99999)).await;
+
     {
         let sessions = state.live_sessions.read().await;
         let b = sessions.get("session-b").expect("session-b must exist");
@@ -609,10 +604,11 @@ async fn pid_uniqueness_new_session_created_alongside_stale() {
         sessions.insert("real-old".into(), real);
     }
 
+    // Pre-insert new session (simulating Birth), then send hook
+    birth_into_map(&state, "real-new", "/tmp/proj", Some(99998)).await;
     send_session_start(&app, "real-new", "/tmp/proj", Some(99998)).await;
 
     let sessions = state.live_sessions.read().await;
-    // New session is created
     assert!(sessions.get("real-new").is_some());
     // Note: stale session eviction requires live_manager (reap_session).
     // With live_manager=None, old session stays. Real eviction tested in
@@ -625,6 +621,9 @@ async fn pid_uniqueness_does_not_evict_different_pid() {
     let state = crate::state::AppState::new(db);
     let app = crate::api_routes(state.clone());
 
+    // Pre-insert sessions (simulating Birth), then send hooks
+    birth_into_map(&state, "session-x", "/tmp/proj-x", Some(10001)).await;
+    birth_into_map(&state, "session-y", "/tmp/proj-y", Some(10002)).await;
     send_session_start(&app, "session-x", "/tmp/proj-x", Some(10001)).await;
     send_session_start(&app, "session-y", "/tmp/proj-y", Some(10002)).await;
 
@@ -641,7 +640,8 @@ async fn pid_uniqueness_skips_done_sessions() {
     let state = crate::state::AppState::new(db);
     let app = crate::api_routes(state.clone());
 
-    send_session_start(&app, "done-a", "/tmp/done", Some(20001)).await;
+    // Pre-insert session-a, then end it
+    birth_into_map(&state, "done-a", "/tmp/done", Some(20001)).await;
     send_session_end(&app, "done-a", Some(20001)).await;
     {
         let sessions = state.live_sessions.read().await;
@@ -651,6 +651,8 @@ async fn pid_uniqueness_skips_done_sessions() {
         );
     }
 
+    // Pre-insert session-b, then send Start hook
+    birth_into_map(&state, "done-b", "/tmp/done2", Some(20001)).await;
     send_session_start(&app, "done-b", "/tmp/done2", Some(20001)).await;
 
     let sessions = state.live_sessions.read().await;
@@ -682,6 +684,8 @@ async fn pid_uniqueness_skips_sidecar_sessions() {
         sessions.insert("sidecar-session".into(), session);
     }
 
+    // Pre-insert new session (simulating Birth), then send hook
+    birth_into_map(&state, "new-session", "/tmp/proj", Some(30001)).await;
     send_session_start(&app, "new-session", "/tmp/proj", Some(30001)).await;
 
     let sessions = state.live_sessions.read().await;
@@ -708,10 +712,11 @@ async fn ghost_session_new_session_created_on_same_pid() {
         sessions.insert("ghost-session".into(), ghost);
     }
 
+    // Pre-insert new session (simulating Birth), then send hook
+    birth_into_map(&state, "real-session", "/tmp/proj", Some(40001)).await;
     send_session_start(&app, "real-session", "/tmp/proj", Some(40001)).await;
 
     let sessions = state.live_sessions.read().await;
-    // New session is created
     assert!(sessions.get("real-session").is_some());
     // Note: ghost eviction requires live_manager (reap_session).
     // With live_manager=None, ghost stays. Real eviction tested in
@@ -724,6 +729,9 @@ async fn no_pid_means_no_eviction() {
     let state = crate::state::AppState::new(db);
     let app = crate::api_routes(state.clone());
 
+    // Pre-insert sessions (simulating Birth), then send hooks
+    birth_into_map(&state, "with-pid", "/tmp/proj1", Some(50001)).await;
+    birth_into_map(&state, "no-pid", "/tmp/proj2", None).await;
     send_session_start(&app, "with-pid", "/tmp/proj1", Some(50001)).await;
     send_session_start(&app, "no-pid", "/tmp/proj2", None).await;
 
@@ -739,6 +747,8 @@ async fn same_session_id_same_pid_is_update_not_eviction() {
     let state = crate::state::AppState::new(db);
     let app = crate::api_routes(state.clone());
 
+    // Pre-insert session (simulating Birth), then send hooks twice
+    birth_into_map(&state, "resume-me", "/tmp/proj", Some(60001)).await;
     send_session_start(&app, "resume-me", "/tmp/proj", Some(60001)).await;
     send_session_start(&app, "resume-me", "/tmp/proj", Some(60001)).await;
 

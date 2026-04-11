@@ -25,20 +25,19 @@ pub enum SessionMutation {
     Control(ControlAction),
     /// Interaction event from sidecar or hook.
     Interaction(InteractionAction),
+    /// Session birth from pid.json watcher — the SOLE creation path for live sessions.
+    Birth(claude_view_core::session_files::ActiveSession),
 }
 
 impl SessionMutation {
-    /// Only Start (with valid cwd) and Reconcile may create a brand-new session.
+    /// Only Birth (from pid.json watcher) and Reconcile may create a brand-new session.
     ///
-    /// Start events without a cwd are buffered — the session cannot be created
-    /// without a project path (matches the old hooks.rs `has_valid_cwd` guard).
+    /// After the pid.json-as-single-root change, hooks (including Start) can no
+    /// longer create sessions — they are buffered until Birth or Reconcile creates one.
     pub fn can_create_session(&self) -> bool {
         match self {
-            Self::Lifecycle(LifecycleEvent::Start { cwd, .. }) => {
-                cwd.as_ref().is_some_and(|v| !v.trim().is_empty())
-            }
+            Self::Birth(s) => !s.cwd.trim().is_empty(),
             Self::Reconcile(_) => true,
-            Self::Interaction(_) => false,
             _ => false,
         }
     }

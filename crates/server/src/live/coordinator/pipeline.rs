@@ -20,7 +20,9 @@ use crate::live::state::{append_capped_hook_event, HookEvent, SessionEvent, Sess
 use super::dispatch::{apply_mutation_to_session, common_post_mutation};
 use super::execution::{execute_side_effect, forward_hook_event_to_ws};
 use super::planning::plan_side_effects;
-use super::session_factory::{create_session_from_start, create_session_shell};
+use super::session_factory::{
+    create_session_from_birth, create_session_from_start, create_session_shell,
+};
 use super::types::{BufferedMutation, MutationContext, MAX_EVENTS, PENDING_TTL};
 
 // ---------------------------------------------------------------------------
@@ -81,8 +83,7 @@ impl SessionCoordinator {
         };
 
         if !session_exists {
-            let has_valid_cwd = cwd.is_some_and(|c| !c.trim().is_empty());
-            if mutation.can_create_session() || has_valid_cwd {
+            if mutation.can_create_session() {
                 // Create session, then drain buffered mutations below
             } else {
                 // Buffer mutation + hook event together, return early
@@ -120,9 +121,12 @@ impl SessionCoordinator {
         let (snapshot, broadcast_action, side_effects) = {
             let mut sessions = ctx.sessions.write().await;
 
-            // Create session if needed (Start, Reconcile, or upsert via cwd)
+            // Create session if needed (Birth, Reconcile, or Start fallback)
             if !sessions.contains_key(session_id) {
                 let new_session = match &mutation {
+                    SessionMutation::Birth(active_session) => {
+                        create_session_from_birth(active_session, now)
+                    }
                     SessionMutation::Lifecycle(LifecycleEvent::Start {
                         cwd: start_cwd,
                         model,

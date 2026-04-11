@@ -40,6 +40,19 @@ pub fn resolve_project_path_with_cwd(encoded_name: &str, cwd: Option<&str>) -> R
 /// Parent:         `-Users-dev-project`
 ///
 /// The `--worktrees-` segment maps to `/.worktrees/` on disk.
+/// Encode a cwd path to the project directory name format used by
+/// Claude Code CLI in `~/.claude/projects/`.
+///
+/// Encoding: `/` → `-`, `@` → `-`, `.` → `-`.
+///
+/// Verified against real data:
+///   /Users/dev/@acme/my-project   → -Users-dev--acme-my-project
+///   /Users/dev/simple-project     → -Users-dev-simple-project
+///   /Users/dev/@org.co/app        → -Users-dev--org-co-app
+pub fn encode_project_name(cwd: &str) -> String {
+    cwd.replace(['/', '@', '.'], "-")
+}
+
 pub fn resolve_worktree_parent(encoded_name: &str) -> Option<String> {
     let marker = "--worktrees-";
     let pos = encoded_name.find(marker)?;
@@ -120,5 +133,31 @@ mod tests {
             ),
             Some("-Users-dev--myorg-claude-view".to_string())
         );
+    }
+
+    // ========================================================================
+    // encode_project_name Tests — verified against real data
+    // ========================================================================
+
+    #[test]
+    fn test_encode_project_name_real_paths() {
+        // Verified against real ~/.claude/projects/ directory names
+        assert_eq!(
+            encode_project_name("/Users/dev/@acme/my-project"),
+            "-Users-dev--acme-my-project"
+        );
+        assert_eq!(
+            encode_project_name("/Users/dev/simple-project"),
+            "-Users-dev-simple-project"
+        );
+        assert_eq!(
+            encode_project_name("/Users/dev/@org.co/app"),
+            "-Users-dev--org-co-app"
+        );
+    }
+
+    #[test]
+    fn test_encode_project_name_empty() {
+        assert_eq!(encode_project_name(""), "");
     }
 }

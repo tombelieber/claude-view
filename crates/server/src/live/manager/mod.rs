@@ -25,7 +25,7 @@ mod tests;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -108,6 +108,9 @@ pub struct LiveSessionManager {
     /// Side-map for full interaction data, keyed by request_id.
     interaction_data:
         Arc<tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
+    /// Count of sessions discovered by reconciler backfill (Born event missed).
+    /// If >0 in production, the notify watcher has a reliability problem.
+    pub(crate) backfill_miss_count: AtomicU64,
 }
 
 impl LiveSessionManager {
@@ -194,6 +197,7 @@ impl LiveSessionManager {
             recently_closed: recently_closed.clone(),
             cli_sessions,
             interaction_data,
+            backfill_miss_count: AtomicU64::new(0),
         });
 
         // Spawn background tasks
@@ -314,6 +318,50 @@ impl LiveSessionManager {
             cli_sessions: &self.cli_sessions,
             interaction_data: &self.interaction_data,
         }
+    }
+
+    /// Route a pid.json Born event through the coordinator pipeline.
+    ///
+    /// Called when sessions_watcher discovers a new pid.json for a session
+    /// not yet in the live sessions map. The coordinator handles creation,
+    /// JSONL pre-enrichment, death watcher registration, and SSE broadcast.
+    pub(crate) async fn handle_session_birth(
+        self: &Arc<Self>,
+        session: claude_view_core::session_files::ActiveSession,
+        pid: u32,
+    ) {
+        let now = helpers::unix_now();
+        let ctx = self.mutation_context(self);
+        let cwd = session.cwd.clone();
+        let session_id = session.session_id.clone();
+
+        let result = self
+            .coordinator
+            .handle(
+                &ctx,
+                &session_id,
+                super::mutation::types::SessionMutation::Birth(session),
+                Some(pid),
+                now,
+                None,       // no hook event
+                Some(&cwd), // cwd for fallback project resolution
+                None,       // no transcript_path (JSONL may not exist yet)
+            )
+            .await;
+
+        // Log unexpected outcomes (Birth should always create or enrich).
+        match &result {
+            super::mutation::types::MutationResult::Buffered => {
+                tracing::warn!(session_id, "Birth mutation buffered — cwd may be empty");
+            }
+            super::mutation::types::MutationResult::SessionNotFound => {
+                tracing::error!(session_id, "Birth mutation SessionNotFound — unexpected");
+            }
+            _ => {} // Created or Updated — expected
+        }
+
+        // Register PID with death watcher for immediate exit notification.
+        self._death_watcher.watch(pid, session_id).await;
     }
 
     /// Subscribe to session events for SSE streaming.

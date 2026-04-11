@@ -37,6 +37,10 @@ pub struct ActiveSession {
     /// Entrypoint: "cli", "claude-vscode", "claude-desktop", "claude-web", etc.
     #[serde(default)]
     pub entrypoint: String,
+    /// Optional session name (from `claude --name "foo"`).
+    /// Present when user starts session with explicit name.
+    #[serde(default)]
+    pub name: Option<String>,
 }
 
 /// Scan ~/.claude/sessions/ for all active session files.
@@ -178,6 +182,28 @@ mod tests {
 
         let session = parse_session_file(&path).unwrap();
         assert_eq!(session.kind, "background");
+    }
+
+    #[test]
+    fn test_parse_session_with_name_field() {
+        let tmp = tempfile::tempdir().unwrap();
+        // New format: includes `name` field
+        let path = tmp.path().join("11111.json");
+        fs::write(
+            &path,
+            r#"{"pid":11111,"sessionId":"named-sess","cwd":"/x","startedAt":9000,"kind":"interactive","entrypoint":"cli","name":"my-feature"}"#,
+        ).unwrap();
+        let session = parse_session_file(&path).unwrap();
+        assert_eq!(session.name, Some("my-feature".to_string()));
+
+        // Old format: no `name` field → None
+        let path2 = tmp.path().join("22222.json");
+        fs::write(
+            &path2,
+            r#"{"pid":22222,"sessionId":"old-sess","cwd":"/y","startedAt":8000,"kind":"interactive","entrypoint":"cli"}"#,
+        ).unwrap();
+        let session2 = parse_session_file(&path2).unwrap();
+        assert_eq!(session2.name, None);
     }
 
     #[test]

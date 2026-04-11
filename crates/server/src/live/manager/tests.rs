@@ -95,6 +95,24 @@ fn test_seconds_since_modified() {
 }
 
 #[test]
+fn test_ms_to_secs() {
+    use super::helpers::ms_to_secs;
+    assert_eq!(ms_to_secs(1775492920444), 1775492920);
+    assert_eq!(ms_to_secs(0), 0);
+    assert_eq!(ms_to_secs(999), 0);
+    assert_eq!(ms_to_secs(1000), 1);
+}
+
+#[test]
+fn test_unix_now_reasonable() {
+    use super::helpers::unix_now;
+    let now = unix_now();
+    // Should be after 2026-01-01 and before 2030-01-01
+    assert!(now > 1_767_225_600, "unix_now should be after 2026-01-01");
+    assert!(now < 1_893_456_000, "unix_now should be before 2030-01-01");
+}
+
+#[test]
 fn test_done_session_not_reprocessed() {
     let mut had_process: HashSet<String> = HashSet::new();
     let session_id = "test-session-done".to_string();
@@ -1297,6 +1315,7 @@ fn test_reconciler_backfill_detects_alive_unknown_session() {
         started_at: 1700000000000,
         kind: "interactive".to_string(),
         entrypoint: "cli".to_string(),
+        name: None,
     }];
 
     // Simulate: empty sessions map (watcher missed the Birth)
@@ -1327,6 +1346,7 @@ fn test_reconciler_backfill_skips_known_session() {
         started_at: 1700000000000,
         kind: "interactive".to_string(),
         entrypoint: "cli".to_string(),
+        name: None,
     }];
 
     // This session IS already in the map
@@ -1360,6 +1380,7 @@ fn test_reconciler_backfill_skips_dead_pid() {
         started_at: 1700000000000,
         kind: "interactive".to_string(),
         entrypoint: "cli".to_string(),
+        name: None,
     }];
 
     let known_ids: std::collections::HashSet<String> = std::collections::HashSet::new();

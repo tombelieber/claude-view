@@ -39,18 +39,33 @@ impl LiveSessionManager {
                             "sessions_watcher: new session born"
                         );
 
-                        // Try to find and enrich a matching live session by session_id
-                        let mut sessions = manager.sessions.write().await;
-                        if let Some(live) = sessions.get_mut(&session.session_id) {
-                            live.session_kind = Some(session.kind);
-                            live.entrypoint = Some(session.entrypoint);
-                            if live.hook.pid.is_none() {
-                                live.hook.pid = Some(pid);
+                        // Optimistic existence check (no lock held between check
+                        // and action). The coordinator's Phase 2 write-lock guard
+                        // is the actual creation guard — this read-lock check is
+                        // just a fast path to avoid coordinator overhead for the
+                        // common case (session already exists from hook/JSONL).
+                        let exists = {
+                            let sessions = manager.sessions.read().await;
+                            sessions.contains_key(&session.session_id)
+                        };
+
+                        if exists {
+                            // Enrich existing — kind/entrypoint are display-only
+                            // metadata. No SSE broadcast needed: the session was
+                            // already broadcast when created, and these fields will
+                            // be included in the next SessionUpdated event.
+                            let mut sessions = manager.sessions.write().await;
+                            if let Some(live) = sessions.get_mut(&session.session_id) {
+                                live.session_kind = Some(session.kind);
+                                live.entrypoint = Some(session.entrypoint);
+                                if live.hook.pid.is_none() {
+                                    live.hook.pid = Some(pid);
+                                }
                             }
+                        } else {
+                            // Route through coordinator — single creation path
+                            manager.handle_session_birth(session, pid).await;
                         }
-                        // If no matching session exists yet, hooks or JSONL watcher
-                        // will create it later — the enrichment will happen via
-                        // enrich_from_session_file() in the coordinator.
                     }
 
                     SessionLifecycleEvent::Exited { pid } => {
