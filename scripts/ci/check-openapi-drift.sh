@@ -14,43 +14,72 @@ ROUTES_DIR="$ROOT/crates/server/src/routes"
 OPENAPI_RS="$ROOT/crates/server/src/openapi.rs"
 
 # Known exemptions — endpoints that legitimately skip OpenAPI docs.
-EXEMPT="ws_terminal_handler ws_session_handler ws_subagent_terminal_handler ws_proxy_handler metrics_handler generate_key revoke_key"
+# Format: module::handler (matches the module::handler keys used in comparison).
+EXEMPT_PATTERN="ws_terminal_handler|ws_session_handler|ws_subagent_terminal_handler|ws_proxy_handler|metrics_handler|generate_key|revoke_key"
 
-# ── Step 1: Extract handler names from .route() calls ──
-# Uses perl to properly handle multi-line .route() calls and chained
-# methods like .route("/path", get(a).post(b).delete(c))
+# ── Step 1: Extract module::handler names from .route() calls ──
+# Processes each file individually to preserve module context and avoid
+# namespace collisions (e.g. sessions::list_sessions vs cli_sessions::list_sessions).
+# Output format: top_module::handler (e.g. cli_sessions::kill_session)
 registered=$(
-  cat "$ROUTES_DIR"/*.rs "$ROUTES_DIR"/*/*.rs 2>/dev/null |
-  perl -0777 -ne '
-    # Strip line comments
-    s|//[^\n]*||g;
-    # Find all .route( blocks — match from .route( to the next ; or .route(
-    while (/\.route\((.*?)(?=\.route\(|\.with_state|\.layer\(|\.fallback|;\s)/sg) {
-      my $block = $1;
-      # Extract handler names from get(h), post(h), put(h), delete(h), patch(h)
-      while ($block =~ /(?:get|post|put|delete|patch)\(([a-zA-Z_:]+)\)/g) {
-        my $h = $1;
-        $h =~ s/.*:://;  # strip module prefix (handlers::foo → foo)
-        print "$h\n";
+  find "$ROUTES_DIR" -name "*.rs" -print | perl -e '
+    use File::Basename;
+    my $routes_dir = shift @ARGV;
+
+    while (my $file = <STDIN>) {
+      chomp $file;
+
+      # Derive top-level module from path:
+      #   routes/cli_sessions/handlers.rs → cli_sessions
+      #   routes/health.rs → health
+      my $rel = $file;
+      $rel =~ s|^\Q$routes_dir\E/||;
+      my @parts = split(m|/|, $rel);
+      pop @parts;  # remove filename
+      # Use first directory as the module (matches openapi.rs convention)
+      my $module = $parts[0] // basename($file, ".rs");
+
+      open(my $fh, "<", $file) or next;
+      my $content = do { local $/; <$fh> };
+      close($fh);
+
+      # Strip line comments
+      $content =~ s|//[^\n]*||g;
+
+      # Find .route() blocks (lookahead includes } to catch the last route in a chain)
+      while ($content =~ /\.route\((.*?)(?=\.route\(|\.with_state|\.layer\(|\.fallback|;\s|\)\s*\})/sg) {
+        my $block = $1;
+        while ($block =~ /(?:get|post|put|delete|patch)\(([a-zA-Z_:]+)\)/g) {
+          my $h = $1;
+          $h =~ s/.*:://;  # handlers::foo → foo
+          print "${module}::${h}\n";
+        }
       }
     }
+  ' "$ROUTES_DIR" |
+  sort -u
+)
+
+# ── Step 2: Extract module::handler names from openapi.rs paths(...) ──
+# Format: first_module::handler_name
+# e.g. crate::routes::interact::handlers::interact_handler → interact::interact_handler
+documented=$(
+  sed -n '/^[[:space:]]*paths(/,/^[[:space:]]*),/p' "$OPENAPI_RS" |
+  grep 'crate::routes::' |
+  sed -E 's/.*crate::routes:://; s/,?[[:space:]]*$//' |
+  perl -ne '
+    chomp;
+    my @parts = split(/::/);
+    my $handler = pop @parts;
+    my $module = $parts[0] // "unknown";
+    print "${module}::${handler}\n";
   ' |
   sort -u
 )
 
-# ── Step 2: Extract handler names from openapi.rs paths(...) ──
-documented=$(
-  sed -n '/^[[:space:]]*paths(/,/^[[:space:]]*),/p' "$OPENAPI_RS" |
-  grep 'crate::routes::' |
-  sed -E 's/.*::([a-zA-Z_]+),?[[:space:]]*/\1/' |
-  sort -u
-)
-
 # ── Step 3: Remove exemptions ──
-registered_filtered="$registered"
-for h in $EXEMPT; do
-  registered_filtered=$(echo "$registered_filtered" | grep -v "^${h}$" || true)
-done
+# Filter any entry whose handler part (after ::) matches an exempt name.
+registered_filtered=$(echo "$registered" | grep -Ev "::($EXEMPT_PATTERN)$" || true)
 
 # ── Step 4: Diff ──
 missing=$(comm -23 <(echo "$registered_filtered") <(echo "$documented"))
