@@ -516,11 +516,20 @@ export function SessionCard({
       )}
 
       {/* ── CLI Terminal compact view ── */}
-      {session.id.startsWith('cv-') && (
+      {session.ownership?.tier === 'tmux' && (
         <div className="border-t border-gray-100 dark:border-gray-800 mt-2.5 pt-2">
           <CliTerminalCompact
-            tmuxSessionId={session.id}
-            onExpand={onExpandCliSession ? () => onExpandCliSession(session.id) : undefined}
+            tmuxSessionId={session.ownership.cliSessionId}
+            onExpand={
+              onExpandCliSession
+                ? () =>
+                    onExpandCliSession(
+                      session.ownership?.tier === 'tmux'
+                        ? session.ownership.cliSessionId
+                        : session.id,
+                    )
+                : undefined
+            }
           />
         </div>
       )}

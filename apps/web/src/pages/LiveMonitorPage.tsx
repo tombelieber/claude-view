@@ -277,8 +277,16 @@ export function LiveMonitorPage() {
         handleViewModeChange('monitor')
       }
       const addPanel = () => {
-        dockviewApiRef.current?.addPanel({
-          id: `cli-${sessionId}`,
+        const api = dockviewApiRef.current
+        if (!api) return
+        const panelId = `cli-${sessionId}`
+        const existing = api.panels.find((p) => p.id === panelId)
+        if (existing) {
+          if (!existing.api.isActive) existing.api.setActive()
+          return
+        }
+        api.addPanel({
+          id: panelId,
           component: 'cliTerminal',
           title: `CLI: ${sessionId.slice(0, 11)}`,
           tabComponent: 'cliTerminal',

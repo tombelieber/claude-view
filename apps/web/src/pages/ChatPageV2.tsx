@@ -234,14 +234,14 @@ export function ChatPageV2() {
 
   // Sync live data (dot color, title, ownershipTier) into existing tab params when SSE ticks.
   // This corrects any stale values from layout-restore time (SSE hadn't delivered data yet).
-  // CLI terminal panels (id starts with "cli-") have their own lifecycle — skip them.
+  // CLI terminal panels carry tmuxSessionId in params — skip them.
   useEffect(() => {
     const api = dockApiRef.current
     if (!api) return
     const cached = readSidebarCache(queryClient)
 
     for (const panel of api.panels) {
-      if (panel.id.startsWith('cli-')) continue
+      if ((panel.params as { tmuxSessionId?: string })?.tmuxSessionId) continue
       const sid = (panel.params as { sessionId?: string })?.sessionId
       if (!sid) continue
       const live = liveSessions.sessions.find((s) => s.id === sid)

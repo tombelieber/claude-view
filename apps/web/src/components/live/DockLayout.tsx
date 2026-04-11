@@ -244,17 +244,20 @@ export function DockLayout({
   )
 
   // Sync session data into existing panels when sessions update.
-  // CLI terminal panels (id starts with "cli-") have their own lifecycle
+  // CLI terminal panels (tmuxSessionId in params) have their own lifecycle
   // and are NOT tied to the live sessions list — skip them entirely.
   useEffect(() => {
     const api = apiRef.current
     if (!api) return
 
-    const isCliPanel = (id: string) => id.startsWith('cli-')
+    // CLI terminal panels carry tmuxSessionId in params — they have their own
+    // lifecycle and are NOT tied to the live sessions list.
+    const isCliPanel = (p: { params: unknown }) =>
+      !!(p.params as { tmuxSessionId?: string } | undefined)?.tmuxSessionId
 
     // Update existing session panels with fresh displayMode
     for (const panel of api.panels) {
-      if (isCliPanel(panel.id)) continue
+      if (isCliPanel(panel)) continue
       const session = sessions.find((s) => s.id === panel.id)
       if (session) {
         panel.api.updateParameters({
@@ -269,7 +272,7 @@ export function DockLayout({
     // If CLI terminal panels exist, add session panels as inactive so they
     // don't steal focus from the xterm terminal (tmux has higher precedence).
     const existingIds = new Set(api.panels.map((p) => p.id))
-    const hasCliPanels = api.panels.some((p) => isCliPanel(p.id))
+    const hasCliPanels = api.panels.some((p) => isCliPanel(p))
     for (const session of sessions) {
       if (!existingIds.has(session.id)) {
         api.addPanel({
@@ -291,7 +294,7 @@ export function DockLayout({
     // api.panels in place, which causes iterator invalidation if we iterate
     // the live array directly (same pattern as Array.prototype.filter-then-forEach).
     const currentIds = new Set(sessions.map((s) => s.id))
-    const panelsToRemove = api.panels.filter((p) => !isCliPanel(p.id) && !currentIds.has(p.id))
+    const panelsToRemove = api.panels.filter((p) => !isCliPanel(p) && !currentIds.has(p.id))
     for (const panel of panelsToRemove) {
       api.removePanel(panel)
     }
