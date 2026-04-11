@@ -22,7 +22,7 @@ export const systemGeneratedTools: ToolDef[] = [
     description: 'Get comprehensive system status.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/system')
       return JSON.stringify(result, null, 2)
     },
@@ -32,7 +32,7 @@ export const systemGeneratedTools: ToolDef[] = [
     description: 'Clear search index and cached data.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/system/clear-cache')
       return JSON.stringify(result, null, 2)
     },
@@ -42,7 +42,7 @@ export const systemGeneratedTools: ToolDef[] = [
     description: 'Trigger full git re-sync.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/system/git-resync')
       return JSON.stringify(result, null, 2)
     },
@@ -52,7 +52,7 @@ export const systemGeneratedTools: ToolDef[] = [
     description: 'Trigger a full re-index.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/system/reindex')
       return JSON.stringify(result, null, 2)
     },
@@ -62,7 +62,7 @@ export const systemGeneratedTools: ToolDef[] = [
     description: 'Factory reset all data.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/system/reset')
       return JSON.stringify(result, null, 2)
     },

@@ -1,10 +1,9 @@
 ---
-name: standup
-description: "Use when the user asks for a standup update, work log, or activity summary — e.g. 'standup update', 'what did I work on today', 'work log', 'daily summary'"
+name: system-monitor
+description: "Use when the user asks about system resources, CPU, memory, disk, or process monitoring — e.g. 'check system', 'how's the machine', 'resource usage', 'is my machine slow', 'why is everything lagging', 'how much RAM', 'system health'"
 allowed-tools:
-  - mcp__claude-view__list_sessions
-  - mcp__claude-view__get_session
-  - mcp__claude-view__list_live_sessions
+  - mcp__claude-view__monitor_snapshot
+  - mcp__claude-view__system_get_system_status
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).
@@ -13,41 +12,33 @@ You have access to the claude-view MCP server which provides tools for monitorin
 
 **Error handling:** If a tool returns an error about the server not being detected, tell the user to start it with `npx claude-view`.
 
-# Standup Update
+# System Monitor
 
-Generate a standup-style work summary from recent Claude Code sessions.
+Show the system's current resource usage and Claude Code process health.
 
 ## Steps
 
-1. **Fetch recent sessions.** Call `mcp__claude-view__list_sessions` with:
-   - `sort: "recent"`
-   - `limit: 20`
+1. **Get system snapshot.** Call `mcp__claude-view__monitor_snapshot` to get current CPU, memory, disk, and process data.
 
-   From the results, filter to sessions whose `modified` field (ISO 8601 string) is within the last 24 hours. If the user asks about a different period (e.g. "this week"), adjust the filter accordingly.
+2. **Get system status.** Call `mcp__claude-view__system_get_system_status` to get server health and indexing state.
 
-2. **For the top 3-5 sessions by duration**, call `mcp__claude-view__get_session` on each to get commit details.
+3. **Present the report:**
 
-3. **Check for running sessions.** Call `mcp__claude-view__list_live_sessions` to find any currently active sessions for the "In Progress" section.
+## System Health
 
-4. **Present the standup** in this format:
+**CPU:** X% | **Memory:** X.X GB / Y GB (Z%) | **Disk:** X% used
+**Claude processes:** N active
 
-```
-## Standup — [today's date]
+### Status
+- Server: healthy, uptime Xh
+- Index: X sessions indexed, last sync Xm ago
 
-### Done
-- **[project] ([branch])** — [1-line summary from recent_commits/summary] (Xm)
-- **[project] ([branch])** — [1-line summary] (Xm)
+### Alerts
+- [any metric above 80% gets flagged here]
 
-### In Progress
-- [project] — [model] — [agent_state] (from list_live_sessions)
+4. **If no alerts**, say "All systems normal."
 
-### Metrics
-- Sessions: N | Total time: Xh Ym | Commits: Z
-```
-
-5. **Keep each item to one line.** The standup should be copy-pasteable into Slack or a standup bot.
-
-6. **If no sessions found in the time range**, say "No Claude Code sessions found in the last 24 hours."
+5. **If monitor_snapshot returns empty or zeroed data**, say "System monitor is still collecting initial data. Try again in a few seconds."
 
 ## Available Tools
 

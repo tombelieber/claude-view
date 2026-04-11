@@ -1,10 +1,11 @@
 ---
-name: standup
-description: "Use when the user asks for a standup update, work log, or activity summary — e.g. 'standup update', 'what did I work on today', 'work log', 'daily summary'"
+name: live
+description: "Use when the user asks about running sessions, agent status, what needs attention — e.g. 'what's running', 'live status', 'which sessions need me', 'agent status', 'check on my agents', 'are my sessions done', 'anything stuck'"
 allowed-tools:
-  - mcp__claude-view__list_sessions
-  - mcp__claude-view__get_session
   - mcp__claude-view__list_live_sessions
+  - mcp__claude-view__get_live_summary
+  - mcp__claude-view__live_get_live_session
+  - mcp__claude-view__live_get_live_session_messages
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).
@@ -13,41 +14,39 @@ You have access to the claude-view MCP server which provides tools for monitorin
 
 **Error handling:** If a tool returns an error about the server not being detected, tell the user to start it with `npx claude-view`.
 
-# Standup Update
+# Live Session Status
 
-Generate a standup-style work summary from recent Claude Code sessions.
+Show what's running, what needs attention, and what's working autonomously.
+
+## Agent state classification
+
+- **Needs attention:** agent_state contains "waiting", "permission", "error", "blocked", or "paused"
+- **Autonomous:** all other states (e.g. "thinking", "tool_use", "responding")
 
 ## Steps
 
-1. **Fetch recent sessions.** Call `mcp__claude-view__list_sessions` with:
-   - `sort: "recent"`
-   - `limit: 20`
+1. **Get aggregate summary.** Call `mcp__claude-view__get_live_summary` to get total counts and today's cost.
 
-   From the results, filter to sessions whose `modified` field (ISO 8601 string) is within the last 24 hours. If the user asks about a different period (e.g. "this week"), adjust the filter accordingly.
+2. **Get per-session details.** Call `mcp__claude-view__list_live_sessions` to get each session's project, model, state, and cost.
 
-2. **For the top 3-5 sessions by duration**, call `mcp__claude-view__get_session` on each to get commit details.
+3. **For any session the user asks about specifically**, call `mcp__claude-view__live_get_live_session` with that session's ID for full detail.
 
-3. **Check for running sessions.** Call `mcp__claude-view__list_live_sessions` to find any currently active sessions for the "In Progress" section.
+4. **Present the report:**
 
-4. **Present the standup** in this format:
+## Live Sessions — [N] running
 
-```
-## Standup — [today's date]
+**Today's cost:** $X.XX | **Total tokens:** X
 
-### Done
-- **[project] ([branch])** — [1-line summary from recent_commits/summary] (Xm)
-- **[project] ([branch])** — [1-line summary] (Xm)
+### Needs Attention (N)
+- **[project]** ([branch]) — [agent_state] — [model] — $X.XX
+  [last activity: Xm ago]
 
-### In Progress
-- [project] — [model] — [agent_state] (from list_live_sessions)
+### Autonomous (N)
+- **[project]** ([branch]) — [agent_state] — [model] — $X.XX
 
-### Metrics
-- Sessions: N | Total time: Xh Ym | Commits: Z
-```
+5. **If no sessions running**, say "No active Claude Code sessions."
 
-5. **Keep each item to one line.** The standup should be copy-pasteable into Slack or a standup bot.
-
-6. **If no sessions found in the time range**, say "No Claude Code sessions found in the last 24 hours."
+6. **If all sessions are autonomous**, skip the "Needs Attention" section entirely.
 
 ## Available Tools
 

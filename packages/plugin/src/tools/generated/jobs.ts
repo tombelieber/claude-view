@@ -10,7 +10,7 @@ export const jobsGeneratedTools: ToolDef[] = [
     description: 'List all active jobs.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/jobs')
       return JSON.stringify(result, null, 2)
     },

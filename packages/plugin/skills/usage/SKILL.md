@@ -1,10 +1,13 @@
 ---
-name: standup
-description: "Use when the user asks for a standup update, work log, or activity summary — e.g. 'standup update', 'what did I work on today', 'work log', 'daily summary'"
+name: usage
+description: "Use when the user asks about usage analytics, statistics, token usage, or cost summary — e.g. 'usage stats', 'token usage', 'how many sessions this week', 'show me my numbers', 'cost summary', 'usage report'"
 allowed-tools:
-  - mcp__claude-view__list_sessions
-  - mcp__claude-view__get_session
-  - mcp__claude-view__list_live_sessions
+  - mcp__claude-view__get_stats
+  - mcp__claude-view__get_token_stats
+  - mcp__claude-view__stats_ai_generation_stats
+  - mcp__claude-view__stats_overview
+  - mcp__claude-view__stats_storage_stats
+  - mcp__claude-view__stats_get_trends
 ---
 
 You have access to the claude-view MCP server which provides tools for monitoring, analyzing, and managing Claude Code sessions. The claude-view server must be running on localhost (it auto-starts via the plugin hook).
@@ -13,41 +16,39 @@ You have access to the claude-view MCP server which provides tools for monitorin
 
 **Error handling:** If a tool returns an error about the server not being detected, tell the user to start it with `npx claude-view`.
 
-# Standup Update
+# Usage Report
 
-Generate a standup-style work summary from recent Claude Code sessions.
+Show usage statistics, token consumption, storage, and trends. This skill focuses on quantitative usage data. For behavioral patterns and insights, use the `/insights` skill instead.
 
 ## Steps
 
-1. **Fetch recent sessions.** Call `mcp__claude-view__list_sessions` with:
-   - `sort: "recent"`
-   - `limit: 20`
+1. **Get dashboard stats.** Call `mcp__claude-view__get_stats` to get session counts, top projects, and current week metrics. If the user specifies a time range, pass `from` and `to` parameters.
 
-   From the results, filter to sessions whose `modified` field (ISO 8601 string) is within the last 24 hours. If the user asks about a different period (e.g. "this week"), adjust the filter accordingly.
+2. **Get token stats.** Call `mcp__claude-view__get_token_stats` to get input/output/cache token totals and cache hit ratio.
 
-2. **For the top 3-5 sessions by duration**, call `mcp__claude-view__get_session` on each to get commit details.
+3. **Get trends.** Call `mcp__claude-view__stats_get_trends` to get week-over-week comparison.
 
-3. **Check for running sessions.** Call `mcp__claude-view__list_live_sessions` to find any currently active sessions for the "In Progress" section.
+4. **Present the report:**
 
-4. **Present the standup** in this format:
+## Usage Report — [date range or "All Time"]
 
-```
-## Standup — [today's date]
+### Overview
+- **Sessions:** N total | **This week:** M
+- **Projects:** P | **Top:** [project name] (X sessions)
 
-### Done
-- **[project] ([branch])** — [1-line summary from recent_commits/summary] (Xm)
-- **[project] ([branch])** — [1-line summary] (Xm)
+### Tokens
+- Input: X | Output: Y | Cache read: Z
+- Cache hit ratio: X%
 
-### In Progress
-- [project] — [model] — [agent_state] (from list_live_sessions)
+### Trends (vs last week)
+- Sessions: +X% | Tokens: +Y%
+- [any notable trend direction]
 
-### Metrics
-- Sessions: N | Total time: Xh Ym | Commits: Z
-```
+5. **If the user asks about a specific time range** (e.g. "this week", "last month"), pass `from` and `to` parameters to `get_stats`.
 
-5. **Keep each item to one line.** The standup should be copy-pasteable into Slack or a standup bot.
+6. **If no sessions found**, say "No Claude Code sessions found for this time range."
 
-6. **If no sessions found in the time range**, say "No Claude Code sessions found in the last 24 hours."
+7. **Do NOT show Fluency Score in this report.** It requires behavioral context that the `/insights` skill provides. Showing a bare number without context violates the trust-over-accuracy principle.
 
 ## Available Tools
 

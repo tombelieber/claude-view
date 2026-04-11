@@ -11,6 +11,7 @@ import { healthGeneratedTools } from './health.js'
 import { ideGeneratedTools } from './ide.js'
 import { insightsGeneratedTools } from './insights.js'
 import { jobsGeneratedTools } from './jobs.js'
+import { liveGeneratedTools } from './live.js'
 import { monitorGeneratedTools } from './monitor.js'
 import { oauthGeneratedTools } from './oauth.js'
 import { pairingGeneratedTools } from './pairing.js'
@@ -20,8 +21,10 @@ import { processesGeneratedTools } from './processes.js'
 import { projectsGeneratedTools } from './projects.js'
 import { promptsGeneratedTools } from './prompts.js'
 import { reportsGeneratedTools } from './reports.js'
+import { sessionsGeneratedTools } from './sessions.js'
 import { settingsGeneratedTools } from './settings.js'
 import { shareGeneratedTools } from './share.js'
+import { statsGeneratedTools } from './stats.js'
 import { syncGeneratedTools } from './sync.js'
 import { systemGeneratedTools } from './system.js'
 import { teamsGeneratedTools } from './teams.js'
@@ -39,6 +42,7 @@ export const allGeneratedTools: ToolDef[] = [
   ...ideGeneratedTools,
   ...insightsGeneratedTools,
   ...jobsGeneratedTools,
+  ...liveGeneratedTools,
   ...monitorGeneratedTools,
   ...oauthGeneratedTools,
   ...pairingGeneratedTools,
@@ -48,8 +52,10 @@ export const allGeneratedTools: ToolDef[] = [
   ...projectsGeneratedTools,
   ...promptsGeneratedTools,
   ...reportsGeneratedTools,
+  ...sessionsGeneratedTools,
   ...settingsGeneratedTools,
   ...shareGeneratedTools,
+  ...statsGeneratedTools,
   ...syncGeneratedTools,
   ...systemGeneratedTools,
   ...teamsGeneratedTools,

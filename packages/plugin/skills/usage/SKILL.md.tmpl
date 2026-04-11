@@ -1,0 +1,49 @@
+---
+name: usage
+description: "Use when the user asks about usage analytics, statistics, token usage, or cost summary — e.g. 'usage stats', 'token usage', 'how many sessions this week', 'show me my numbers', 'cost summary', 'usage report'"
+allowed-tools:
+  - mcp__claude-view__get_stats
+  - mcp__claude-view__get_token_stats
+  - mcp__claude-view__stats_ai_generation_stats
+  - mcp__claude-view__stats_overview
+  - mcp__claude-view__stats_storage_stats
+  - mcp__claude-view__stats_get_trends
+---
+
+{{PREAMBLE}}
+
+# Usage Report
+
+Show usage statistics, token consumption, storage, and trends. This skill focuses on quantitative usage data. For behavioral patterns and insights, use the `/insights` skill instead.
+
+## Steps
+
+1. **Get dashboard stats.** Call `mcp__claude-view__get_stats` to get session counts, top projects, and current week metrics. If the user specifies a time range, pass `from` and `to` parameters.
+
+2. **Get token stats.** Call `mcp__claude-view__get_token_stats` to get input/output/cache token totals and cache hit ratio.
+
+3. **Get trends.** Call `mcp__claude-view__stats_get_trends` to get week-over-week comparison.
+
+4. **Present the report:**
+
+## Usage Report — [date range or "All Time"]
+
+### Overview
+- **Sessions:** N total | **This week:** M
+- **Projects:** P | **Top:** [project name] (X sessions)
+
+### Tokens
+- Input: X | Output: Y | Cache read: Z
+- Cache hit ratio: X%
+
+### Trends (vs last week)
+- Sessions: +X% | Tokens: +Y%
+- [any notable trend direction]
+
+5. **If the user asks about a specific time range** (e.g. "this week", "last month"), pass `from` and `to` parameters to `get_stats`.
+
+6. **If no sessions found**, say "No Claude Code sessions found for this time range."
+
+7. **Do NOT show Fluency Score in this report.** It requires behavioral context that the `/insights` skill provides. Showing a bare number without context violates the trust-over-accuracy principle.
+
+{{AVAILABLE_TOOLS}}

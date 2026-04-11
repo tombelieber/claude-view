@@ -32,7 +32,7 @@ export const promptsGeneratedTools: ToolDef[] = [
     description: 'Aggregate prompt statistics.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/prompts/stats')
       return JSON.stringify(result, null, 2)
     },
@@ -42,7 +42,7 @@ export const promptsGeneratedTools: ToolDef[] = [
     description: 'Detected prompt templates.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/prompts/templates')
       return JSON.stringify(result, null, 2)
     },

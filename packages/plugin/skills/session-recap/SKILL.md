@@ -91,9 +91,12 @@ Summarize a Claude Code session using the claude-view MCP tools.
 | `insights_get_categories` | Returns hierarchical category data. |
 | `insights_get_insights_trends` | Get time-series trend data for charts. |
 | `insights_list_invocables` | List all invocables with their usage counts. |
-| `insights_get_fluency_score` | Get the current AI Fluency Score. |
 | **Jobs Tools** | |
 | `jobs_list_jobs` | List all active jobs. |
+| **Live Tools** | |
+| `live_get_pricing` | - Return the model pricing table. |
+| `live_get_live_session` | - Get a single live session by ID. |
+| `live_get_live_session_messages` | - Get the most recent messages for a live session. |
 | **Monitor Tools** | |
 | `monitor_snapshot` | - One-shot JSON snapshot of current resources. |
 | **Oauth Tools** | |
@@ -129,8 +132,18 @@ Summarize a Claude Code session using the claude-view MCP tools.
 | `reports_get_preview` | Aggregate preview stats for a date range. |
 | `reports_get_report` | Get a single report. |
 | `reports_delete_report` | Delete a report. |
-| **Search Tools** | |
-| `search_handler` | Full-text search across sessions. |
+| **Sessions Tools** | |
+| `sessions_list_branches` | Get distinct list of branch names across all sessions. |
+| `sessions_estimate_cost` | cost estimation (Rust-only, no sidecar). |
+| `sessions_session_activity` | Activity histogram for sparkline chart. |
+| `sessions_bulk_archive_handler` | sessions archive |
+| `sessions_bulk_unarchive_handler` | sessions unarchive |
+| `sessions_archive_session_handler` | sessions {id} archive |
+| `sessions_get_file_history` | List all file changes for a session. |
+| `sessions_get_file_diff` | history/:file_hash/diff?from=N&to=M |
+| `sessions_get_session_hook_events` | Fetch hook events for a session. |
+| `sessions_get_session_messages_by_id` | Get paginated messages by session ID. |
+| `sessions_unarchive_session_handler` | sessions {id} unarchive |
 | **Settings Tools** | |
 | `settings_get_settings` | Read current app settings. |
 | `settings_update_settings` | Update app settings (partial). |
@@ -139,6 +152,11 @@ Summarize a Claude Code session using the claude-view MCP tools.
 | `share_create_share` | sessions {session_id} share |
 | `share_revoke_share` | sessions {session_id} share |
 | `share_list_shares` | shares |
+| **Stats Tools** | |
+| `stats_ai_generation_stats` | AI generation statistics with time range filtering. |
+| `stats_overview` | Aggregate usage statistics. |
+| `stats_storage_stats` | Storage statistics for the settings page. |
+| `stats_get_trends` | Get week-over-week trend metrics. |
 | **Sync Tools** | |
 | `sync_indexing_status` | - lightweight JSON snapshot of indexing progress. |
 | `sync_trigger_deep_index` | Trigger a full deep index rebuild. |

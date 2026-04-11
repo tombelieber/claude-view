@@ -10,7 +10,7 @@ export const workflowsGeneratedTools: ToolDef[] = [
     description: 'List Workflows (GET /api/workflows)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/workflows')
       return JSON.stringify(result, null, 2)
     },

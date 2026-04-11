@@ -78,6 +78,7 @@ notify = { workspace = true }
 sysinfo = { workspace = true }
 memchr = { workspace = true }
 reqwest = { workspace = true }
+clap = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 libc = "0.2"

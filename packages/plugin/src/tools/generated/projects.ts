@@ -10,7 +10,7 @@ export const projectsGeneratedTools: ToolDef[] = [
     description: 'List all projects as lightweight summaries.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/projects')
       return JSON.stringify(result, null, 2)
     },

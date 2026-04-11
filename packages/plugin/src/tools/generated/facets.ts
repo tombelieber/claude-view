@@ -22,7 +22,7 @@ export const facetsGeneratedTools: ToolDef[] = [
     description: 'Start facet ingest from the Claude Code insights cache. Returns immediately with `{"status": "started"}` or `{"status": "already_running"}` if an ingest is already in progress.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('POST', '/api/facets/ingest/trigger')
       return JSON.stringify(result, null, 2)
     },
@@ -32,7 +32,7 @@ export const facetsGeneratedTools: ToolDef[] = [
     description: 'Check the most recent sessions for a negative satisfaction pattern. Returns `{pattern, count, tip}` if a pattern is detected, or `{pattern: null}` otherwise.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/facets/pattern-alert')
       return JSON.stringify(result, null, 2)
     },
@@ -42,7 +42,7 @@ export const facetsGeneratedTools: ToolDef[] = [
     description: 'Aggregate statistics across all session facets.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/facets/stats')
       return JSON.stringify(result, null, 2)
     },

@@ -1,0 +1,39 @@
+---
+name: system-monitor
+description: "Use when the user asks about system resources, CPU, memory, disk, or process monitoring — e.g. 'check system', 'how's the machine', 'resource usage', 'is my machine slow', 'why is everything lagging', 'how much RAM', 'system health'"
+allowed-tools:
+  - mcp__claude-view__monitor_snapshot
+  - mcp__claude-view__system_get_system_status
+---
+
+{{PREAMBLE}}
+
+# System Monitor
+
+Show the system's current resource usage and Claude Code process health.
+
+## Steps
+
+1. **Get system snapshot.** Call `mcp__claude-view__monitor_snapshot` to get current CPU, memory, disk, and process data.
+
+2. **Get system status.** Call `mcp__claude-view__system_get_system_status` to get server health and indexing state.
+
+3. **Present the report:**
+
+## System Health
+
+**CPU:** X% | **Memory:** X.X GB / Y GB (Z%) | **Disk:** X% used
+**Claude processes:** N active
+
+### Status
+- Server: healthy, uptime Xh
+- Index: X sessions indexed, last sync Xm ago
+
+### Alerts
+- [any metric above 80% gets flagged here]
+
+4. **If no alerts**, say "All systems normal."
+
+5. **If monitor_snapshot returns empty or zeroed data**, say "System monitor is still collecting initial data. Try again in a few seconds."
+
+{{AVAILABLE_TOOLS}}

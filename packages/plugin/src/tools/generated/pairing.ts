@@ -10,7 +10,7 @@ export const pairingGeneratedTools: ToolDef[] = [
     description: 'GET /pairing/devices — List paired devices.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/pairing/devices')
       return JSON.stringify(result, null, 2)
     },
@@ -32,7 +32,7 @@ export const pairingGeneratedTools: ToolDef[] = [
     description: 'GET /pairing/qr — Generate QR payload for mobile pairing.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
-    handler: async (client, args) => {
+    handler: async (client, _args) => {
       const result = await client.request('GET', '/api/pairing/qr')
       return JSON.stringify(result, null, 2)
     },
