@@ -5,6 +5,7 @@ import type { ToolExecution } from '../../../../types/blocks'
 import { cn } from '../../../../utils/cn'
 import { shortenToolName, toolChipColor } from '../../../../utils/content-detection'
 import { CopyButton } from '../shared/CopyButton'
+import { StatusBadge } from '../shared/StatusBadge'
 import { ContentRenderer } from './ContentRenderer'
 import { DurationBadge } from './DurationBadge'
 import { SimpleJsonView } from './SimpleJsonView'
@@ -119,6 +120,12 @@ export function ToolCard({ execution }: ToolCardProps) {
           </span>
         )}
 
+        {execution.parentToolUseId && (
+          <span className="text-xs font-mono text-indigo-400 dark:text-indigo-500 flex-shrink-0">
+            -&gt; parent: {execution.parentToolUseId.slice(0, 8)}
+          </span>
+        )}
+
         {/* Smart label */}
         {smartLabel && (
           <span
@@ -220,6 +227,7 @@ export function ToolCard({ execution }: ToolCardProps) {
                       >
                         {execution.result.isError ? 'Error' : 'Output'}
                       </span>
+                      {execution.result.isReplay && <StatusBadge label="REPLAY" color="amber" />}
                       <CopyButton text={execution.result.output} />
                     </div>
                     <ContentRenderer content={execution.result.output} />

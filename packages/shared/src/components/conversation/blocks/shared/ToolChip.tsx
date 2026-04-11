@@ -218,12 +218,28 @@ export function ToolChip({ execution }: ToolChipProps) {
         <span className="font-mono font-medium text-gray-700 dark:text-gray-300">
           {execution.toolName}
         </span>
+        {execution.parentToolUseId && (
+          <span className="text-xs font-mono text-indigo-400 dark:text-indigo-500">
+            -&gt; {execution.parentToolUseId.slice(0, 8)}
+          </span>
+        )}
         {preview && (
           <span className="text-gray-500 dark:text-gray-400 truncate max-w-[200px]">{preview}</span>
         )}
         <StatusIcon status={execution.status} />
+        {execution.status === 'running' && execution.progress && (
+          <span className="text-xs font-mono text-blue-500 dark:text-blue-400 tabular-nums">
+            {execution.progress.elapsedSeconds.toFixed(1)}s
+          </span>
+        )}
         {resultHint && (
-          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-[120px]">
+          <span
+            className={
+              execution.result?.isError
+                ? 'text-xs font-mono text-red-500 dark:text-red-400 truncate max-w-[120px]'
+                : 'text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-[120px]'
+            }
+          >
             {resultHint}
           </span>
         )}
