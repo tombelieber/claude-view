@@ -4,7 +4,7 @@ import type { StorybookConfig } from '@storybook/react-vite'
 
 const config: StorybookConfig = {
   stories: ['../src/**/*.stories.@(ts|tsx)', '../../../packages/shared/src/**/*.stories.@(ts|tsx)'],
-  addons: [getAbsolutePath('@storybook/addon-docs')],
+  addons: [getAbsolutePath('@storybook/addon-docs'), getAbsolutePath('@storybook/addon-a11y')],
   framework: getAbsolutePath('@storybook/react-vite'),
   core: {
     disableTelemetry: true,

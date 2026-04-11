@@ -9,26 +9,41 @@ import type {
   NoticeBlock,
   ProgressBlock,
   SystemBlock,
+  TeamTranscriptBlock,
   ToolExecution,
   TurnBoundaryBlock,
   UserBlock,
 } from '@claude-view/shared/types/blocks'
 import type {
+  AiTitle,
   AskQuestion,
   AssistantError,
   AuthStatus,
+  CommandOutput,
   ContextCompacted,
+  ElicitationComplete,
   Elicitation,
   ErrorEvent,
+  FileHistorySnapshot,
+  FilesSaved,
+  HookEvent,
+  Informational,
+  LastPrompt,
+  LocalCommand,
   PermissionRequest,
   PlanApproval,
   PromptSuggestion,
   RateLimit,
   SessionClosed,
+  SessionInit,
+  SessionStatus,
+  StreamDelta,
   QueueOperation,
   TaskNotification,
   TaskProgressEvent,
   TaskStarted,
+  UnknownSdkEvent,
+  WorktreeState,
 } from '@claude-view/shared/types/sidecar-protocol'
 
 // ── Timestamps ──────────────────────────────────────────────────────────────
@@ -738,6 +753,61 @@ export const turnBoundaryBlocks = {
       messages: ['Reached maximum number of turns (25)'],
     },
   } satisfies TurnBoundaryBlock,
+
+  /** Full-fields fixture — every optional field populated for visual coverage. */
+  fullFields: {
+    type: 'turn_boundary',
+    id: 'tb_008',
+    success: true,
+    totalCostUsd: 0.142,
+    numTurns: 8,
+    durationMs: 45000,
+    durationApiMs: 38200,
+    usage: {
+      input_tokens: 32000,
+      output_tokens: 12000,
+      cache_read_input_tokens: 18000,
+      cache_creation_input_tokens: 5000,
+    },
+    modelUsage: {
+      'claude-opus-4-6': {
+        inputTokens: 32000,
+        outputTokens: 12000,
+        cacheReadInputTokens: 18000,
+        cacheCreationInputTokens: 5000,
+        webSearchRequests: 2,
+        costUSD: 0.142,
+        contextWindow: 200000,
+        maxOutputTokens: 16384,
+      },
+    },
+    permissionDenials: [
+      {
+        toolName: 'Bash',
+        toolUseId: 'tu_denied_ff_001',
+        toolInput: { command: 'rm -rf node_modules' },
+      },
+      {
+        toolName: 'Write',
+        toolUseId: 'tu_denied_ff_002',
+        toolInput: { file_path: '/etc/hosts', content: 'hacked' },
+      },
+    ],
+    result: 'Authentication middleware refactored successfully.',
+    structuredOutput: { status: 'success', filesModified: 4, testsAdded: 12 },
+    stopReason: 'end_turn',
+    fastModeState: 'on',
+    hookCount: 2,
+    hookInfos: [
+      { hookName: 'live-monitor', hookEvent: 'StopTool', status: 'passed' },
+      { hookName: 'post-commit', hookEvent: 'PostToolUse', status: 'passed' },
+    ],
+    hookErrors: [],
+    error: {
+      subtype: 'error_during_execution',
+      messages: ['Warning: flaky network during API call (recovered)'],
+    },
+  } satisfies TurnBoundaryBlock,
 }
 
 // ── System Blocks ───────────────────────────────────────────────────────────
@@ -851,6 +921,338 @@ export const systemBlocks = {
       sessionId: 'sess-100',
     },
   } as SystemBlock,
+
+  // ── New system variants (zero-data-loss) ──────────────────────────────────
+
+  sessionInit: {
+    type: 'system',
+    id: 'sb_010',
+    variant: 'session_init',
+    data: {
+      type: 'session_init',
+      model: 'claude-sonnet-4-5-20250514',
+      permissionMode: 'default',
+      cwd: '/Users/dev/project',
+      tools: ['Read', 'Write', 'Bash', 'Edit', 'Grep', 'Glob'],
+      agents: [],
+      skills: [],
+      claudeCodeVersion: '1.0.0',
+      mcpServers: [],
+      slashCommands: [],
+      outputStyle: 'standard',
+    } satisfies SessionInit,
+  } satisfies SystemBlock,
+
+  sessionStatus: {
+    type: 'system',
+    id: 'sb_011',
+    variant: 'session_status',
+    data: {
+      type: 'session_status',
+      status: 'compacting',
+      permissionMode: 'default',
+    } satisfies SessionStatus,
+  } satisfies SystemBlock,
+
+  elicitationComplete: {
+    type: 'system',
+    id: 'sb_012',
+    variant: 'elicitation_complete',
+    data: {
+      type: 'elicitation_complete',
+      mcpServerName: 'postgres',
+      elicitationId: 'elic_001',
+    } satisfies ElicitationComplete,
+  } satisfies SystemBlock,
+
+  hookEvent: {
+    type: 'system',
+    id: 'sb_013',
+    variant: 'hook_event',
+    data: {
+      type: 'hook_event',
+      phase: 'response',
+      hookId: 'h1',
+      hookName: 'pre-commit',
+      hookEventName: 'PreToolUse',
+      outcome: 'success',
+      exitCode: 0,
+    } satisfies HookEvent,
+  } satisfies SystemBlock,
+
+  hookEventError: {
+    type: 'system',
+    id: 'sb_013b',
+    variant: 'hook_event',
+    data: {
+      type: 'hook_event',
+      phase: 'response',
+      hookId: 'h2',
+      hookName: 'typecheck',
+      hookEventName: 'PreToolUse',
+      outcome: 'error',
+      stderr: 'error TS2322: Type "string" is not assignable to type "number".',
+      exitCode: 1,
+    } satisfies HookEvent,
+  } satisfies SystemBlock,
+
+  filesSaved: {
+    type: 'system',
+    id: 'sb_014',
+    variant: 'files_saved',
+    data: {
+      type: 'files_saved',
+      files: [
+        { filename: 'src/auth.ts', fileId: 'f1' },
+        { filename: 'src/middleware.ts', fileId: 'f2' },
+      ],
+      failed: [{ filename: 'src/locked.ts', error: 'Permission denied' }],
+      processedAt: '2026-04-11T10:30:00.000Z',
+    } satisfies FilesSaved,
+  } satisfies SystemBlock,
+
+  commandOutput: {
+    type: 'system',
+    id: 'sb_015',
+    variant: 'command_output',
+    data: {
+      type: 'command_output',
+      content: '$ cargo test\nrunning 42 tests\ntest result: ok. 42 passed; 0 failed; 0 ignored',
+    } satisfies CommandOutput,
+  } satisfies SystemBlock,
+
+  streamDelta: {
+    type: 'system',
+    id: 'sb_016',
+    variant: 'stream_delta',
+    data: {
+      type: 'stream_delta',
+      event: null,
+      messageId: 'msg_abc123def456',
+      deltaType: 'content_block_delta',
+    } satisfies StreamDelta,
+  } satisfies SystemBlock,
+
+  localCommand: {
+    type: 'system',
+    id: 'sb_017',
+    variant: 'local_command',
+    data: {
+      type: 'system',
+      subtype: 'local_command',
+      content:
+        '<local-command-stdout>git status\nOn branch main\nnothing to commit, working tree clean</local-command-stdout>',
+      command: 'git status',
+    } satisfies LocalCommand,
+  } satisfies SystemBlock,
+
+  fileHistorySnapshot: {
+    type: 'system',
+    id: 'sb_018',
+    variant: 'file_history_snapshot',
+    data: {
+      type: 'file-history-snapshot',
+      messageId: 'msg_snap',
+      isSnapshotUpdate: false,
+      snapshot: {
+        messageId: 'msg_snap_inner',
+        trackedFileBackups: {
+          'src/main.rs': { backupFileName: '', version: 1, backupTime: '2026-04-11T08:00:00.000Z' },
+          'src/lib.rs': { backupFileName: '', version: 2, backupTime: '2026-04-11T08:01:00.000Z' },
+        },
+        timestamp: '2026-04-11T08:00:00.000Z',
+      },
+    } satisfies FileHistorySnapshot,
+  } satisfies SystemBlock,
+
+  aiTitle: {
+    type: 'system',
+    id: 'sb_019',
+    variant: 'ai_title',
+    data: {
+      type: 'ai-title',
+      sessionId: 'sess_001',
+      aiTitle: 'Refactor authentication middleware',
+    } satisfies AiTitle,
+  } satisfies SystemBlock,
+
+  lastPrompt: {
+    type: 'system',
+    id: 'sb_020',
+    variant: 'last_prompt',
+    data: {
+      type: 'last-prompt',
+      sessionId: 'sess_001',
+      lastPrompt:
+        'Fix the login bug on the settings page and make sure all tests pass before committing',
+    } satisfies LastPrompt,
+  } satisfies SystemBlock,
+
+  worktreeState: {
+    type: 'system',
+    id: 'sb_021',
+    variant: 'worktree_state',
+    data: {
+      type: 'worktree-state',
+      sessionId: 'sess_001',
+      worktreeSession: {
+        worktreeName: 'feat-auth',
+        worktreeBranch: 'feat/auth-middleware',
+        originalBranch: 'main',
+        originalCwd: '/Users/dev/project',
+        worktreePath: '/Users/dev/project-wt-auth',
+        originalHeadCommit: 'abc123def',
+      },
+    } satisfies WorktreeState,
+  } satisfies SystemBlock,
+
+  informational: {
+    type: 'system',
+    id: 'sb_022',
+    variant: 'informational',
+    data: {
+      content: 'Session resumed from previous context',
+      message: 'Session resumed from previous context',
+    } satisfies Informational,
+  } satisfies SystemBlock,
+
+  attachmentHook: {
+    type: 'system' as const,
+    id: 'sb_023',
+    variant: 'attachment' as const,
+    data: {
+      type: 'attachment',
+      attachment: {
+        type: 'async_hook_response',
+        hookName: 'pre-commit',
+        hookEvent: 'PreToolUse',
+        exitCode: 0,
+      },
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
+
+  attachmentFile: {
+    type: 'system' as const,
+    id: 'sb_024',
+    variant: 'attachment' as const,
+    data: {
+      type: 'attachment',
+      attachment: {
+        type: 'file',
+        addedNames: ['src/auth.ts', 'src/middleware.ts'],
+        removedNames: ['src/old-auth.ts'],
+        addedLines: 142,
+      },
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
+
+  permissionModeChange: {
+    type: 'system' as const,
+    id: 'sb_025',
+    variant: 'permission_mode_change' as const,
+    data: {
+      type: 'permission-mode',
+      permissionMode: 'bypassPermissions',
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
+
+  scheduledTaskFire: {
+    type: 'system' as const,
+    id: 'sb_026',
+    variant: 'scheduled_task_fire' as const,
+    data: {
+      type: 'system',
+      subtype: 'scheduled_task_fire',
+      content: 'Running scheduled task (Apr 11 2:34am)',
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
+
+  unknownVariant: {
+    type: 'system',
+    id: 'sb_027',
+    variant: 'unknown',
+    data: {
+      type: 'unknown_sdk_event',
+      sdkType: 'new_feature_event',
+      raw: { someData: true },
+    } satisfies UnknownSdkEvent,
+  } satisfies SystemBlock,
+}
+
+// ── Team Transcript Blocks ──────────────────────────────────────────────────
+
+export const teamTranscriptBlocks = {
+  multiSpeaker: {
+    type: 'team_transcript',
+    id: 'tt_001',
+    teamName: 'Code Review Panel',
+    description: 'Three agents debate the migration strategy',
+    speakers: [
+      {
+        id: 's1',
+        displayName: 'Advocate',
+        color: '#3b82f6',
+        stance: 'for',
+        model: 'claude-sonnet-4-5',
+      },
+      {
+        id: 's2',
+        displayName: 'Critic',
+        color: '#ef4444',
+        stance: 'against',
+        model: 'claude-sonnet-4-5',
+      },
+      { id: 's3', displayName: 'Moderator', color: '#8b5cf6', model: 'claude-opus-4' },
+    ],
+    entries: [
+      { kind: 'team_lifecycle', event: 'team_started', lineIndex: 0 },
+      {
+        kind: 'agent_message',
+        teammateId: 's1',
+        color: '#3b82f6',
+        text: 'The migration to axum 0.8 is straightforward — the breaking changes are well-documented and the ecosystem has caught up.',
+        lineIndex: 1,
+      },
+      {
+        kind: 'agent_message',
+        teammateId: 's2',
+        color: '#ef4444',
+        text: 'I disagree. We have 14 custom extractors that need rewriting. The risk of regression is high.',
+        summary: 'Concerns about extractor compatibility',
+        lineIndex: 2,
+      },
+      {
+        kind: 'moderator_relay',
+        to: 's1',
+        message: 'Can you address the extractor concern?',
+        lineIndex: 3,
+      },
+      {
+        kind: 'task_event',
+        subject: 'Extractor audit',
+        status: 'completed',
+        owner: 'Advocate',
+        lineIndex: 4,
+      },
+      {
+        kind: 'moderator_narration',
+        text: 'After reviewing the audit results, both sides agree that 12/14 extractors are compatible. The remaining 2 need manual migration.',
+        isVerdict: true,
+        lineIndex: 5,
+      },
+      {
+        kind: 'protocol',
+        teammateId: 's3',
+        msgType: 'thinking',
+        raw: { tokens: 1500, duration: 2.3 },
+        lineIndex: 6,
+      },
+    ],
+  } as TeamTranscriptBlock,
 }
 
 // ── Interaction / Protocol Data ─────────────────────────────────────────────

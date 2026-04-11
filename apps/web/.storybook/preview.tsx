@@ -38,9 +38,17 @@ const preview: Preview = {
   parameters: {
     layout: 'centered',
     docs: {
-      // Make the Docs page canvas background match the theme
       canvas: {
         sourceState: 'shown',
+      },
+    },
+    a11y: {
+      // Run axe-core checks on every story automatically
+      config: {
+        rules: [
+          // Relax color-contrast for dev-mode JSON views (monospace code blocks)
+          { id: 'color-contrast', reviewOnFail: true },
+        ],
       },
     },
   },
