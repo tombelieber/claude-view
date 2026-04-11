@@ -14,18 +14,23 @@ import {
 const liveAutonomous = {
   agentState: { group: 'autonomous' as const },
   status: 'working' as const,
-  control: null,
+  ownership: null,
 }
 
 const liveNeedsYou = {
   agentState: { group: 'needs_you' as const },
   status: 'paused' as const,
-  control: null,
+  ownership: null,
 }
 
-const liveSidecarManaged = {
+const liveSdkManaged = {
   ...liveAutonomous,
-  control: { controlId: 'c1', boundAt: 100 },
+  ownership: { tier: 'sdk' as const },
+}
+
+const liveTmuxManaged = {
+  ...liveAutonomous,
+  ownership: { tier: 'tmux' as const },
 }
 
 // ---------------------------------------------------------------------------
@@ -41,10 +46,8 @@ describe('getStatusDotColor', () => {
     expect(getStatusDotColor({ liveData: liveAutonomous })).toBe('bg-green-500')
   })
 
-  it('green for sidecar-managed autonomous', () => {
-    expect(
-      getStatusDotColor({ liveData: liveSidecarManaged, liveStatus: 'cc_agent_sdk_owned' }),
-    ).toBe('bg-green-500')
+  it('green for sdk-managed autonomous', () => {
+    expect(getStatusDotColor({ liveData: liveSdkManaged })).toBe('bg-green-500')
   })
 
   it('gray when no live data', () => {
@@ -53,20 +56,20 @@ describe('getStatusDotColor', () => {
 })
 
 // ---------------------------------------------------------------------------
-// getSessionSource — terminal vs sdk based on liveStatus
+// getSessionSource — terminal vs sdk based on ownership tier
 // ---------------------------------------------------------------------------
 
 describe('getSessionSource', () => {
-  it('sdk when cc_agent_sdk_owned', () => {
-    expect(getSessionSource({ liveStatus: 'cc_agent_sdk_owned' })).toBe('sdk')
+  it('sdk when ownership tier is sdk', () => {
+    expect(getSessionSource({ liveData: liveSdkManaged })).toBe('sdk')
   })
 
-  it('terminal when cc_owned', () => {
-    expect(getSessionSource({ liveStatus: 'cc_owned' })).toBe('terminal')
+  it('terminal when ownership tier is tmux', () => {
+    expect(getSessionSource({ liveData: liveTmuxManaged })).toBe('terminal')
   })
 
-  it('terminal when inactive (default)', () => {
-    expect(getSessionSource({ liveStatus: 'inactive' })).toBe('terminal')
+  it('terminal when no ownership (default)', () => {
+    expect(getSessionSource({ liveData: liveAutonomous })).toBe('terminal')
   })
 })
 
@@ -91,9 +94,9 @@ describe('getUrgencyGroup', () => {
 describe('groupByUrgency', () => {
   it('splits sessions into needsYou and working', () => {
     const sessions = [
-      { liveData: liveNeedsYou, liveStatus: 'cc_owned' as const },
-      { liveData: liveAutonomous, liveStatus: 'cc_owned' as const },
-      { liveData: liveSidecarManaged, liveStatus: 'cc_agent_sdk_owned' as const },
+      { liveData: liveNeedsYou, isActive: true },
+      { liveData: liveAutonomous, isActive: true },
+      { liveData: liveSdkManaged, isActive: true },
     ]
     const { needsYou, working } = groupByUrgency(sessions)
     expect(needsYou).toHaveLength(1)
@@ -114,7 +117,7 @@ describe('groupByUrgency', () => {
 describe('deriveDropdownActions', () => {
   it('HISTORY session: Resume + Archive (fork/takeOver hidden)', () => {
     const actions = deriveDropdownActions({
-      liveStatus: 'inactive',
+      isActive: false,
       liveData: null,
     })
     expect(actions.resume).toBe(true)
@@ -126,23 +129,29 @@ describe('deriveDropdownActions', () => {
   })
 
   it('WATCHING session: Open in Monitor (fork/takeOver hidden)', () => {
-    const actions = deriveDropdownActions({
-      liveStatus: 'cc_owned',
-      liveData: liveAutonomous,
-    })
+    const actions = deriveDropdownActions(
+      {
+        isActive: true,
+        liveData: liveAutonomous,
+      },
+      { tier: 'tmux' },
+    )
     expect(actions.openInMonitor).toBe(true)
     expect(actions.takeOver).toBe(false)
     expect(actions.fork).toBe(false)
     expect(actions.resume).toBe(false)
-    expect(actions.shutDown).toBe(false)
+    expect(actions.shutDown).toBe(true) // tmux can be shut down
     expect(actions.archive).toBe(false)
   })
 
   it('OWN session: Shut Down + Open in Monitor (fork hidden)', () => {
-    const actions = deriveDropdownActions({
-      liveStatus: 'cc_agent_sdk_owned',
-      liveData: liveSidecarManaged,
-    })
+    const actions = deriveDropdownActions(
+      {
+        isActive: true,
+        liveData: liveSdkManaged,
+      },
+      { tier: 'sdk' },
+    )
     expect(actions.shutDown).toBe(true)
     expect(actions.openInMonitor).toBe(true)
     expect(actions.fork).toBe(false)

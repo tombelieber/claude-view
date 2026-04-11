@@ -500,10 +500,10 @@ describe('regression: watching mode (nobody → cc_cli.watching)', () => {
     historyPagination: null,
   }
 
-  test('LIVE_STATUS cc_owned → cc_cli(watching), terminal WS opened', () => {
+  test('OWNERSHIP_CHANGED tmux → cc_cli(watching), terminal WS opened', () => {
     const { store, cmds } = step(readyStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
       projectPath: '/cli/project',
     })
     expect(store.panel.phase).toBe('cc_cli')
@@ -525,20 +525,20 @@ describe('regression: watching mode (nobody → cc_cli.watching)', () => {
     expect(store.projectPath).toBe('/cli/project')
   })
 
-  test('race: LIVE_STATUS before HISTORY_OK → deferred, then completes', () => {
+  test('race: OWNERSHIP_CHANGED before HISTORY_OK → deferred, then completes', () => {
     const loadingStore: ChatPanelStore = {
       ...readyStore,
       panel: { phase: 'nobody', sessionId: 'sess-1', sub: { sub: 'loading' } },
     }
 
-    // Step 1: LIVE_STATUS while loading → deferred
+    // Step 1: OWNERSHIP_CHANGED while loading → deferred
     const { store: mid, cmds: midCmds } = step(loadingStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
     })
     expect(mid.panel.phase).toBe('nobody')
     if (mid.panel.phase === 'nobody' && mid.panel.sub.sub === 'loading') {
-      expect(mid.panel.sub.pendingLive).toBe('cc_owned')
+      expect(mid.panel.sub.pendingLive).toBe('tmux')
     }
     expect(midCmds).toHaveLength(0) // no terminal WS yet
 
@@ -601,7 +601,7 @@ describe('regression: watching mode (nobody → cc_cli.watching)', () => {
     }
   })
 
-  test('LIVE_STATUS inactive → back to nobody(ready) with blocks preserved', () => {
+  test('OWNERSHIP_CHANGED null → back to nobody(ready) with blocks preserved', () => {
     const watchingStore: ChatPanelStore = {
       panel: {
         phase: 'cc_cli',
@@ -618,8 +618,8 @@ describe('regression: watching mode (nobody → cc_cli.watching)', () => {
     }
 
     const { store, cmds } = step(watchingStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'inactive',
+      type: 'OWNERSHIP_CHANGED',
+      tier: null,
     })
     expect(store.panel.phase).toBe('nobody')
     if (store.panel.phase === 'nobody') {
@@ -752,10 +752,10 @@ describe('regression: resume from closed (closed → resume → sdk_owned)', () 
     }
   })
 
-  test('LIVE_STATUS cc_owned from closed → enters watching mode', () => {
+  test('OWNERSHIP_CHANGED tmux from closed → enters watching mode', () => {
     const { store, cmds } = step(closedStore, {
-      type: 'LIVE_STATUS_CHANGED',
-      status: 'cc_owned',
+      type: 'OWNERSHIP_CHANGED',
+      tier: 'tmux',
     })
     expect(store.panel.phase).toBe('cc_cli')
     if (store.panel.phase === 'cc_cli') {

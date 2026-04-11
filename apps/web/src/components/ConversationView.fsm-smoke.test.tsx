@@ -63,9 +63,9 @@ describe('ConversationView FSM wiring', () => {
     expect(src).toContain('useCommandExecutor(')
   })
 
-  it('dispatches LIVE_STATUS_CHANGED', async () => {
+  it('dispatches OWNERSHIP_CHANGED', async () => {
     const src = await readSource('ConversationView.tsx')
-    expect(src).toContain("type: 'LIVE_STATUS_CHANGED'")
+    expect(src).toContain("type: 'OWNERSHIP_CHANGED'")
   })
 
   it('dispatches LOAD_OLDER_HISTORY for pagination', async () => {
@@ -99,9 +99,9 @@ describe('SessionDetailPanel FSM wiring', () => {
     expect(src).toContain('useCommandExecutor(')
   })
 
-  it('dispatches LIVE_STATUS_CHANGED', async () => {
+  it('dispatches OWNERSHIP_CHANGED', async () => {
     const src = await readSource('live/SessionDetailPanel.tsx')
-    expect(src).toContain("type: 'LIVE_STATUS_CHANGED'")
+    expect(src).toContain("type: 'OWNERSHIP_CHANGED'")
   })
 
   it('dispatches LOAD_OLDER_HISTORY for pagination', async () => {
