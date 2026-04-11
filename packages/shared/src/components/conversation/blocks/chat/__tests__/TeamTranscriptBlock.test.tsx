@@ -112,7 +112,7 @@ describe('ChatTeamTranscriptBlock', () => {
         { kind: 'moderator_narration', text: 'Final verdict!', isVerdict: true, lineIndex: 0 },
       ],
     }
-    const { container } = render(<ChatTeamTranscriptBlock block={verdictFixture} />)
+    render(<ChatTeamTranscriptBlock block={verdictFixture} />)
     const verdictEl = screen.getByText('Final verdict!')
     expect(verdictEl.className).toContain('amber')
   })
