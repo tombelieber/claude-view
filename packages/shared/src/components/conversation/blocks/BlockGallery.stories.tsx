@@ -128,6 +128,271 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
+// ── Helper: system row with explicit dev fixture ───────────────────────────
+
+function SysRow({
+  label,
+  chat,
+  dev,
+}: {
+  label: string
+  chat: typeof systemBlocks.taskStarted
+  dev: typeof devSystemBlocks.sessionInit
+}) {
+  return (
+    <GalleryRow
+      label={`System / ${label}`}
+      chat={<ChatSystemBlock block={chat} />}
+      dev={<DevSystemBlock block={dev} />}
+      devJson={
+        <DevSystemBlock
+          block={{ ...dev, rawJson: dev.rawJson ?? (dev.data as Record<string, unknown>) }}
+        />
+      }
+    />
+  )
+}
+
+// ── ALL BLOCKS — scrollable mega view ──────────────────────────────────────
+
+export const AllBlocks: Story = {
+  render: () => (
+    <>
+      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 border-b border-gray-200 dark:border-gray-700 pb-2">
+        System Blocks
+      </h2>
+      <SystemGalleryRow label="TaskStarted" fixture={systemBlocks.taskStarted} />
+      <SystemGalleryRow label="TaskProgress" fixture={systemBlocks.taskProgress} />
+      <SystemGalleryRow label="TaskCompleted" fixture={systemBlocks.taskCompleted} />
+      <SystemGalleryRow label="TaskFailed" fixture={systemBlocks.taskFailed} />
+      <SystemGalleryRow label="QueueOperation" fixture={systemBlocks.queueOperation} />
+      <SystemGalleryRow label="PrLink" fixture={systemBlocks.prLink} />
+      <SystemGalleryRow label="CustomTitle" fixture={systemBlocks.customTitle} />
+      <SystemGalleryRow label="PlanContent" fixture={systemBlocks.planContent} />
+      <SystemGalleryRow label="AgentName" fixture={systemBlocks.agentName} />
+      <SysRow
+        label="SessionInit"
+        chat={systemBlocks.sessionInit}
+        dev={devSystemBlocks.sessionInit}
+      />
+      <SysRow
+        label="SessionStatus"
+        chat={systemBlocks.sessionStatus}
+        dev={devSystemBlocks.sessionStatus}
+      />
+      <SysRow
+        label="ElicitationComplete"
+        chat={systemBlocks.elicitationComplete}
+        dev={devSystemBlocks.elicitationComplete}
+      />
+      <SysRow
+        label="HookEvent (success)"
+        chat={systemBlocks.hookEvent}
+        dev={devSystemBlocks.hookEvent}
+      />
+      <SysRow
+        label="HookEvent (error)"
+        chat={systemBlocks.hookEventError}
+        dev={devSystemBlocks.hookEventError}
+      />
+      <SysRow label="FilesSaved" chat={systemBlocks.filesSaved} dev={devSystemBlocks.filesSaved} />
+      <SysRow
+        label="CommandOutput"
+        chat={systemBlocks.commandOutput}
+        dev={devSystemBlocks.commandOutput}
+      />
+      <SysRow
+        label="StreamDelta"
+        chat={systemBlocks.streamDelta}
+        dev={devSystemBlocks.streamDelta}
+      />
+      <SysRow
+        label="LocalCommand"
+        chat={systemBlocks.localCommand}
+        dev={devSystemBlocks.localCommand}
+      />
+      <SysRow
+        label="FileHistorySnapshot"
+        chat={systemBlocks.fileHistorySnapshot}
+        dev={devSystemBlocks.fileHistorySnapshot}
+      />
+      <SysRow label="AiTitle" chat={systemBlocks.aiTitle} dev={devSystemBlocks.aiTitle} />
+      <SysRow label="LastPrompt" chat={systemBlocks.lastPrompt} dev={devSystemBlocks.lastPrompt} />
+      <SysRow
+        label="WorktreeState"
+        chat={systemBlocks.worktreeState}
+        dev={devSystemBlocks.worktreeState}
+      />
+      <SysRow
+        label="Informational"
+        chat={systemBlocks.informational}
+        dev={devSystemBlocks.informational}
+      />
+      <SysRow
+        label="Attachment (hook)"
+        chat={systemBlocks.attachmentHook}
+        dev={devSystemBlocks.attachment}
+      />
+      <SysRow
+        label="Attachment (file)"
+        chat={systemBlocks.attachmentFile}
+        dev={devSystemBlocks.attachment}
+      />
+      <SysRow
+        label="PermissionModeChange"
+        chat={systemBlocks.permissionModeChange}
+        dev={devSystemBlocks.permissionModeChange}
+      />
+      <SysRow
+        label="ScheduledTaskFire"
+        chat={systemBlocks.scheduledTaskFire}
+        dev={devSystemBlocks.scheduledTaskFire}
+      />
+      <SysRow label="Unknown" chat={systemBlocks.unknownVariant} dev={devSystemBlocks.unknown} />
+
+      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 mt-8 border-b border-gray-200 dark:border-gray-700 pb-2">
+        Team Transcript
+      </h2>
+      <GalleryRow
+        label="TeamTranscript / MultiSpeaker"
+        chat={<ChatTeamTranscriptBlock block={teamTranscriptBlocks.multiSpeaker} />}
+        dev={<DevTeamTranscriptBlock block={teamTranscriptBlocks.multiSpeaker} />}
+        devJson={<DevTeamTranscriptBlock block={teamTranscriptBlocks.multiSpeaker} />}
+      />
+
+      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 mt-8 border-b border-gray-200 dark:border-gray-700 pb-2">
+        Turn Boundaries
+      </h2>
+      <GalleryRow
+        label="TurnBoundary / Success"
+        chat={<ChatTurnBoundary block={turnBoundaryBlocks.success} />}
+        dev={<DevTurnBoundary block={turnBoundaryBlocks.success} />}
+        devJson={<DevTurnBoundary block={turnBoundaryBlocks.success} />}
+      />
+      <GalleryRow
+        label="TurnBoundary / Error"
+        chat={<ChatTurnBoundary block={turnBoundaryBlocks.error} />}
+        dev={<DevTurnBoundary block={turnBoundaryBlocks.error} />}
+        devJson={<DevTurnBoundary block={turnBoundaryBlocks.error} />}
+      />
+      <GalleryRow
+        label="TurnBoundary / Full Fields"
+        chat={<ChatTurnBoundary block={turnBoundaryBlocks.fullFields} />}
+        dev={<DevTurnBoundary block={turnBoundaryBlocks.fullFields} />}
+        devJson={<DevTurnBoundary block={turnBoundaryBlocks.fullFields} />}
+      />
+      <GalleryRow
+        label="TurnBoundary / MaxTurns"
+        chat={<ChatTurnBoundary block={turnBoundaryBlocks.maxTurns} />}
+        dev={<DevTurnBoundary block={turnBoundaryBlocks.maxTurns} />}
+        devJson={<DevTurnBoundary block={turnBoundaryBlocks.maxTurns} />}
+      />
+      <GalleryRow
+        label="TurnBoundary / Hook Errors"
+        chat={<ChatTurnBoundary block={turnBoundaryBlocks.withHookErrors} />}
+        dev={<DevTurnBoundary block={turnBoundaryBlocks.withHookErrors} />}
+        devJson={<DevTurnBoundary block={turnBoundaryBlocks.withHookErrors} />}
+      />
+
+      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 mt-8 border-b border-gray-200 dark:border-gray-700 pb-2">
+        Notices
+      </h2>
+      <GalleryRow
+        label="Notice / RateLimit (warning)"
+        chat={<ChatNoticeBlock block={noticeBlocks.rateLimitWarning} />}
+        dev={<DevNoticeBlock block={noticeBlocks.rateLimitWarning} />}
+        devJson={<DevNoticeBlock block={noticeBlocks.rateLimitWarning} />}
+      />
+      <GalleryRow
+        label="Notice / RateLimit (rejected)"
+        chat={<ChatNoticeBlock block={noticeBlocks.rateLimitRejected} />}
+        dev={<DevNoticeBlock block={noticeBlocks.rateLimitRejected} />}
+        devJson={<DevNoticeBlock block={noticeBlocks.rateLimitRejected} />}
+      />
+      <GalleryRow
+        label="Notice / ContextCompacted"
+        chat={<ChatNoticeBlock block={noticeBlocks.contextCompacted} />}
+        dev={<DevNoticeBlock block={noticeBlocks.contextCompacted} />}
+        devJson={<DevNoticeBlock block={noticeBlocks.contextCompacted} />}
+      />
+      <GalleryRow
+        label="Notice / Error (fatal)"
+        chat={<ChatNoticeBlock block={noticeBlocks.fatalError} />}
+        dev={<DevNoticeBlock block={noticeBlocks.fatalError} />}
+        devJson={<DevNoticeBlock block={noticeBlocks.fatalError} />}
+      />
+      <GalleryRow
+        label="Notice / SessionClosed"
+        chat={<ChatNoticeBlock block={noticeBlocks.sessionClosed} />}
+        dev={<DevNoticeBlock block={noticeBlocks.sessionClosed} />}
+        devJson={<DevNoticeBlock block={noticeBlocks.sessionClosed} />}
+      />
+      <GalleryRow
+        label="Notice / AssistantError"
+        chat={<ChatNoticeBlock block={noticeBlocks.billingError} />}
+        dev={<DevNoticeBlock block={noticeBlocks.billingError} />}
+        devJson={<DevNoticeBlock block={noticeBlocks.billingError} />}
+      />
+
+      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 mt-8 border-b border-gray-200 dark:border-gray-700 pb-2">
+        Interactions
+      </h2>
+      <GalleryRow
+        label="Interaction / Permission"
+        chat={<ChatInteractionBlock block={interactionBlocks.permissionPending} />}
+        dev={<DevInteractionBlock block={interactionBlocks.permissionPending} />}
+        devJson={<DevInteractionBlock block={interactionBlocks.permissionPending} />}
+      />
+      <GalleryRow
+        label="Interaction / Elicitation"
+        chat={<ChatInteractionBlock block={interactionBlocks.elicitationPending} />}
+        dev={<DevInteractionBlock block={interactionBlocks.elicitationPending} />}
+        devJson={<DevInteractionBlock block={interactionBlocks.elicitationPending} />}
+      />
+      <GalleryRow
+        label="Interaction / Question"
+        chat={<ChatInteractionBlock block={interactionBlocks.questionPending} />}
+        dev={<DevInteractionBlock block={interactionBlocks.questionPending} />}
+        devJson={<DevInteractionBlock block={interactionBlocks.questionPending} />}
+      />
+      <GalleryRow
+        label="Interaction / Plan"
+        chat={<ChatInteractionBlock block={interactionBlocks.planPending} />}
+        dev={<DevInteractionBlock block={interactionBlocks.planPending} />}
+        devJson={<DevInteractionBlock block={interactionBlocks.planPending} />}
+      />
+
+      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-4 mt-8 border-b border-gray-200 dark:border-gray-700 pb-2">
+        Progress
+      </h2>
+      <GalleryRow
+        label="Progress / Bash"
+        chat={<ChatProgressBlock block={progressBlocks.bash} />}
+        dev={<DevProgressBlock block={progressBlocks.bash} />}
+        devJson={<DevProgressBlock block={progressBlocks.bash} />}
+      />
+      <GalleryRow
+        label="Progress / Hook"
+        chat={<ChatProgressBlock block={progressBlocks.hook} />}
+        dev={<DevProgressBlock block={progressBlocks.hook} />}
+        devJson={<DevProgressBlock block={progressBlocks.hook} />}
+      />
+      <GalleryRow
+        label="Progress / Agent"
+        chat={<ChatProgressBlock block={progressBlocks.agent} />}
+        dev={<DevProgressBlock block={progressBlocks.agent} />}
+        devJson={<DevProgressBlock block={progressBlocks.agent} />}
+      />
+      <GalleryRow
+        label="Progress / MCP"
+        chat={<ChatProgressBlock block={progressBlocks.mcp} />}
+        dev={<DevProgressBlock block={progressBlocks.mcp} />}
+        devJson={<DevProgressBlock block={progressBlocks.mcp} />}
+      />
+    </>
+  ),
+}
+
 // ── System Block Variants ──────────────────────────────────────────────────
 
 function SystemGalleryRow({
