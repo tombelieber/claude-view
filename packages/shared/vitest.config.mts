@@ -9,6 +9,8 @@ export default defineConfig({
     include: [
       'src/**/*.test.ts',
       'src/components/conversation/blocks/shared/__tests__/SessionInteractionCard.test.tsx',
+      'src/components/conversation/blocks/shared/__tests__/CollapsibleJson.test.tsx',
+      'src/components/conversation/blocks/shared/__tests__/StatusBadge.test.tsx',
     ],
     setupFiles: ['./src/test-setup.ts'],
     passWithNoTests: true,
