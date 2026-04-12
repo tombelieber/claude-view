@@ -227,7 +227,7 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
             if let Some(ref sid) = session.claude_session_id {
                 let needs_refresh = {
                     let sessions = state.live_sessions.read().await;
-                    sessions.get(sid).map_or(false, |s| s.ownership.is_none())
+                    sessions.get(sid).is_some_and(|s| s.ownership.is_none())
                 };
                 if needs_refresh {
                     refresh_live_ownership(&state, sid, &session.id).await;
