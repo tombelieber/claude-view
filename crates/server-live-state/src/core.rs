@@ -115,9 +115,9 @@ pub struct LiveSession {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entrypoint: Option<String>,
 
-    // -- Ownership + interaction fields (populated by coordinator before broadcast) --
-    /// Session ownership tier — who can interact (SDK, Tmux, or Observed).
-    /// Resolved server-side by `resolve_ownership()` before SSE broadcast.
+    // -- Ownership + interaction fields --
+    /// Session ownership as independent facts (tmux binding, SDK binding).
+    /// Computed at SSE/REST boundary by `enrich_with_ownership()`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ownership: Option<SessionOwnership>,
     /// Lightweight pending interaction metadata for SessionCard display.

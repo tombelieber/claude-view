@@ -105,15 +105,16 @@ pub async fn interact_handler(
 ) -> ApiResult<Json<serde_json::Value>> {
     let request_id = extract_request_id(&req).to_string();
 
-    // Step 2: session exists? Compute ownership on the fly.
-    let ownership = {
+    // Step 2: session exists? Clone and drop lock before async compute.
+    let session_clone = {
         let sessions = state.live_sessions.read().await;
-        let session = sessions
+        sessions
             .get(&session_id)
-            .ok_or_else(|| ApiError::NotFound(format!("Session not found: {session_id}")))?;
-
-        crate::live::ownership::compute_ownership(session, &state.cli_sessions).await
+            .ok_or_else(|| ApiError::NotFound(format!("Session not found: {session_id}")))?
+            .clone()
     };
+    let ownership =
+        crate::live::ownership::compute_ownership(&session_clone, &state.cli_sessions).await;
 
     // Step 3: check ownership — can interact if tmux or sdk binding exists
     if ownership.tmux.is_none() && ownership.sdk.is_none() {
