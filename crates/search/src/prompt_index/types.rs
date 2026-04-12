@@ -102,7 +102,7 @@ pub struct PromptSearchIndex {
     pub reader: IndexReader,
     /// Writer for indexing documents. Wrapped in Mutex because `IndexWriter`
     /// requires `&mut self` but may be used from different async contexts.
-    pub writer: Mutex<IndexWriter>,
+    pub writer: Mutex<Option<IndexWriter>>,
     /// The schema used by this index.
     pub schema: Schema,
     pub needs_full_reindex: bool,

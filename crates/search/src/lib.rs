@@ -33,6 +33,11 @@ pub use unified::{
     unified_search, SearchEngine, UnifiedSearchError, UnifiedSearchOptions, UnifiedSearchResult,
 };
 
+/// Writer heap size for bulk indexing at startup (50 MB).
+pub const BULK_WRITER_HEAP: usize = 50_000_000;
+/// Writer heap size for incremental live updates (15 MB — Tantivy minimum).
+pub const INCREMENTAL_WRITER_HEAP: usize = 15_000_000;
+
 /// Schema version for the Tantivy index. Bump when the schema changes
 /// (field types, new fields, removed fields). A mismatch triggers auto-rebuild.
 // Version 4: Enriched content — tool_result indexed, session summary document, fuzzy matching
@@ -104,7 +109,7 @@ pub struct SearchIndex {
     pub reader: IndexReader,
     /// Writer for indexing documents. Wrapped in Mutex because `IndexWriter`
     /// requires `&mut self` but may be used from different async contexts.
-    pub writer: Mutex<IndexWriter>,
+    pub writer: Mutex<Option<IndexWriter>>,
     /// The schema used by this index.
     pub schema: Schema,
 
@@ -216,8 +221,10 @@ impl SearchIndex {
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()?;
 
-        // 50MB writer heap — reasonable for batch indexing
-        let writer = index.writer(50_000_000)?;
+        // 50MB writer heap — reasonable for batch indexing at startup.
+        // After bulk indexing completes, call release_writer() to free the heap,
+        // then ensure_writer(INCREMENTAL_WRITER_HEAP) for live updates.
+        let writer = index.writer(BULK_WRITER_HEAP)?;
 
         // Pre-resolve all field handles
         let session_id_field = schema
@@ -249,7 +256,7 @@ impl SearchIndex {
         Ok(Self {
             index,
             reader,
-            writer: Mutex::new(writer),
+            writer: Mutex::new(Some(writer)),
             schema,
             needs_full_reindex,
             version_file_path,
@@ -263,6 +270,37 @@ impl SearchIndex {
             timestamp_field,
             skills_field,
         })
+    }
+
+    /// Ensure a writer exists. If `None`, create one with the given heap size.
+    ///
+    /// Called lazily by write methods after `release_writer()` has freed the
+    /// bulk-indexing heap. Safe to call multiple times — no-ops when a writer
+    /// already exists.
+    pub fn ensure_writer(&self, heap_size: usize) -> Result<(), SearchError> {
+        let mut guard = self.writer.lock().map_err(|e| {
+            SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
+        })?;
+        if guard.is_none() {
+            *guard = Some(self.index.writer(heap_size)?);
+        }
+        Ok(())
+    }
+
+    /// Drop the writer, freeing its heap buffer and releasing the lockfile.
+    ///
+    /// After bulk indexing + commit, call this to reclaim ~50 MB of heap.
+    /// Subsequent writes will lazily re-create a smaller writer via
+    /// `ensure_writer(INCREMENTAL_WRITER_HEAP)`.
+    pub fn release_writer(&self) -> Result<(), SearchError> {
+        let mut guard = self.writer.lock().map_err(|e| {
+            SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
+        })?;
+        if let Some(writer) = guard.take() {
+            drop(writer);
+            tracing::info!("search index writer released (memory freed)");
+        }
+        Ok(())
     }
 
     /// Write the current schema version to the version file, marking the
@@ -1146,6 +1184,50 @@ mod tests {
             result.total_sessions, 0,
             "summary-role documents must be excluded from source-message indexing"
         );
+    }
+
+    #[test]
+    fn writer_starts_as_some() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+        assert!(idx.writer.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn release_writer_sets_none() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+        idx.release_writer().unwrap();
+        assert!(idx.writer.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn ensure_writer_recreates_after_release() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+        idx.release_writer().unwrap();
+        idx.ensure_writer(INCREMENTAL_WRITER_HEAP).unwrap();
+        assert!(idx.writer.lock().unwrap().is_some());
+    }
+
+    #[test]
+    fn reader_works_after_writer_released() {
+        let idx = SearchIndex::open_in_ram().unwrap();
+        let doc = SearchDocument {
+            session_id: "s1".into(),
+            project: "p".into(),
+            branch: "".into(),
+            model: "".into(),
+            role: "user".into(),
+            content: "hello world".into(),
+            turn_number: 1,
+            timestamp: 0,
+            skills: vec![],
+        };
+        idx.index_session("s1", &[doc]).unwrap();
+        idx.commit().unwrap();
+        idx.reader.reload().unwrap();
+        idx.release_writer().unwrap();
+        // Reader should still find the document
+        let searcher = idx.reader.searcher();
+        assert!(searcher.num_docs() > 0);
     }
 
     #[test]

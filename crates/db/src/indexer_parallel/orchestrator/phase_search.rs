@@ -65,6 +65,12 @@ pub(crate) fn run_phase_search(
             if force_search_reindex {
                 search_index.mark_schema_synced();
             }
+
+            // Release the 50 MB bulk writer heap now that indexing is done.
+            // Subsequent live updates will lazily create a smaller 5 MB writer.
+            if let Err(e) = search_index.release_writer() {
+                tracing::warn!(error = %e, "Failed to release search index writer");
+            }
         }
     }
 }

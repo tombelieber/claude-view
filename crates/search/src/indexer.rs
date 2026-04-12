@@ -2,7 +2,7 @@ use tantivy::doc;
 use tantivy::Term;
 use tracing::{debug, info};
 
-use crate::{SearchError, SearchIndex};
+use crate::{SearchError, SearchIndex, INCREMENTAL_WRITER_HEAP};
 
 fn is_allowed_source_role(role: &str) -> bool {
     matches!(role, "user" | "assistant" | "tool")
@@ -38,9 +38,13 @@ impl SearchIndex {
         session_id: &str,
         docs: &[SearchDocument],
     ) -> Result<(), SearchError> {
-        let writer = self.writer.lock().map_err(|e| {
+        self.ensure_writer(INCREMENTAL_WRITER_HEAP)?;
+        let guard = self.writer.lock().map_err(|e| {
             SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
         })?;
+        let writer = guard
+            .as_ref()
+            .ok_or_else(|| SearchError::Io(std::io::Error::other("writer missing after ensure")))?;
 
         // Delete all existing documents for this session
         let delete_term = Term::from_field_text(self.session_id_field, session_id);
@@ -92,9 +96,13 @@ impl SearchIndex {
 
     /// Delete all documents for a given session_id. Does NOT commit.
     pub fn delete_session(&self, session_id: &str) -> Result<(), SearchError> {
-        let writer = self.writer.lock().map_err(|e| {
+        self.ensure_writer(INCREMENTAL_WRITER_HEAP)?;
+        let guard = self.writer.lock().map_err(|e| {
             SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
         })?;
+        let writer = guard
+            .as_ref()
+            .ok_or_else(|| SearchError::Io(std::io::Error::other("writer missing after ensure")))?;
 
         let delete_term = Term::from_field_text(self.session_id_field, session_id);
         writer.delete_term(delete_term);
@@ -107,9 +115,13 @@ impl SearchIndex {
     /// Commit all pending writes (inserts and deletes) to disk.
     /// Call this after indexing a batch of sessions.
     pub fn commit(&self) -> Result<(), SearchError> {
-        let mut writer = self.writer.lock().map_err(|e| {
+        self.ensure_writer(INCREMENTAL_WRITER_HEAP)?;
+        let mut guard = self.writer.lock().map_err(|e| {
             SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
         })?;
+        let writer = guard
+            .as_mut()
+            .ok_or_else(|| SearchError::Io(std::io::Error::other("writer missing after ensure")))?;
 
         writer.commit()?;
         info!("search index committed");
@@ -123,9 +135,13 @@ impl SearchIndex {
     /// deleting the underlying directory (which would corrupt the live
     /// `IndexWriter`/`IndexReader` mmap handles).
     pub fn clear_all(&self) -> Result<(), SearchError> {
-        let mut writer = self.writer.lock().map_err(|e| {
+        self.ensure_writer(INCREMENTAL_WRITER_HEAP)?;
+        let mut guard = self.writer.lock().map_err(|e| {
             SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
         })?;
+        let writer = guard
+            .as_mut()
+            .ok_or_else(|| SearchError::Io(std::io::Error::other("writer missing after ensure")))?;
 
         writer.delete_all_documents()?;
         writer.commit()?;

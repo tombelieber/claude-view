@@ -7,7 +7,7 @@ use tantivy::{doc, Index, ReloadPolicy};
 
 use claude_view_core::prompt_templates::normalize_to_template;
 
-use crate::SearchError;
+use crate::{SearchError, BULK_WRITER_HEAP, INCREMENTAL_WRITER_HEAP};
 
 use super::types::{
     build_prompt_schema, fxhash, PromptDocument, PromptSearchIndex, PROMPT_SCHEMA_VERSION,
@@ -81,7 +81,7 @@ impl PromptSearchIndex {
             .reload_policy(ReloadPolicy::OnCommitWithDelay)
             .try_into()?;
 
-        let writer = index.writer(50_000_000)?;
+        let writer = index.writer(BULK_WRITER_HEAP)?;
 
         let prompt_id_field = schema.get_field("prompt_id").expect("missing prompt_id");
         let display_field = schema.get_field("display").expect("missing display");
@@ -105,7 +105,7 @@ impl PromptSearchIndex {
         Ok(Self {
             index,
             reader,
-            writer: Mutex::new(writer),
+            writer: Mutex::new(Some(writer)),
             schema,
             needs_full_reindex,
             version_file_path,
@@ -128,9 +128,13 @@ impl PromptSearchIndex {
 
     /// Bulk-index prompt documents. History is append-only, no deletes needed.
     pub fn index_prompts(&self, docs: &[PromptDocument]) -> Result<(), SearchError> {
-        let writer = self.writer.lock().map_err(|e| {
+        self.ensure_writer(INCREMENTAL_WRITER_HEAP)?;
+        let guard = self.writer.lock().map_err(|e| {
             SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
         })?;
+        let writer = guard
+            .as_ref()
+            .ok_or_else(|| SearchError::Io(std::io::Error::other("writer missing after ensure")))?;
         for d in docs {
             let mut tantivy_doc = doc!(
                 self.prompt_id_field => d.prompt_id.as_str(),
@@ -167,12 +171,39 @@ impl PromptSearchIndex {
     /// Commit pending writes to disk.
     /// Call this after indexing a batch of prompts.
     pub fn commit(&self) -> Result<(), SearchError> {
-        let mut writer = self.writer.lock().map_err(|e| {
+        self.ensure_writer(INCREMENTAL_WRITER_HEAP)?;
+        let mut guard = self.writer.lock().map_err(|e| {
             SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
         })?;
+        let writer = guard
+            .as_mut()
+            .ok_or_else(|| SearchError::Io(std::io::Error::other("writer missing after ensure")))?;
         writer.commit()?;
         self.reader.reload()?;
         tracing::info!("prompt index committed");
+        Ok(())
+    }
+
+    /// Ensure a writer exists. If `None`, create one with the given heap size.
+    pub fn ensure_writer(&self, heap_size: usize) -> Result<(), SearchError> {
+        let mut guard = self.writer.lock().map_err(|e| {
+            SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
+        })?;
+        if guard.is_none() {
+            *guard = Some(self.index.writer(heap_size)?);
+        }
+        Ok(())
+    }
+
+    /// Drop the writer, freeing its heap buffer and releasing the lockfile.
+    pub fn release_writer(&self) -> Result<(), SearchError> {
+        let mut guard = self.writer.lock().map_err(|e| {
+            SearchError::Io(std::io::Error::other(format!("writer lock poisoned: {e}")))
+        })?;
+        if let Some(writer) = guard.take() {
+            drop(writer);
+            tracing::info!("prompt index writer released (memory freed)");
+        }
         Ok(())
     }
 
