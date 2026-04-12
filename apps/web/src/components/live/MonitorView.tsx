@@ -1,5 +1,7 @@
 import type { DockviewApi } from 'dockview-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import { useAutoLayout } from '../../hooks/use-auto-layout'
+import { usePaneZoom } from '../../hooks/use-pane-zoom'
 import { useDockLayoutStore } from '../../store/dock-layout-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useMonitorStore } from '../../store/monitor-store'
@@ -78,6 +80,15 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
     })),
   )
   const dockviewApiRef = useRef<DockviewApi | null>(null)
+  const dockContainerRef = useRef<HTMLDivElement | null>(null)
+
+  // Zed-style hooks — zoom and auto-layout
+  const { toggleZoom } = usePaneZoom({ api: dockviewApiRef.current })
+  useAutoLayout({
+    api: dockviewApiRef.current,
+    containerRef: dockContainerRef,
+    enabled: mode === 'custom',
+  })
 
   // Visibility tracking from MonitorGrid's IntersectionObserver
   const [visiblePanes, setVisiblePanes] = useState<Set<string>>(new Set())
@@ -141,6 +152,64 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
   // Auto-fill: auto-show new sessions and swap idle ones out
   useAutoFill({ sessions, enabled: true })
 
+  // --- Dockview keyboard shortcut handlers ---
+
+  const handleSplitActive = useCallback((direction: 'right' | 'below') => {
+    const api = dockviewApiRef.current
+    const panel = api?.activePanel
+    if (!api || !panel) return
+    const sessionId = (panel.params as { sessionId?: string })?.sessionId
+    if (!sessionId) return
+    api.addPanel({
+      id: `session-${sessionId}-split-${direction[0]}-${Date.now()}`,
+      component: 'session',
+      title: panel.title ?? sessionId.slice(0, 8),
+      params: { ...(panel.params as Record<string, unknown>) },
+      position: { referencePanel: panel.id, direction },
+    })
+  }, [])
+
+  const handleTabCycle = useCallback((delta: -1 | 1) => {
+    const api = dockviewApiRef.current
+    const panel = api?.activePanel
+    if (!panel) return
+    const group = panel.group
+    const panels = group.panels
+    const idx = panels.indexOf(panel)
+    if (idx < 0) return
+    const next = panels[(idx + delta + panels.length) % panels.length]
+    next?.api.setActive()
+  }, [])
+
+  const handleNavigate = useCallback((direction: 'left' | 'right' | 'up' | 'down') => {
+    const api = dockviewApiRef.current
+    if (!api) return
+    // Simple sequential navigation — cycle through all panels
+    const panels = api.panels
+    const active = api.activePanel
+    if (!active || panels.length === 0) return
+    const idx = panels.indexOf(active)
+    const delta = direction === 'left' || direction === 'up' ? -1 : 1
+    const next = panels[(idx + delta + panels.length) % panels.length]
+    next?.focus()
+  }, [])
+
+  const handleCloseActive = useCallback(() => {
+    dockviewApiRef.current?.activePanel?.api.close()
+  }, [])
+
+  const handleEqualize = useCallback(() => {
+    const api = dockviewApiRef.current
+    if (!api) return
+    // Distribute all groups equally by clearing any saved proportions
+    // Dockview doesn't expose a direct equalize API, so we trigger a
+    // layout change by briefly resizing — the simplest approach is to
+    // programmatically call the internal grid distribute if available.
+    // For now, use the toJSON/fromJSON round-trip which resets proportions.
+    const layout = api.toJSON()
+    api.fromJSON(layout)
+  }, [])
+
   // Keyboard shortcuts — active when monitor view is showing
   useMonitorKeyboardShortcuts({
     enabled: true,
@@ -148,6 +217,14 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
     onLayoutModeChange: setMode,
     layoutMode: mode,
     dockviewApi: dockviewApiRef.current,
+    onZoomToggle: toggleZoom,
+    onSplitRight: () => handleSplitActive('right'),
+    onSplitDown: () => handleSplitActive('below'),
+    onPrevTab: () => handleTabCycle(-1),
+    onNextTab: () => handleTabCycle(1),
+    onNavigate: handleNavigate,
+    onClosePane: handleCloseActive,
+    onEqualize: handleEqualize,
   })
 
   // Handlers
@@ -265,8 +342,8 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
         )}
       </div>
 
-      {/* Content area — conditional render */}
-      <div className="flex-1 min-h-0 relative">
+      {/* Content area — ref for auto-layout ResizeObserver */}
+      <div ref={dockContainerRef} className="flex-1 min-h-0 relative">
         {mode === 'auto-grid' ? (
           <MonitorGrid
             sessions={visibleSessions}

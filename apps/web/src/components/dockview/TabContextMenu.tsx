@@ -13,8 +13,19 @@ export interface TabContextMenuProps {
 }
 
 export function TabContextMenu({ children, panel, api, splitComponent }: TabContextMenuProps) {
-  const sessionId = (panel.params as { sessionId?: string })?.sessionId
+  const params = panel.params as Record<string, unknown>
+  const sessionId = (params.sessionId as string | undefined) ?? undefined
   const { deleteSession } = useSessionMutations()
+
+  const isMaximized = panel.api.isMaximized()
+
+  const handleZoom = () => {
+    if (isMaximized) {
+      panel.api.exitMaximized()
+    } else {
+      panel.api.maximize()
+    }
+  }
 
   const handleClose = () => {
     panel.api.close()
@@ -41,7 +52,7 @@ export function TabContextMenu({ children, panel, api, splitComponent }: TabCont
       id: `${splitComponent}-${sessionId}-split-${dir[0]}-${Date.now()}`,
       component: splitComponent,
       title: panel.title ?? sessionId.slice(0, 8),
-      params: { ...(panel.params as Record<string, unknown>) },
+      params: { ...params },
       position: { referencePanel: panel.id, direction: dir },
     })
   }
@@ -62,28 +73,50 @@ export function TabContextMenu({ children, panel, api, splitComponent }: TabCont
     }
   }
 
+  // Session metadata from panel params
+  const projectName = params.projectName as string | undefined
+  const branch = params.branch as string | undefined
+
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>{children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="min-w-[180px] rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-lg py-1 text-xs z-[100]">
-          <MenuItem label="Close" shortcut="Ctrl+W" onClick={handleClose} />
-          <MenuItem label="Close Others" onClick={handleCloseOthers} />
-          <MenuItem label="Close All" onClick={handleCloseAll} />
+          <MenuItem
+            label={isMaximized ? 'Exit Zoom' : 'Zoom Pane'}
+            shortcut="Ctrl+Shift+Enter"
+            onClick={handleZoom}
+          />
 
           <ContextMenu.Separator className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
 
-          <MenuItem label="Split Right" shortcut="Ctrl+\" onClick={() => handleSplit('right')} />
+          <MenuItem label="Split Right" shortcut="Ctrl+D" onClick={() => handleSplit('right')} />
           <MenuItem
             label="Split Down"
-            shortcut="Ctrl+Shift+\"
+            shortcut="Ctrl+Shift+D"
             onClick={() => handleSplit('below')}
           />
 
           <ContextMenu.Separator className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
 
+          {(projectName || branch) && (
+            <>
+              <div className="px-3 py-1 text-gray-400 dark:text-gray-500 space-y-0.5">
+                {projectName && <div>{projectName}</div>}
+                {branch && <div>Branch: {branch}</div>}
+              </div>
+              <ContextMenu.Separator className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
+            </>
+          )}
+
           <MenuItem label="Copy Session ID" onClick={handleCopySessionId} />
           <MenuItem label="End Session" onClick={handleEndSession} destructive />
+
+          <ContextMenu.Separator className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
+
+          <MenuItem label="Close" shortcut="Ctrl+Shift+W" onClick={handleClose} />
+          <MenuItem label="Close Others" onClick={handleCloseOthers} />
+          <MenuItem label="Close All" onClick={handleCloseAll} />
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>

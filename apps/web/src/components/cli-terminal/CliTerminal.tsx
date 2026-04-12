@@ -5,10 +5,12 @@ import '@xterm/xterm/css/xterm.css'
 interface CliTerminalProps {
   tmuxSessionId: string | null
   className?: string
+  /** When true, hides the status bar and removes top padding (dockview embedded mode). */
+  embedded?: boolean
   onSendKeys?: (sendFn: (data: string) => void) => void
 }
 
-export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTerminalProps) {
+export function CliTerminal({ tmuxSessionId, className, embedded, onSendKeys }: CliTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { status, sendKeys, reconnect, focus } = useCliTerminal({
     tmuxSessionId,
@@ -33,18 +35,20 @@ export function CliTerminal({ tmuxSessionId, className, onSendKeys }: CliTermina
 
   return (
     <div className={`relative ${className ?? ''}`}>
-      {/* Status bar */}
-      <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-2 px-2 py-0.5 bg-gray-900/80 text-xs">
-        <div
-          className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
-        />
-        <span className="text-gray-400">{statusLabel}</span>
-      </div>
+      {/* Status bar — hidden in embedded (dockview) mode where tab dot shows state */}
+      {!embedded && (
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center gap-2 px-2 py-0.5 bg-gray-900/80 text-xs">
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}
+          />
+          <span className="text-gray-400">{statusLabel}</span>
+        </div>
+      )}
       {/* Terminal container — mousedown stops propagation to prevent dockview's
           focus management from stealing focus away from xterm's textarea */}
       <div
         ref={containerRef}
-        className="w-full h-full pt-5"
+        className={`w-full h-full ${embedded ? '' : 'pt-5'}`}
         onMouseDown={(e) => {
           e.stopPropagation()
           requestAnimationFrame(focus)

@@ -99,12 +99,12 @@
    dockview wraps sashes in `.dv-sash-container`, so those never matched.
    The correct path: .dv-sash-container > .dv-sash */
 
-/* Expand clickable area beyond the 4px sash via invisible pseudo-element */
+/* Expand clickable area: ±6px (12px total) hit target around the 1px sash */
 .dockview-theme-cv .dv-sash-container .dv-sash::before {
   content: '';
   position: absolute;
   inset: 0;
-  margin: -4px;
+  margin: -6px;
 }
 
 /* Soft glow on hover for visual emphasis (makes 4px appear ~10px) */
@@ -112,10 +112,10 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
-/* Active (dragging): green accent */
+/* Active (dragging): green accent — #3FB950 matches spec's drag indicator */
 .dockview-theme-cv .dv-sash-container .dv-sash:not(.disabled):active {
-  background-color: #22c55e;
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.15);
+  background-color: #3FB950;
+  box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.15);
 }
 
 /* Dark mode: stronger glow for contrast */
@@ -124,6 +124,6 @@
 }
 
 :where(.dark, .dark *) .dockview-theme-cv .dv-sash-container .dv-sash:not(.disabled):active {
-  background-color: #22c55e;
-  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+  background-color: #3FB950;
+  box-shadow: 0 0 0 2px rgba(63, 185, 80, 0.25);
 }

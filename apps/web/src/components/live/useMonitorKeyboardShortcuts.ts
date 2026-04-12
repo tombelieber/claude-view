@@ -9,6 +9,15 @@ interface UseMonitorKeyboardShortcutsOptions {
   onLayoutModeChange?: (mode: 'auto-grid' | 'custom') => void
   layoutMode?: 'auto-grid' | 'custom'
   dockviewApi?: DockviewApi | null
+  // Zed-style pane shortcuts
+  onZoomToggle?: () => void
+  onSplitRight?: () => void
+  onSplitDown?: () => void
+  onPrevTab?: () => void
+  onNextTab?: () => void
+  onNavigate?: (direction: 'left' | 'right' | 'up' | 'down') => void
+  onClosePane?: () => void
+  onEqualize?: () => void
 }
 
 /** Max grid columns the user can set via keyboard. */
@@ -65,7 +74,7 @@ export function useMonitorKeyboardShortcuts(options: UseMonitorKeyboardShortcuts
       // Skip all other shortcuts when an input is focused
       if (isInputFocused()) return
 
-      // Ctrl+Shift combos for layout mode switching (must come BEFORE the modifier guard)
+      // Ctrl+Shift combos (layout mode + Zed-style pane management)
       if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey) {
         if (e.key === 'G' || e.key === 'g') {
           opts.onLayoutModeChange?.('auto-grid')
@@ -77,9 +86,67 @@ export function useMonitorKeyboardShortcuts(options: UseMonitorKeyboardShortcuts
           e.preventDefault()
           return
         }
+        if (e.key === 'Enter') {
+          opts.onZoomToggle?.()
+          e.preventDefault()
+          return
+        }
+        if (e.key === 'D' || e.key === 'd') {
+          opts.onSplitDown?.()
+          e.preventDefault()
+          return
+        }
+        if (e.key === 'W' || e.key === 'w') {
+          opts.onClosePane?.()
+          e.preventDefault()
+          return
+        }
+        if (e.key === '=' || e.key === '+') {
+          opts.onEqualize?.()
+          e.preventDefault()
+          return
+        }
       }
 
-      // Ignore key events with modifier keys (Ctrl, Alt, Meta)
+      // Ctrl+Alt combos: directional pane navigation
+      if (e.ctrlKey && e.altKey && !e.shiftKey && !e.metaKey) {
+        const dirMap: Record<string, 'left' | 'right' | 'up' | 'down'> = {
+          ArrowLeft: 'left',
+          ArrowRight: 'right',
+          ArrowUp: 'up',
+          ArrowDown: 'down',
+        }
+        const direction = dirMap[e.key]
+        if (direction) {
+          opts.onNavigate?.(direction)
+          e.preventDefault()
+          return
+        }
+      }
+
+      // Skip all other shortcuts when an input is focused
+      if (isInputFocused()) return
+
+      // Ctrl-only combos (must check input focus first)
+      if (e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey) {
+        if (e.key === 'd') {
+          opts.onSplitRight?.()
+          e.preventDefault()
+          return
+        }
+        if (e.key === '[') {
+          opts.onPrevTab?.()
+          e.preventDefault()
+          return
+        }
+        if (e.key === ']') {
+          opts.onNextTab?.()
+          e.preventDefault()
+          return
+        }
+      }
+
+      // Ignore remaining key events with modifier keys (Ctrl, Alt, Meta)
       if (e.ctrlKey || e.altKey || e.metaKey) return
 
       const key = e.key

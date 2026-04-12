@@ -14,23 +14,23 @@ import {
 const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
 import { useDockviewPersistence } from '../../hooks/use-dockview-persistence'
+import { MIN_PANE_H, MIN_PANE_W } from '../../hooks/use-auto-layout'
+import { useFocusFollowsMouse } from '../../hooks/use-focus-follows-mouse'
 import type { DisplayMode } from '../../store/monitor-store'
-import { useMonitorStore } from '../../store/monitor-store'
 import { CliTerminal } from '../cli-terminal/CliTerminal'
 import { TabContent } from '../dockview/TabContent'
 import { TabContextMenu } from '../dockview/TabContextMenu'
 import { BlockTerminalPane } from './BlockTerminalPane'
-import { MonitorPane } from './MonitorPane'
 import type { LiveSession } from './use-live-sessions'
 
 // --- Context: provides session data + callbacks to dockview panel components ---
 
-interface DockPaneContextValue {
+export interface DockPaneContextValue {
   sessions: LiveSession[]
   onExpandSession?: (id: string) => void
 }
 
-const DockPaneContext = createContext<DockPaneContextValue>({ sessions: [] })
+export const DockPaneContext = createContext<DockPaneContextValue>({ sessions: [] })
 
 // --- Props ---
 
@@ -51,23 +51,21 @@ interface DockLayoutProps {
 
 function SessionPanel({
   params,
+  containerApi,
 }: IDockviewPanelProps<{
   sessionId: string
   displayMode?: DisplayMode
   status: string
 }>) {
   const sessionId = params.sessionId
-  const { sessions, onExpandSession } = useContext(DockPaneContext)
+  const { sessions } = useContext(DockPaneContext)
   const session = sessions.find((s) => s.id === sessionId)
+  const { getHandlers } = useFocusFollowsMouse({ enabled: true })
 
-  // Store state + actions — read directly so panels stay in sync
-  const compactHeaders = useMonitorStore((s) => s.compactHeaders)
-  const selectedPaneId = useMonitorStore((s) => s.selectedPaneId)
-  const pinnedPaneIds = useMonitorStore((s) => s.pinnedPaneIds)
-  const selectPane = useMonitorStore((s) => s.selectPane)
-  const pinPane = useMonitorStore((s) => s.pinPane)
-  const unpinPane = useMonitorStore((s) => s.unpinPane)
-  const hidePane = useMonitorStore((s) => s.hidePane)
+  const focusHandlers = getHandlers(() => {
+    // containerApi.getPanel() returns the full panel object with focus()
+    containerApi.getPanel(sessionId)?.focus()
+  })
 
   if (!session) {
     return (
@@ -77,29 +75,24 @@ function SessionPanel({
     )
   }
 
-  const isPinned = pinnedPaneIds.has(sessionId)
-
+  // Dockview tab bar IS the chrome — render terminal directly, no MonitorPane wrapper.
+  // MonitorPane is still used in auto-grid mode (MonitorGrid) but never inside dockview panels.
   return (
-    <MonitorPane
-      session={session}
-      isSelected={selectedPaneId === sessionId}
-      isExpanded={false}
-      isPinned={isPinned}
-      compactHeader={compactHeaders}
-      isVisible={true}
-      embedded
-      onSelect={() => selectPane(selectedPaneId === sessionId ? null : sessionId)}
-      onExpand={() => onExpandSession?.(sessionId)}
-      onPin={() => (isPinned ? unpinPane(sessionId) : pinPane(sessionId))}
-      onHide={() => hidePane(sessionId)}
-      onContextMenu={() => {}}
+    <div
+      className="h-full"
+      onPointerEnter={focusHandlers.onPointerEnter}
+      onPointerLeave={focusHandlers.onPointerLeave}
     >
       {session.ownership?.tmux ? (
-        <CliTerminal tmuxSessionId={session.ownership.tmux.cliSessionId} className="h-full" />
+        <CliTerminal
+          tmuxSessionId={session.ownership.tmux.cliSessionId}
+          className="h-full"
+          embedded
+        />
       ) : (
         <BlockTerminalPane sessionId={sessionId} isVisible={true} />
       )}
-    </MonitorPane>
+    </div>
   )
 }
 
@@ -221,6 +214,8 @@ export function DockLayout({
                 id: session.id,
                 component: 'session',
                 title: session.slug || session.projectDisplayName || session.id.slice(0, 8),
+                minimumWidth: MIN_PANE_W,
+                minimumHeight: MIN_PANE_H,
                 params: {
                   sessionId: session.id,
                   displayMode: currentDisplayMode,
@@ -245,6 +240,8 @@ export function DockLayout({
             id,
             component: 'session',
             title: session?.slug || session?.projectDisplayName || id.slice(0, 8),
+            minimumWidth: MIN_PANE_W,
+            minimumHeight: MIN_PANE_H,
             params: {
               sessionId: id,
               displayMode: currentDisplayMode,
@@ -298,6 +295,8 @@ export function DockLayout({
           id: session.id,
           component: 'session',
           title: session.slug || session.projectDisplayName || session.id.slice(0, 8),
+          minimumWidth: MIN_PANE_W,
+          minimumHeight: MIN_PANE_H,
           params: {
             sessionId: session.id,
             displayMode,
