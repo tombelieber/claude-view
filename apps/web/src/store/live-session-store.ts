@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { create } from 'zustand'
 import type { LiveSession } from '@claude-view/shared/types/generated'
 
@@ -116,11 +117,12 @@ export const useLiveSessionStore = create<LiveSessionState>((set) => ({
 // --- Selectors ---
 
 export function useActiveSessions(): LiveSession[] {
-  return useLiveSessionStore((s) => {
-    const arr = Array.from(s.sessionsById.values())
+  const sessionsById = useLiveSessionStore((s) => s.sessionsById)
+  return useMemo(() => {
+    const arr = Array.from(sessionsById.values())
     arr.sort((a, b) => b.lastActivityAt - a.lastActivityAt)
     return arr
-  })
+  }, [sessionsById])
 }
 
 export function useRecentlyClosed(): LiveSession[] {
