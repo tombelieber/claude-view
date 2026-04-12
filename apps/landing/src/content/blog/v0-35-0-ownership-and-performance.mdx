@@ -1,0 +1,44 @@
+---
+title: "Session Ownership and a Leaner Binary"
+description: "v0.35.0 adds computed session ownership, runtime configuration, and cuts the binary size in half."
+date: 2026-04-12
+author: claude-view team
+---
+
+If you run multiple Claude Code sessions — some spawned by the SDK, some inside tmux, some standalone — you've probably wondered which session belongs to what. v0.35.0 answers that question automatically.
+
+## Session ownership, computed at the boundary
+
+Every session now carries ownership metadata: is it SDK-spawned (a subagent of another session), tmux-managed (part of a terminal multiplexer group), or a standalone CLI session? Previously, this information was either unavailable or required you to trace process trees manually.
+
+In v0.35.0, ownership is computed the moment a session enters the system — at both the REST API and SSE streaming boundaries. By the time a session appears in your dashboard, its ownership is already resolved. CLI sessions get eager resolution with automatic stale refresh, so tmux relationships appear the instant a session is discovered.
+
+The ownership model itself was rewritten from a discriminated-union enum to an independent-facts struct. Instead of forcing every session into a single category, the system now records independent facts (has a tmux session ID, was spawned by SDK, has a parent session) and lets the UI compose them. This is more truthful — a session can be both SDK-spawned and tmux-managed.
+
+## Half the binary, half the heap
+
+Two changes cut resource usage significantly:
+
+**The release binary dropped from 35MB to 17MB.** A two-profile build split separates development conveniences (like the embedded Swagger UI) from the production binary. The Swagger UI alone added 18MB of compressed assets — useful for API development, unnecessary for `npx claude-view`. Feature-gating it behind a compile flag keeps both workflows working without bloating the distributed binary.
+
+**Search indexing releases 50MB of heap after bulk operations.** The Tantivy full-text search engine holds a large write buffer during indexing. Previously, this buffer persisted for the lifetime of the process. A two-phase writer pattern now opens the writer, performs the bulk index, commits, and releases it. The writer only re-opens when new sessions arrive. For a typical installation with thousands of sessions, this means the steady-state memory footprint drops by about 50MB after the initial indexing burst.
+
+The sidecar Node.js process also became lazy — it no longer spawns at server startup, only on first interactive use. If you're just browsing historical sessions, the sidecar never loads.
+
+## Runtime configuration
+
+A new `config.toml` file lets you toggle features without recompiling. This is the foundation for future A/B testing and gradual rollouts, but immediately useful for disabling features that don't apply to your workflow.
+
+## Reliability fixes
+
+Per-block error isolation means a single malformed block in a conversation no longer takes down the entire chat view. Each block renders inside its own error boundary — if one block fails to parse, the rest of the conversation remains readable. This particularly helps with historical sessions that may contain older JSONL formats.
+
+The plugin system's npm source and npx MCP pattern were also fixed, unblocking `claude plugin install` from the registry for remote installations.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Live Monitor and check the ownership badges on your running sessions — SDK-spawned agents, tmux groups, and standalone sessions are now labeled automatically.
