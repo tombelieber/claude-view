@@ -6,14 +6,27 @@
   <a href="https://github.com/tombelieber/claude-view/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
-Mission Control plugin for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 85 MCP tools across 26 categories, and adds 9 skills for common workflows.
+Mission Control plugin for [Claude Code](https://code.claude.com/docs/en/plugins). Auto-starts the [claude-view](https://claudeview.ai) web dashboard, provides 85+ MCP tools across 26 categories, and adds 12 skills for common workflows.
 
 ## Install
 
-```bash
-claude plugin marketplace add tombelieber/claude-view
-claude plugin install claude-view
+Inside Claude Code, run:
+
 ```
+/plugin marketplace add tombelieber/claude-view --sparse .claude-plugin
+/plugin install claude-view@claude-view
+```
+
+Or from the terminal CLI:
+
+```bash
+claude plugin marketplace add tombelieber/claude-view --sparse .claude-plugin
+claude plugin install claude-view@claude-view
+```
+
+After installing, run `/reload-plugins` to activate.
+
+> The `--sparse .claude-plugin` flag downloads only the marketplace catalog (~1KB) instead of the full repository. The plugin itself is fetched from npm.
 
 ## Prerequisites
 
@@ -91,19 +104,22 @@ Generated from the OpenAPI spec. 77 tools across 26 categories.
 
 </details>
 
-### 9 Skills
+### 12 Skills
 
 | Skill | Trigger |
 |-------|---------|
-| `/session-recap` | "recap my last session", "session summary" |
-| `/daily-cost` | "how much did I spend today", "cost report" |
-| `/standup` | "standup update", "what did I work on today" |
-| `/coaching` | "how can I improve", "coaching tips", "add a coaching rule" |
-| `/insights` | "what patterns do you see", "behavioral analysis" |
-| `/project-overview` | "show me project X", "project summary" |
-| `/search` | "find where I discussed X", "search for Y" |
-| `/export-data` | "export my sessions", "download data", "export to CSV" |
-| `/team-status` | "team status", "what's the team doing", "who's active" |
+| `/claude-view:session-recap` | "recap my last session", "session summary" |
+| `/claude-view:daily-cost` | "how much did I spend today", "cost report" |
+| `/claude-view:standup` | "standup update", "what did I work on today" |
+| `/claude-view:coaching` | "how can I improve", "coaching tips", "add a coaching rule" |
+| `/claude-view:insights` | "what patterns do you see", "behavioral analysis" |
+| `/claude-view:project-overview` | "show me project X", "project summary" |
+| `/claude-view:search` | "find where I discussed X", "search for Y" |
+| `/claude-view:export-data` | "export my sessions", "download data", "export to CSV" |
+| `/claude-view:team-status` | "team status", "what's the team doing", "who's active" |
+| `/claude-view:live` | "what's running now", "active sessions" |
+| `/claude-view:usage` | "usage stats", "token breakdown" |
+| `/claude-view:system-monitor` | "system resources", "CPU and memory" |
 
 ## Configuration
 

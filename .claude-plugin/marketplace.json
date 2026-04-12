@@ -1,15 +1,30 @@
 {
   "name": "claude-view",
-  "owner": { "name": "tombelieber" },
+  "owner": {
+    "name": "tombelieber",
+    "email": "nicholasgee1997@gmail.com"
+  },
   "metadata": {
-    "description": "Mission Control for Claude Code",
-    "version": "0.33.2"
+    "description": "Mission Control for Claude Code"
   },
   "plugins": [
     {
       "name": "claude-view",
-      "source": "./packages/plugin",
-      "description": "Mission Control for Claude Code — auto-starts web dashboard, provides 90 MCP tools and 9 skills including /session-recap, /daily-cost, /standup, /coaching, /insights, and /team-status."
+      "source": {
+        "source": "npm",
+        "package": "@claude-view/plugin"
+      },
+      "description": "Mission Control for Claude Code — auto-starts web dashboard, provides 85+ MCP tools and 12 skills including /session-recap, /daily-cost, /standup, /coaching, /insights, /live, /usage, and /team-status.",
+      "homepage": "https://claudeview.ai",
+      "repository": "https://github.com/tombelieber/claude-view",
+      "license": "MIT",
+      "keywords": [
+        "claude-code",
+        "mission-control",
+        "session-analytics",
+        "cost-tracking",
+        "dashboard"
+      ]
     }
   ]
 }
