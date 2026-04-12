@@ -65,12 +65,15 @@ impl LiveSessionManager {
             }
         }
 
-        // For alive sessions, register their PIDs with the death watcher
-        // so we get immediate notification when they exit.
-        for session in &alive {
-            self._death_watcher
-                .watch(session.pid, session.session_id.clone())
-                .await;
+        // For alive sessions, create live sessions immediately AND register
+        // with the death watcher. Previously this only registered PIDs — the
+        // actual session creation was deferred to promote_from_snapshot (which
+        // requires a matching JSONL in the 24h window) or the 30s reconciliation
+        // backfill. This caused the SSE initial burst to only contain snapshot
+        // sessions (~2), with the rest appearing 30s later.
+        for session in alive {
+            let pid = session.pid;
+            self.handle_session_birth(session, pid).await;
         }
     }
 
