@@ -490,7 +490,9 @@ async fn ws_live_lines_streamed() {
     // Use a generous outer timeout and keep looping even when individual
     // recv_text calls time out — on macOS the FSEvents watcher may take
     // several seconds to coalesce and fire.
-    let live_msg = tokio::time::timeout(Duration::from_secs(15), async {
+    // 30s is generous but necessary: under heavy nextest parallelism (2776
+    // tests), macOS FSEvents coalescing + debounce can exceed 15s.
+    let live_msg = tokio::time::timeout(Duration::from_secs(30), async {
         loop {
             if let Some(text) = recv_text(&mut ws).await {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {

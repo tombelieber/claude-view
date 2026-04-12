@@ -880,6 +880,7 @@ async fn main() -> Result<()> {
                                         );
                                     } else {
                                         index.mark_schema_synced();
+                                        index.release_writer().ok();
                                         *idx_prompt_index.write().unwrap() = Some(Arc::new(index));
                                         tracing::info!(
                                             count = documents.len(),
