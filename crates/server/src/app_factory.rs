@@ -312,12 +312,18 @@ pub fn create_app_full(
     local_llm_service.start_lifecycle();
 
     // Start the unified process oracle BEFORE the manager (both share the same receiver).
+    // session_pids_tx will be wired to the LiveSessionManager in Task 3.
+    let (session_pids_tx, session_pids_rx) = tokio::sync::watch::channel(Vec::<u32>::new());
     let oracle_rx = if app_config.features.system_monitor {
-        live::process_oracle::start_oracle(sidecar.clone(), llm_status.clone())
+        live::process_oracle::start_oracle(sidecar.clone(), llm_status.clone(), session_pids_rx)
     } else {
+        drop(session_pids_rx);
         tracing::info!("System monitor feature disabled by config");
         live::process_oracle::stub()
     };
+    // Keep the sender alive so the watch channel doesn't close.
+    // Task 3 wires this to the LiveSessionManager.
+    let _session_pids_tx = session_pids_tx;
 
     // Create hook event channels before the manager so both manager and AppState share one instance.
     let hook_event_channels: std::sync::Arc<
