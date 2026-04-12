@@ -80,9 +80,6 @@ Show usage statistics, token consumption, storage, and trends. This skill focuse
 | `contributions_get_contributions` | Main contributions page data. |
 | `contributions_get_branch_sessions` | Sessions for a branch. |
 | `contributions_get_session_contribution` | Session contribution detail. |
-| **Crate::routes::interact::handlers Tools** | |
-| `crate_routes_interact_handlers_interact_handler` | Resolve a pending interaction (permission, question, plan, elicitation). |
-| `crate_routes_interact_handlers_get_interaction_handler` | Fetch the full interaction data for a session's pending interaction. |
 | **Export Tools** | |
 | `export_sessions` | Export all sessions. |
 | **Facets Tools** | |
@@ -168,6 +165,8 @@ Show usage statistics, token consumption, storage, and trends. This skill focuse
 | `sessions_get_session_messages_by_id` | Get paginated messages by session ID. |
 | `sessions_get_subagent_messages` | Paginated blocks for a sub-agent. |
 | `sessions_unarchive_session_handler` | sessions {id} unarchive |
+| `sessions_interact_handler` | Resolve a pending interaction (permission, question, plan, elicitation). |
+| `sessions_get_interaction_handler` | Fetch the full interaction data for a session's pending interaction. |
 | **Settings Tools** | |
 | `settings_get_claude_code_settings` | returns merged, redacted Claude Code settings. |
 | `settings_get_settings` | Read current app settings. |
