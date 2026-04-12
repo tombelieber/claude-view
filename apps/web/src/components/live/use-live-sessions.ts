@@ -7,7 +7,6 @@ import { sseUrl } from '../../lib/sse-url'
  * Call once at the app root (App.tsx). Stateless: all state lives in useLiveSessionStore.
  */
 export function useLiveSSE(): void {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: useLiveSessionStore is a stable module-level zustand store singleton, not a React value
   useEffect(() => {
     let es: EventSource | null = null
     let retryDelay = 1000
