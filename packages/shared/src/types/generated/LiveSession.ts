@@ -359,8 +359,8 @@ export type LiveSession = {
    */
   aiTitle?: string | null
   /**
-   * Session ownership tier — who can interact (SDK, Tmux, or Observed).
-   * Resolved server-side by `resolve_ownership()` before SSE broadcast.
+   * Session ownership as independent facts (tmux binding, SDK binding).
+   * Computed at SSE/REST boundary by `enrich_with_ownership()`.
    */
   ownership?: SessionOwnership | null
   /**
