@@ -18,14 +18,15 @@ use super::summary::build_summary;
 ///
 /// # Events
 ///
-/// | Event name          | When emitted                           |
-/// |---------------------|----------------------------------------|
-/// | `summary`           | On connect, and when a client lags     |
-/// | `session_discovered`| New session detected                   |
-/// | `session_updated`   | Session state changed                  |
-/// | `session_closed`    | Session process exited (recently closed) |
-/// | `session_completed` | Session ended                          |
-/// | `heartbeat`         | Every 15 seconds to keep connection    |
+/// | Event name            | When emitted                           |
+/// |-----------------------|----------------------------------------|
+/// | `summary`             | On connect, and when a client lags     |
+/// | `session_upsert`      | Session created or updated             |
+/// | `session_remove`      | Session removed from active map        |
+/// | `cli_session_created` | CLI session created                    |
+/// | `cli_session_updated` | CLI session status changed             |
+/// | `cli_session_removed` | CLI session killed                     |
+/// | `heartbeat`           | Every 15 seconds to keep connection    |
 ///
 /// On initial connection, the server sends the current summary followed by
 /// all active sessions so the client can hydrate immediately without a
@@ -58,13 +59,9 @@ pub async fn live_stream(
                 let enriched = crate::live::ownership::enrich_with_ownership(
                     session, &cli_sessions,
                 ).await;
-                let event_name = if session.closed_at.is_some() {
-                    "session_closed"
-                } else {
-                    "session_discovered"
-                };
-                match serde_json::to_string(&enriched) {
-                    Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
+                let upsert = SessionEvent::SessionUpsert { session: enriched };
+                match serde_json::to_string(&upsert) {
+                    Ok(data) => yield Ok(Event::default().event("session_upsert").data(data)),
                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                 }
             }
@@ -78,38 +75,15 @@ pub async fn live_stream(
                     match event {
                         Ok(session_event) => {
                             let event_name = match &session_event {
-                                SessionEvent::SessionDiscovered { .. } => "session_discovered",
-                                SessionEvent::SessionUpdated { .. } => "session_updated",
-                                SessionEvent::SessionClosed { .. } => "session_closed",
-                                SessionEvent::SessionCompleted { .. } => "session_completed",
-                                SessionEvent::Summary { .. } => "summary",
+                                SessionEvent::SessionUpsert { .. } => "session_upsert",
+                                SessionEvent::SessionRemove { .. } => "session_remove",
                                 SessionEvent::CliSessionCreated { .. } => "cli_session_created",
                                 SessionEvent::CliSessionUpdated { .. } => "cli_session_updated",
                                 SessionEvent::CliSessionRemoved { .. } => "cli_session_removed",
                             };
-                            // Enrich session events with computed ownership
-                            let enriched_event = match session_event {
-                                SessionEvent::SessionDiscovered { session } => {
-                                    let s = crate::live::ownership::enrich_with_ownership(
-                                        &session, &cli_sessions,
-                                    ).await;
-                                    SessionEvent::SessionDiscovered { session: s }
-                                }
-                                SessionEvent::SessionUpdated { session } => {
-                                    let s = crate::live::ownership::enrich_with_ownership(
-                                        &session, &cli_sessions,
-                                    ).await;
-                                    SessionEvent::SessionUpdated { session: s }
-                                }
-                                SessionEvent::SessionClosed { session } => {
-                                    let s = crate::live::ownership::enrich_with_ownership(
-                                        &session, &cli_sessions,
-                                    ).await;
-                                    SessionEvent::SessionClosed { session: s }
-                                }
-                                other => other,
-                            };
-                            match serde_json::to_string(&enriched_event) {
+                            // No enrichment needed — ownership is a stored field
+                            // in the session record. Just serialize directly.
+                            match serde_json::to_string(&session_event) {
                                 Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                             }
@@ -132,13 +106,9 @@ pub async fn live_stream(
                                 let enriched = crate::live::ownership::enrich_with_ownership(
                                     session, &cli_sessions,
                                 ).await;
-                                let event_name = if session.closed_at.is_some() {
-                                    "session_closed"
-                                } else {
-                                    "session_discovered"
-                                };
-                                match serde_json::to_string(&enriched) {
-                                    Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
+                                let upsert = SessionEvent::SessionUpsert { session: enriched };
+                                match serde_json::to_string(&upsert) {
+                                    Ok(data) => yield Ok(Event::default().event("session_upsert").data(data)),
                                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                                 }
                             }

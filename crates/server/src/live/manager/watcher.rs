@@ -131,7 +131,7 @@ impl LiveSessionManager {
 
                         let sessions = manager.sessions.read().await;
                         if let Some(session) = sessions.get(&session_id) {
-                            let _ = manager.tx.send(SessionEvent::SessionUpdated {
+                            let _ = manager.tx.send(SessionEvent::SessionUpsert {
                                 session: session.clone(),
                             });
                         }

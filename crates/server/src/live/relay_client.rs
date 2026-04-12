@@ -195,8 +195,7 @@ async fn connect_and_stream(
         tokio::select! {
             event = rx.recv() => {
                 match event {
-                    Ok(SessionEvent::SessionDiscovered { session } |
-                       SessionEvent::SessionUpdated { session }) => {
+                    Ok(SessionEvent::SessionUpsert { session }) => {
                         let Ok(json) = serde_json::to_vec(&session) else {
                             tracing::error!("failed to serialize session for relay");
                             continue;
@@ -210,7 +209,7 @@ async fn connect_and_stream(
                             }
                         }
                     }
-                    Ok(SessionEvent::SessionClosed { session }) => {
+                    Ok(SessionEvent::SessionRemove { session, .. }) => {
                         let Ok(json) = serde_json::to_vec(&session) else {
                             tracing::error!("failed to serialize session for relay");
                             continue;
@@ -223,24 +222,6 @@ async fn connect_and_stream(
                                 }
                             }
                         }
-                    }
-                    Ok(SessionEvent::SessionCompleted { session_id }) => {
-                        let msg = serde_json::json!({"type": "session_completed", "sessionId": session_id});
-                        let Ok(json) = serde_json::to_vec(&msg) else {
-                            tracing::error!("failed to serialize session for relay");
-                            continue;
-                        };
-                        for device in paired_devices {
-                            if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                let envelope = build_envelope(&device.device_id, &encrypted, None);
-                                if let Err(e) = sink.send(Message::Text(envelope.to_string().into())).await {
-                                    tracing::warn!(error = %e, "failed to send WebSocket message to relay");
-                                }
-                            }
-                        }
-                    }
-                    Ok(SessionEvent::Summary { .. }) => {
-                        // Skip summary events for mobile (phone computes locally)
                     }
                     Ok(SessionEvent::CliSessionCreated { .. }
                      | SessionEvent::CliSessionUpdated { .. }

@@ -91,7 +91,8 @@ impl LiveSessionManager {
         self.remove_accumulator(session_id).await;
 
         // Phase 3: Broadcast to frontend — session moved to recently closed.
-        let _ = self.tx.send(SessionEvent::SessionClosed {
+        let _ = self.tx.send(SessionEvent::SessionRemove {
+            session_id: session_id.to_string(),
             session: closed_session,
         });
 
@@ -344,17 +345,21 @@ mod tests {
 
         mgr.reap_session(session_id).await;
 
-        // Should have received a SessionClosed event (moved to recently closed).
+        // Should have received a SessionRemove event (moved to recently closed).
         let event = rx
             .try_recv()
             .expect("expected a broadcast event after reap");
         match event {
-            SessionEvent::SessionClosed { session } => {
+            SessionEvent::SessionRemove {
+                session_id: sid,
+                session,
+            } => {
+                assert_eq!(sid, session_id);
                 assert_eq!(session.id, session_id);
                 assert_eq!(session.status, SessionStatus::Done);
                 assert!(session.closed_at.is_some());
             }
-            other => panic!("expected SessionClosed, got {:?}", other),
+            other => panic!("expected SessionRemove, got {:?}", other),
         }
 
         // Should also be in the recently_closed map.
@@ -549,12 +554,12 @@ mod tests {
             .try_recv()
             .expect("expected a broadcast event after reap");
         match event {
-            SessionEvent::SessionClosed { session } => {
+            SessionEvent::SessionRemove { session, .. } => {
                 assert_eq!(session.hook.sub_agents[0].status, SubAgentStatus::Error);
                 assert_eq!(session.hook.sub_agents[1].status, SubAgentStatus::Complete);
                 assert_eq!(session.hook.sub_agents[2].status, SubAgentStatus::Error);
             }
-            other => panic!("expected SessionClosed, got {:?}", other),
+            other => panic!("expected SessionRemove, got {:?}", other),
         }
     }
 }

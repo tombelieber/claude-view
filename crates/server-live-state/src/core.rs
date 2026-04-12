@@ -310,19 +310,26 @@ mod tests {
     }
 
     #[test]
-    fn test_session_closed_event_serializes_with_type_tag() {
+    fn test_session_remove_event_serializes_with_type_tag() {
         use super::super::event::SessionEvent;
 
         let mut session = test_live_session("abc-123");
         session.status = SessionStatus::Done;
         session.closed_at = Some(1_700_000_000);
 
-        let event = SessionEvent::SessionClosed { session };
+        let event = SessionEvent::SessionRemove {
+            session_id: "abc-123".to_string(),
+            session,
+        };
         let json = serde_json::to_value(&event).unwrap();
 
         assert_eq!(
-            json["type"], "session_closed",
-            "serde tag must produce 'session_closed' (snake_case)"
+            json["type"], "session_remove",
+            "serde tag must produce 'session_remove' (snake_case)"
+        );
+        assert_eq!(
+            json["sessionId"], "abc-123",
+            "session_id must serialize as camelCase 'sessionId'"
         );
         assert!(
             json["session"].is_object(),

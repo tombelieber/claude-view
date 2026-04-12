@@ -170,7 +170,7 @@ impl LiveSessionManager {
                     .write()
                     .await
                     .insert(session_id.clone(), session.clone());
-                let _ = self.tx.send(SessionEvent::SessionDiscovered { session });
+                let _ = self.tx.send(SessionEvent::SessionUpsert { session });
                 promoted += 1;
                 if let Some(ref ctrl_id) = entry.control_id {
                     sessions_to_recover.push((session_id.clone(), ctrl_id.clone()));

@@ -273,27 +273,29 @@ impl SessionCoordinator {
         let snapshot = snapshot;
 
         match broadcast_action {
-            BroadcastAction::Created => {
-                let _ = ctx.live_tx.send(SessionEvent::SessionDiscovered {
+            BroadcastAction::Created | BroadcastAction::Updated => {
+                let _ = ctx.live_tx.send(SessionEvent::SessionUpsert {
                     session: snapshot.clone(),
                 });
-                MutationResult::Created(snapshot)
-            }
-            BroadcastAction::Updated => {
-                let _ = ctx.live_tx.send(SessionEvent::SessionUpdated {
-                    session: snapshot.clone(),
-                });
-                MutationResult::Updated(snapshot)
+                if matches!(broadcast_action, BroadcastAction::Created) {
+                    MutationResult::Created(snapshot)
+                } else {
+                    MutationResult::Updated(snapshot)
+                }
             }
             BroadcastAction::Closed => {
-                let _ = ctx.live_tx.send(SessionEvent::SessionClosed {
+                let _ = ctx.live_tx.send(SessionEvent::SessionRemove {
+                    session_id: session_id.to_string(),
                     session: snapshot.clone(),
                 });
                 MutationResult::Closed(snapshot)
             }
             BroadcastAction::Removed => {
-                let _ = ctx.live_tx.send(SessionEvent::SessionCompleted {
+                // Removed = dismissed from recently closed, no session data to carry.
+                // Use SessionRemove with the last snapshot.
+                let _ = ctx.live_tx.send(SessionEvent::SessionRemove {
                     session_id: session_id.to_string(),
+                    session: snapshot.clone(),
                 });
                 MutationResult::Removed(session_id.to_string())
             }

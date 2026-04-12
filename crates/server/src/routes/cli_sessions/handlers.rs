@@ -141,7 +141,7 @@ pub async fn create_session(
                         // to recentlyClosed; re-emitting would resurrect them.
                         if let Some(session) = state.live_sessions.read().await.get(&sid) {
                             if session.status != crate::live::state::SessionStatus::Done {
-                                let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                                let _ = state.live_tx.send(SessionEvent::SessionUpsert {
                                     session: session.clone(),
                                 });
                             }
@@ -194,7 +194,7 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                         // Emit SessionUpdated so SSE enriches with ownership.tmux
                         if let Some(live) = state.live_sessions.read().await.get(&sid) {
                             if live.status != crate::live::state::SessionStatus::Done {
-                                let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                                let _ = state.live_tx.send(SessionEvent::SessionUpsert {
                                     session: live.clone(),
                                 });
                             }

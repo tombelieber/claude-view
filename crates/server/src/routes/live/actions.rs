@@ -106,7 +106,7 @@ pub async fn bind_control(
             label: None,
         });
         // Notify SSE clients of the control binding change
-        let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+        let _ = state.live_tx.send(SessionEvent::SessionUpsert {
             session: session.clone(),
         });
         Json(serde_json::json!({ "bound": true })).into_response()
@@ -144,7 +144,7 @@ pub async fn unbind_control(
             if let Some(binding) = session.control.take() {
                 binding.cancel.cancel();
             }
-            let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+            let _ = state.live_tx.send(SessionEvent::SessionUpsert {
                 session: session.clone(),
             });
             Json(serde_json::json!({ "unbound": true })).into_response()
@@ -173,11 +173,12 @@ pub async fn dismiss_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let removed = state.recently_closed.write().await.remove(&id).is_some();
-    if removed {
-        let _ = state
-            .live_tx
-            .send(SessionEvent::SessionCompleted { session_id: id });
+    let removed_session = state.recently_closed.write().await.remove(&id);
+    if let Some(session) = removed_session {
+        let _ = state.live_tx.send(SessionEvent::SessionRemove {
+            session_id: id,
+            session,
+        });
         (
             axum::http::StatusCode::OK,
             Json(serde_json::json!({"dismissed": true})),
@@ -199,14 +200,15 @@ pub async fn dismiss_session(
 pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let count = {
         let mut rc = state.recently_closed.write().await;
-        let ids: Vec<String> = rc.keys().cloned().collect();
-        rc.clear();
-        for id in &ids {
-            let _ = state.live_tx.send(SessionEvent::SessionCompleted {
-                session_id: id.clone(),
+        let entries: Vec<(String, crate::live::state::LiveSession)> = rc.drain().collect();
+        let count = entries.len();
+        for (id, session) in entries {
+            let _ = state.live_tx.send(SessionEvent::SessionRemove {
+                session_id: id,
+                session,
             });
         }
-        ids.len()
+        count
     };
     Json(serde_json::json!({"dismissedCount": count}))
 }

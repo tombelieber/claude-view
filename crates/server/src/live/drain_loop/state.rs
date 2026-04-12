@@ -238,7 +238,7 @@ impl DrainState {
                     && session.jsonl.phase.freshness != PhaseFreshness::Pending
                 {
                     session.jsonl.phase.freshness = PhaseFreshness::Pending;
-                    let _ = self.tx.send(SessionEvent::SessionUpdated {
+                    let _ = self.tx.send(SessionEvent::SessionUpsert {
                         session: session.clone(),
                     });
                 }
@@ -261,7 +261,7 @@ impl DrainState {
                     continue;
                 }
                 session.jsonl.phase.freshness = PhaseFreshness::Settled;
-                let _ = self.tx.send(SessionEvent::SessionUpdated {
+                let _ = self.tx.send(SessionEvent::SessionUpsert {
                     session: session.clone(),
                 });
             }

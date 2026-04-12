@@ -21,28 +21,14 @@ pub struct CliSessionInfo {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SessionEvent {
-    /// A new session JSONL file was discovered on disk.
-    SessionDiscovered { session: LiveSession },
-    /// An existing session was updated (new lines appended to JSONL).
-    SessionUpdated { session: LiveSession },
-    /// A session's process exited -- session moves to "recently closed" on the frontend.
-    /// Carries the full session data so the frontend can display it without a REST call.
-    SessionClosed { session: LiveSession },
-    /// A session has been cleaned up (Complete for >10 min).
-    SessionCompleted {
+    /// Session created or updated (replaces SessionDiscovered + SessionUpdated).
+    SessionUpsert { session: LiveSession },
+    /// Session removed from active map (replaces SessionClosed).
+    /// Carries last-known snapshot for recently-closed ring buffer.
+    SessionRemove {
         #[serde(rename = "sessionId")]
         session_id: String,
-    },
-    /// Periodic aggregate summary of all live sessions.
-    Summary {
-        #[serde(rename = "needsYouCount")]
-        needs_you_count: usize,
-        #[serde(rename = "autonomousCount")]
-        autonomous_count: usize,
-        #[serde(rename = "totalCostTodayUsd")]
-        total_cost_today_usd: f64,
-        #[serde(rename = "totalTokensToday")]
-        total_tokens_today: u64,
+        session: LiveSession,
     },
     /// A tmux-backed CLI session was created.
     CliSessionCreated {

@@ -88,33 +88,34 @@ async fn handle_event(
 ) {
     // Map event to webhook event type(s) + extract session reference.
     let (event_types, session) = match event {
-        SessionEvent::SessionDiscovered { session } => {
-            error_tracker.insert(session.id.clone(), false);
-            (vec![WebhookEventType::SessionStarted], session)
+        SessionEvent::SessionUpsert { session } => {
+            // First time seeing this session? Treat as started.
+            let is_new = !error_tracker.contains_key(&session.id);
+            if is_new {
+                error_tracker.insert(session.id.clone(), false);
+                (vec![WebhookEventType::SessionStarted], session)
+            } else {
+                let mut types = Vec::new();
+
+                // Error detection: emit session.error on first error transition.
+                if session.hook.last_error.is_some() {
+                    let had_error = error_tracker.entry(session.id.clone()).or_insert(false);
+                    if !*had_error {
+                        *had_error = true;
+                        types.push(WebhookEventType::SessionError);
+                    }
+                }
+
+                types.push(WebhookEventType::SessionUpdated);
+                (types, session)
+            }
         }
-        SessionEvent::SessionClosed { session } => {
+        SessionEvent::SessionRemove { session, .. } => {
             debouncer.remove_session(&session.id);
             error_tracker.remove(&session.id);
             (vec![WebhookEventType::SessionEnded], session)
         }
-        SessionEvent::SessionUpdated { session } => {
-            let mut types = Vec::new();
-
-            // Error detection: emit session.error on first error transition.
-            if session.hook.last_error.is_some() {
-                let had_error = error_tracker.entry(session.id.clone()).or_insert(false);
-                if !*had_error {
-                    *had_error = true;
-                    types.push(WebhookEventType::SessionError);
-                }
-            }
-
-            types.push(WebhookEventType::SessionUpdated);
-            (types, session)
-        }
-        SessionEvent::SessionCompleted { .. }
-        | SessionEvent::Summary { .. }
-        | SessionEvent::CliSessionCreated { .. }
+        SessionEvent::CliSessionCreated { .. }
         | SessionEvent::CliSessionUpdated { .. }
         | SessionEvent::CliSessionRemoved { .. } => return,
     };
@@ -244,8 +245,7 @@ mod tests {
 
         // Send a session event (no webhooks configured, so nothing happens, but no panic).
         let session = test_live_session("test-sess");
-        tx.send(SessionEvent::SessionDiscovered { session })
-            .unwrap();
+        tx.send(SessionEvent::SessionUpsert { session }).unwrap();
 
         // Give it a moment to process.
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -258,7 +258,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn engine_skips_completed_and_summary() {
+    async fn engine_skips_cli_events() {
         let (tx, _) = broadcast::channel(16);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
         let tmp = TempDir::new().unwrap();
@@ -271,16 +271,18 @@ mod tests {
             None,
         );
 
-        // These should be skipped without error.
-        tx.send(SessionEvent::SessionCompleted {
-            session_id: "old".into(),
+        // CLI events should be skipped without error.
+        tx.send(SessionEvent::CliSessionCreated {
+            cli_session: claude_view_server_live_state::event::CliSessionInfo {
+                id: "cv-test".into(),
+                created_at: 0,
+                status: "running".into(),
+                project_dir: None,
+            },
         })
         .unwrap();
-        tx.send(SessionEvent::Summary {
-            needs_you_count: 0,
-            autonomous_count: 0,
-            total_cost_today_usd: 0.0,
-            total_tokens_today: 0,
+        tx.send(SessionEvent::CliSessionRemoved {
+            cli_session_id: "cv-test".into(),
         })
         .unwrap();
 
@@ -361,8 +363,7 @@ mod tests {
 
         // Send a session event.
         let session = test_live_session("integration-test");
-        tx.send(SessionEvent::SessionDiscovered { session })
-            .unwrap();
+        tx.send(SessionEvent::SessionUpsert { session }).unwrap();
 
         // Wait for delivery (500ms — 200ms was flaky under concurrent test load).
         tokio::time::sleep(Duration::from_millis(500)).await;

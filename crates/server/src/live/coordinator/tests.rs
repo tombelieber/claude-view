@@ -1058,7 +1058,7 @@ mod tests {
         // Verify SSE broadcast was Updated
         let event = rx.recv().await.unwrap();
         assert!(
-            matches!(event, SessionEvent::SessionUpdated { .. }),
+            matches!(event, SessionEvent::SessionUpsert { .. }),
             "Expected SessionUpdated broadcast"
         );
 
@@ -1132,7 +1132,7 @@ mod tests {
 
         let event = rx.recv().await.unwrap();
         assert!(
-            matches!(event, SessionEvent::SessionUpdated { .. }),
+            matches!(event, SessionEvent::SessionUpsert { .. }),
             "Expected SessionUpdated broadcast after Clear"
         );
 

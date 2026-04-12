@@ -276,7 +276,7 @@ impl LiveSessionManager {
                     let mut sessions = sessions.write().await;
                     if let Some(session) = sessions.get_mut(&session_id) {
                         session.jsonl.phase = phase_history;
-                        let _ = tx.send(SessionEvent::SessionUpdated {
+                        let _ = tx.send(SessionEvent::SessionUpsert {
                             session: session.clone(),
                         });
                     }
@@ -508,7 +508,7 @@ impl LiveSessionManager {
             if hook_activity > session.hook.last_activity_at {
                 session.hook.last_activity_at = hook_activity;
             }
-            let _ = self.tx.send(SessionEvent::SessionUpdated {
+            let _ = self.tx.send(SessionEvent::SessionUpsert {
                 session: session.clone(),
             });
         }
