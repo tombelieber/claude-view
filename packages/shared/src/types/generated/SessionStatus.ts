@@ -3,7 +3,8 @@
 /**
  * The current status of a live Claude Code session.
  *
- * 3-state model: Working (actively streaming/tool use), Paused (waiting for
- * input, task complete, or idle), Done (session over).
+ * 4-state model: Spawning (tmux session created, no PID yet), Working
+ * (actively streaming/tool use), Paused (waiting for input, task complete,
+ * or idle), Done (session over).
  */
-export type SessionStatus = 'working' | 'paused' | 'done'
+export type SessionStatus = 'spawning' | 'working' | 'paused' | 'done'

@@ -651,6 +651,7 @@ impl LiveSessionManager {
                         SnapshotEntry {
                             pid,
                             status: match s.status {
+                                SessionStatus::Spawning => "spawning".to_string(),
                                 SessionStatus::Working => "working".to_string(),
                                 SessionStatus::Paused => "paused".to_string(),
                                 SessionStatus::Done => "done".to_string(),

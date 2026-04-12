@@ -96,44 +96,6 @@ pub fn detect_claude_processes() -> (HashMap<u32, ClaudeProcess>, u32) {
     (result, total_count)
 }
 
-/// Detect Claude processes using an already-refreshed `System` instance.
-///
-/// Same logic as `detect_claude_processes()` but reuses the caller's System
-/// instead of creating a new one. Used by `ProcessOracle` to avoid duplicate
-/// process table scans.
-pub fn detect_claude_processes_with_sys(sys: &System) -> super::process_oracle::ClaudeProcesses {
-    let mut result = HashMap::new();
-    let mut total_count = 0u32;
-
-    for (pid, process) in sys.processes() {
-        let name = process.name().to_string_lossy();
-        let is_claude = name.contains("claude")
-            || process
-                .cmd()
-                .iter()
-                .any(|arg| arg.to_string_lossy().contains("@anthropic-ai/claude"));
-        if !is_claude {
-            continue;
-        }
-        if let Some(cwd) = process.cwd().map(|p| p.to_path_buf()) {
-            total_count += 1;
-            result.insert(
-                pid.as_u32(),
-                ClaudeProcess {
-                    pid: pid.as_u32(),
-                    cwd,
-                    start_time: process.start_time(),
-                },
-            );
-        }
-    }
-
-    super::process_oracle::ClaudeProcesses {
-        processes: result,
-        count: total_count,
-    }
-}
-
 /// Count running Claude Code processes without building the full HashMap.
 ///
 /// Lightweight alternative to `detect_claude_processes()` — returns only the

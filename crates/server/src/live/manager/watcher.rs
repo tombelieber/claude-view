@@ -33,13 +33,9 @@ use super::LiveSessionManager;
 impl LiveSessionManager {
     /// Run a one-shot process count scan (display metric only).
     pub(super) async fn run_eager_process_scan(&self) {
-        let oracle_snap = self.oracle_rx.borrow().clone();
-        let total_count = match oracle_snap.claude_processes.as_ref() {
-            Some(cp) => cp.count,
-            None => tokio::task::spawn_blocking(count_claude_processes)
-                .await
-                .unwrap_or_default(),
-        };
+        let total_count = tokio::task::spawn_blocking(count_claude_processes)
+            .await
+            .unwrap_or_default();
         self.process_count
             .store(total_count, std::sync::atomic::Ordering::Relaxed);
         info!("Process scan: {} Claude processes", total_count);

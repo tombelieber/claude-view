@@ -105,20 +105,14 @@ impl LiveSessionManager {
                 continue;
             }
 
-            // PID reuse guard: verify this PID is still a Claude-related process.
-            // After a crash, the OS may have recycled this PID for an unrelated process.
-            let is_claude = {
-                let oracle_snap = self.oracle_rx.borrow().clone();
-                match oracle_snap.claude_processes.as_ref() {
-                    Some(cp) => cp.processes.contains_key(&entry.pid),
-                    None => true, // Oracle not ready yet — trust snapshot (reconciliation will catch it)
-                }
-            };
+            // PID reuse guard: verify the PID is still alive.
+            // Temporary — Task 4 will replace this with PID file check.
+            let is_claude = is_pid_alive(entry.pid);
             if !is_claude {
                 info!(
                     session_id = %session_id,
                     pid = entry.pid,
-                    "PID alive but not a Claude process — PID reuse detected, discarding"
+                    "PID not alive — discarding stale snapshot entry"
                 );
                 dead += 1;
                 dead_ids.push(session_id.clone());

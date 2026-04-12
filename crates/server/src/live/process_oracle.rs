@@ -8,7 +8,6 @@
 //! # Cadences
 //! - **Every 2s:** CPU/memory/disk refresh → `ResourceData`
 //! - **Every 5th tick (10s):** Process tree classification → `ProcessTreeSnapshot`
-//! - **Every 5th tick (10s):** Claude process detection → `ClaudeProcesses`
 //!
 //! # Why tokio::watch?
 //! Latest-value semantics: slow consumers skip intermediate snapshots.
@@ -23,7 +22,6 @@ use sysinfo::{Disks, ProcessesToUpdate, System};
 use tokio::sync::watch;
 
 use super::monitor::{normalize_process_name, ProcessGroup, ResourceSnapshot, SessionResource};
-use super::process::{detect_claude_processes_with_sys, ClaudeProcess};
 use super::process_tree::ProcessTreeSnapshot;
 
 /// Snapshot produced by the oracle on every 2s tick.
@@ -32,9 +30,6 @@ pub struct OracleSnapshot {
     /// Full resource data (CPU, memory, disk, top processes).
     /// Does NOT include session_resources — consumers join that themselves.
     pub resource: ResourceData,
-    /// Claude-specific processes. Updated every 5th tick (10s).
-    /// `None` on ticks where detection was skipped.
-    pub claude_processes: Option<Arc<ClaudeProcesses>>,
     /// Process tree classification. Updated every 5th tick (10s).
     pub process_tree: Option<ProcessTreeSnapshot>,
     /// Component-level resource breakdown. Updated every 5th tick (10s).
@@ -91,13 +86,6 @@ pub struct ProcessResourceEntry {
     pub memory_bytes: u64,
 }
 
-/// Claude processes detected on the system.
-#[derive(Debug, Clone)]
-pub struct ClaudeProcesses {
-    pub processes: HashMap<u32, ClaudeProcess>,
-    pub count: u32,
-}
-
 /// Public handle to the oracle — consumers hold a watch::Receiver.
 pub type OracleReceiver = watch::Receiver<Arc<OracleSnapshot>>;
 
@@ -118,7 +106,6 @@ pub fn stub() -> OracleReceiver {
             top_processes: Vec::new(),
             process_resources: HashMap::new(),
         },
-        claude_processes: None,
         process_tree: None,
         component_snapshot: None,
         scanned_at: Instant::now(),
@@ -150,7 +137,6 @@ pub fn start_oracle(
             top_processes: Vec::new(),
             process_resources: HashMap::new(),
         },
-        claude_processes: None,
         process_tree: None,
         component_snapshot: None,
         scanned_at: Instant::now(),
@@ -305,13 +291,13 @@ fn collect_oracle_snapshot(
     });
     top_processes.truncate(10);
 
-    // Claude process detection + process tree classification (every 5th tick)
-    let (claude_procs, process_tree) = if should_classify {
-        let claude = detect_claude_processes_with_sys(sys);
-        let tree = super::process_tree::classify_processes_cached(sys, tree_cache);
-        (Some(Arc::new(claude)), Some(tree))
+    // Process tree classification (every 5th tick)
+    let process_tree = if should_classify {
+        Some(super::process_tree::classify_processes_cached(
+            sys, tree_cache,
+        ))
     } else {
-        (None, None)
+        None
     };
 
     OracleSnapshot {
@@ -325,7 +311,6 @@ fn collect_oracle_snapshot(
             top_processes,
             process_resources,
         },
-        claude_processes: claude_procs,
         process_tree,
         component_snapshot: None, // Filled in by oracle loop after spawn_blocking
         scanned_at: Instant::now(),
@@ -386,7 +371,6 @@ mod tests {
                 top_processes: Vec::new(),
                 process_resources: HashMap::new(),
             },
-            claude_processes: None,
             process_tree: None,
             component_snapshot: None,
             scanned_at: Instant::now(),
@@ -412,7 +396,6 @@ mod tests {
                 top_processes: Vec::new(),
                 process_resources: HashMap::new(),
             },
-            claude_processes: None,
             process_tree: None,
             component_snapshot: None,
             scanned_at: Instant::now(),

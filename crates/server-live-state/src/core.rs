@@ -14,8 +14,9 @@ use super::statusline_fields::StatuslineFields;
 
 /// The current status of a live Claude Code session.
 ///
-/// 3-state model: Working (actively streaming/tool use), Paused (waiting for
-/// input, task complete, or idle), Done (session over).
+/// 4-state model: Spawning (tmux session created, no PID yet), Working
+/// (actively streaming/tool use), Paused (waiting for input, task complete,
+/// or idle), Done (session over).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
@@ -23,6 +24,9 @@ use super::statusline_fields::StatuslineFields;
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
+    /// Tmux session created, Claude not yet started (no PID file yet).
+    /// Only tmux-originated sessions enter this state.
+    Spawning,
     /// Agent is actively streaming or using tools.
     Working,
     /// Agent paused -- reason available in pause_classification.
@@ -416,6 +420,24 @@ mod tests {
         assert_eq!(pi["variant"], "permission");
         assert_eq!(pi["requestId"], "req-001");
         assert_eq!(pi["preview"], "Allow file write?");
+    }
+
+    #[test]
+    fn spawning_status_serializes_to_snake_case() {
+        let status = SessionStatus::Spawning;
+        let json = serde_json::to_value(&status).unwrap();
+        assert_eq!(json, "spawning");
+    }
+
+    #[test]
+    fn spawning_session_omits_jsonl_fields() {
+        let mut session = test_live_session("spawning-1");
+        session.status = SessionStatus::Spawning;
+        session.entrypoint = None;
+        session.session_kind = None;
+        let json = serde_json::to_value(&session).unwrap();
+        assert_eq!(json["status"], "spawning");
+        assert!(json.get("entrypoint").is_none());
     }
 
     #[test]

@@ -6,6 +6,7 @@ import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
 import type { AgentTodos } from '../../types/generated/AgentTodos'
 import type { TaskItem } from '../../types/generated/TaskItem'
 import type { TeamMember } from '../../types/generated/TeamMember'
+import type { SessionStatus } from '@claude-view/shared/types/generated/SessionStatus'
 import type { AgentState } from './types'
 // src/components/live/session-panel-data.ts
 import type { LiveSession } from './use-live-sessions'
@@ -26,7 +27,7 @@ export interface SessionPanelData {
   effectiveBranch: string | null
 
   // Status
-  status: 'working' | 'paused' | 'done'
+  status: SessionStatus
 
   // Metrics
   model: string | null

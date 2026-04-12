@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use tracing::info;
 
-use crate::live::process::detect_claude_processes;
+use crate::live::process::count_claude_processes;
 use crate::live::state::SessionStatus;
 
 use super::LiveSessionManager;
@@ -24,7 +24,7 @@ impl LiveSessionManager {
     /// Mark dead sessions as Done, remove from map, broadcast completion, save snapshot.
     ///
     /// **Phase 2 (every 3rd tick = 30s) -- process count + snapshot:**
-    /// 1. Refresh process count via `detect_claude_processes` (display metric only).
+    /// 1. Refresh process count via `count_claude_processes` (display metric only).
     /// 2. Unconditional snapshot save (defense in depth).
     pub(super) fn spawn_reconciliation_loop(self: &Arc<Self>) {
         let manager = self.clone();
@@ -240,14 +240,9 @@ impl LiveSessionManager {
     /// Session source is derived from the JSONL `entrypoint` field via
     /// `apply_jsonl_metadata` — no process-based classification needed.
     async fn refresh_process_data(self: &Arc<Self>) {
-        let oracle_snap = self.oracle_rx.borrow().clone();
-        let total_count = match oracle_snap.claude_processes.as_ref() {
-            Some(cp) => cp.count,
-            None => tokio::task::spawn_blocking(detect_claude_processes)
-                .await
-                .map(|(_, count)| count)
-                .unwrap_or(0),
-        };
+        let total_count = tokio::task::spawn_blocking(count_claude_processes)
+            .await
+            .unwrap_or_default();
         self.process_count.store(total_count, Ordering::Relaxed);
     }
 
