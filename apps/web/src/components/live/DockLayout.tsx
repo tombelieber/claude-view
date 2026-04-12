@@ -16,8 +16,6 @@ import { createContext, useCallback, useContext, useEffect, useRef } from 'react
 import type { DisplayMode } from '../../store/monitor-store'
 import { useMonitorStore } from '../../store/monitor-store'
 import { CliTerminal } from '../cli-terminal/CliTerminal'
-import { CliTerminalPanel } from '../cli-terminal/CliTerminalPanel'
-import { CliTerminalTabRenderer } from '../cli-terminal/CliTerminalTabRenderer'
 import { TabContent } from '../dockview/TabContent'
 import { TabContextMenu } from '../dockview/TabContextMenu'
 import { BlockTerminalPane } from './BlockTerminalPane'
@@ -106,7 +104,7 @@ function SessionPanel({
 
 // Component registry + watermark — defined outside the component to avoid
 // re-creating on every render (React reconciler uses referential equality).
-const components = { session: SessionPanel, cliTerminal: CliTerminalPanel }
+const components = { session: SessionPanel }
 
 function EmptyWatermark(_props: IWatermarkPanelProps) {
   return (
@@ -192,6 +190,11 @@ export function DockLayout({
           // Restore saved layout
           event.api.fromJSON(initialLayout)
           restored = true
+          // Migration: remove stale cliTerminal panels from persisted layouts.
+          // These were standalone CLI panels (removed in single-identity refactor).
+          // Sessions with tmux ownership now render via the 'session' component.
+          const staleCliPanels = event.api.panels.filter((p) => p.id.startsWith('cli-'))
+          for (const p of staleCliPanels) event.api.removePanel(p)
           // Update panel params with current displayMode
           for (const panel of event.api.panels) {
             const session = currentSessions.find((s) => s.id === panel.id)
@@ -252,24 +255,12 @@ export function DockLayout({
     [initialLayout, onApiReady],
   )
 
-  // Sync session data into existing panels when sessions update.
-  // CLI terminal panels (tmuxSessionId in params) have their own lifecycle
-  // and are NOT tied to the live sessions list — skip them entirely.
   useEffect(() => {
     const api = apiRef.current
     if (!api) return
 
-    // Standalone CLI panels (from handleCliSessionCreated) have tmuxSessionId
-    // but NO sessionId — they're not tied to the live sessions list.
-    // Session panels for tmux-owned sessions have BOTH sessionId + tmuxSessionId.
-    const isStandaloneCliPanel = (p: { params: unknown }) => {
-      const pp = p.params as { sessionId?: string; tmuxSessionId?: string } | undefined
-      return !!pp?.tmuxSessionId && !pp?.sessionId
-    }
-
-    // Update existing session panels with fresh displayMode + title
+    // Update existing session panels with fresh data
     for (const panel of api.panels) {
-      if (isStandaloneCliPanel(panel)) continue
       const session = sessions.find((s) => s.id === panel.id)
       if (session) {
         panel.api.updateParameters({
@@ -279,7 +270,6 @@ export function DockLayout({
           agentStateGroup: session.agentState?.group ?? null,
           tmuxSessionId: session.ownership?.tmux?.cliSessionId,
         })
-        // Align title with ChatPageV2: slug > projectDisplayName > id
         const title = session.slug || session.projectDisplayName || session.id.slice(0, 8)
         if (title !== panel.title) {
           panel.api.setTitle(title)
@@ -287,11 +277,8 @@ export function DockLayout({
       }
     }
 
-    // Add panels for new sessions.
-    // If CLI terminal panels exist, add session panels as inactive so they
-    // don't steal focus from the xterm terminal (tmux has higher precedence).
+    // Add panels for new sessions
     const existingIds = new Set(api.panels.map((p) => p.id))
-    const hasCliPanels = api.panels.some((p) => isStandaloneCliPanel(p))
     for (const session of sessions) {
       if (!existingIds.has(session.id)) {
         api.addPanel({
@@ -305,19 +292,14 @@ export function DockLayout({
             agentStateGroup: session.agentState?.group ?? null,
             tmuxSessionId: session.ownership?.tmux?.cliSessionId,
           },
-          inactive: hasCliPanels,
         })
       }
     }
 
     // Remove panels for ended sessions.
-    // IMPORTANT: Snapshot the array first — calling removePanel() mutates
-    // api.panels in place, which causes iterator invalidation if we iterate
-    // the live array directly (same pattern as Array.prototype.filter-then-forEach).
+    // Snapshot the array first — removePanel() mutates api.panels in place.
     const currentIds = new Set(sessions.map((s) => s.id))
-    const panelsToRemove = api.panels.filter(
-      (p) => !isStandaloneCliPanel(p) && !currentIds.has(p.id),
-    )
+    const panelsToRemove = api.panels.filter((p) => !currentIds.has(p.id))
     for (const panel of panelsToRemove) {
       api.removePanel(panel)
     }
@@ -337,7 +319,7 @@ export function DockLayout({
         <DockviewReact
           theme={cvTheme}
           components={components}
-          tabComponents={{ session: SessionTabRenderer, cliTerminal: CliTerminalTabRenderer }}
+          tabComponents={{ session: SessionTabRenderer }}
           defaultTabComponent={SessionTabRenderer}
           onReady={onReady}
           watermarkComponent={EmptyWatermark}

@@ -261,40 +261,16 @@ export function LiveMonitorPage() {
     [searchParams, setSearchParams],
   )
 
-  // CLI session creation — opens a terminal panel in monitor mode
+  // CLI session creation — switch to monitor view; the session will appear
+  // via SSE → DockLayout sync when the Claude process starts.
   const handleCliSessionCreated = useCallback(
-    (sessionId: string) => {
+    (_sessionId: string) => {
       if (viewMode !== 'monitor') {
         handleViewModeChange('monitor')
-      }
-      const addPanel = () => {
-        const api = dockviewApiRef.current
-        if (!api) return
-        const panelId = `cli-${sessionId}`
-        const existing = api.panels.find((p) => p.id === panelId)
-        if (existing) {
-          if (!existing.api.isActive) existing.api.setActive()
-          return
-        }
-        api.addPanel({
-          id: panelId,
-          component: 'cliTerminal',
-          title: `CLI: ${sessionId.slice(0, 11)}`,
-          tabComponent: 'cliTerminal',
-          params: { tmuxSessionId: sessionId },
-        })
-      }
-      if (dockviewApiRef.current) {
-        addPanel()
-      } else {
-        setTimeout(addPanel, 300)
       }
     },
     [viewMode, handleViewModeChange],
   )
-
-  // CLI sessions now flow through visibleSessions → MonitorView renders xterm
-  // based on ownership.tmux. No separate panel sync needed.
 
   // Session selection
   const handleSelectSession = useCallback((id: string) => {
