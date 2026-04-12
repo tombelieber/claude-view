@@ -37,6 +37,7 @@ fn extract_request_id(req: &InteractRequest) -> &str {
 #[utoipa::path(
     get,
     path = "/api/sessions/{session_id}/interaction",
+    tag = "sessions",
     params(("session_id" = String, Path, description = "Session UUID")),
     responses(
         (status = 200, description = "Full interaction data"),
@@ -88,6 +89,7 @@ pub async fn get_interaction_handler(
 #[utoipa::path(
     post,
     path = "/api/sessions/{session_id}/interact",
+    tag = "sessions",
     params(("session_id" = String, Path, description = "Session UUID")),
     responses(
         (status = 200, description = "Interaction resolved"),
@@ -298,9 +300,5 @@ async fn clear_pending_interaction(state: &AppState, session_id: &str, request_i
 
     // Also remove from side-map directly (coordinator SideEffect may not run
     // synchronously in all paths, so ensure immediate cleanup).
-    state
-        .interaction_data
-        .write()
-        .await
-        .remove(request_id);
+    state.interaction_data.write().await.remove(request_id);
 }

@@ -3870,7 +3870,7 @@
     "/api/sessions/{session_id}/interact": {
       "post": {
         "tags": [
-          "crate::routes::interact::handlers"
+          "sessions"
         ],
         "summary": "Resolve a pending interaction (permission, question, plan, elicitation).",
         "description": "1. Parse InteractRequest from body\n2. Look up session in live_sessions — 404 if not found\n3. Resolve ownership — 400 if Observed\n4. Check interaction_data side-map — 409 if request_id not found (stale)\n5. For SDK: forward to sidecar HTTP API\n6. Clear pending interaction via coordinator",
@@ -3915,7 +3915,7 @@
     "/api/sessions/{session_id}/interaction": {
       "get": {
         "tags": [
-          "crate::routes::interact::handlers"
+          "sessions"
         ],
         "summary": "Fetch the full interaction data for a session's pending interaction.",
         "description": "1. Look up session in live_sessions — 404 if not found\n2. Read pending_interaction — 404 if None (no pending interaction)\n3. Look up full data in interaction_data side-map — 404 if not found",

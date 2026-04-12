@@ -6,7 +6,6 @@ import { classifyGeneratedTools } from './classify.js'
 import { cliGeneratedTools } from './cli.js'
 import { coachingGeneratedTools } from './coaching.js'
 import { contributionsGeneratedTools } from './contributions.js'
-import { crateroutesinteracthandlersGeneratedTools } from './crate::routes::interact::handlers.js'
 import { exportGeneratedTools } from './export.js'
 import { facetsGeneratedTools } from './facets.js'
 import { healthGeneratedTools } from './health.js'
@@ -42,7 +41,6 @@ export const allGeneratedTools: ToolDef[] = [
   ...cliGeneratedTools,
   ...coachingGeneratedTools,
   ...contributionsGeneratedTools,
-  ...crateroutesinteracthandlersGeneratedTools,
   ...exportGeneratedTools,
   ...facetsGeneratedTools,
   ...healthGeneratedTools,

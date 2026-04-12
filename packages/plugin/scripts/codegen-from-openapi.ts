@@ -396,7 +396,15 @@ function main() {
       if (!['get', 'post', 'put', 'delete', 'patch'].includes(method)) continue
 
       const operation = op as OpenAPIOperation
-      const tag = (operation.tags?.[0] ?? 'misc').toLowerCase()
+      // Sanitise: Rust module paths like "crate::routes::interact::handlers"
+      // collapse to the last segment; any other non-alphanumeric chars become hyphens.
+      const rawTag = (operation.tags?.[0] ?? 'misc').toLowerCase()
+      const tag = rawTag.includes('::')
+        ? rawTag.split('::').pop()!
+        : rawTag
+            .replace(/[^a-z0-9-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
       const operationId = operation.operationId ?? ''
 
       // Skip SSE endpoints
