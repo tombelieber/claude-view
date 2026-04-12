@@ -32,7 +32,7 @@ impl LiveSessionManager {
     /// Cleans: live_sessions, transcript_to_session, hook_event_channels,
     ///         accumulators, and signals drain_loop to drop its dirty entry.
     pub(crate) async fn reap_session(self: &Arc<Self>, session_id: &str) -> ReapResult {
-        // Phase 1: Remove from live_sessions, capture for recently_closed.
+        // Phase 1: Remove from live_sessions, capture for closed_ring.
         let (cleanup_tp, closed_session) = {
             let mut sessions = self.sessions.write().await;
             let Some(session) = sessions.get(session_id) else {
@@ -77,10 +77,13 @@ impl LiveSessionManager {
             (transcript_path, closed)
         };
 
-        // Phase 1b: Capture to ephemeral recently-closed buffer.
+        // Phase 1b: Push to bounded ring buffer (max 100, FIFO).
         {
-            let mut rc = self.recently_closed.write().await;
-            rc.insert(session_id.to_string(), closed_session.clone());
+            let mut ring = self.closed_ring.write().await;
+            if ring.len() >= 100 {
+                ring.pop_front(); // evict oldest
+            }
+            ring.push_back(closed_session.clone());
         }
 
         // Phase 2: Clean auxiliary maps (no sessions lock held).
@@ -96,7 +99,7 @@ impl LiveSessionManager {
             session: closed_session,
         });
 
-        // Phase 4: Persist clean snapshot (recently_closed NOT included).
+        // Phase 4: Persist clean snapshot (closed_ring NOT included).
         self.request_snapshot_save();
 
         info!(session_id = %session_id, "Session reaped → recently closed");
@@ -181,7 +184,7 @@ mod tests {
             dirty_tx,
             hook_event_channels: Arc::new(RwLock::new(HashMap::new())),
             coordinator: Arc::new(SessionCoordinator::new()),
-            recently_closed: Arc::new(RwLock::new(HashMap::new())),
+            closed_ring: Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(100))),
             cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
             interaction_data: Arc::new(RwLock::new(HashMap::new())),
             backfill_miss_count: std::sync::atomic::AtomicU64::new(0),
@@ -362,10 +365,14 @@ mod tests {
             other => panic!("expected SessionRemove, got {:?}", other),
         }
 
-        // Should also be in the recently_closed map.
+        // Should also be in the closed_ring buffer.
         assert!(
-            mgr.recently_closed.read().await.contains_key(session_id),
-            "reaped session should be in recently_closed"
+            mgr.closed_ring
+                .read()
+                .await
+                .iter()
+                .any(|s| s.id == session_id),
+            "reaped session should be in closed_ring"
         );
     }
 
@@ -413,7 +420,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// When a session is reaped, any sub-agents with status Running must be
-    /// marked as Error in the recently_closed copy. The parent is dead — they
+    /// marked as Error in the closed_ring copy. The parent is dead — they
     /// can never report back, so showing "running" is wrong.
     #[tokio::test]
     async fn test_reap_marks_running_subagents_as_error() {
@@ -494,11 +501,12 @@ mod tests {
         let result = mgr.reap_session(session_id).await;
         assert_eq!(result, ReapResult::Reaped);
 
-        // Check recently_closed: Running agents should now be Error.
-        let rc = mgr.recently_closed.read().await;
-        let closed = rc
-            .get(session_id)
-            .expect("reaped session should be in recently_closed");
+        // Check closed_ring: Running agents should now be Error.
+        let ring = mgr.closed_ring.read().await;
+        let closed = ring
+            .iter()
+            .find(|s| s.id == session_id)
+            .expect("reaped session should be in closed_ring");
 
         assert_eq!(closed.hook.sub_agents.len(), 3);
 

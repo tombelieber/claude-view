@@ -27,15 +27,8 @@ pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serd
     }
     sessions.sort_by(|a, b| b.hook.last_activity_at.cmp(&a.hook.last_activity_at));
     let recently_closed: Vec<_> = {
-        let rc = state.recently_closed.read().await;
-        let mut v = Vec::with_capacity(rc.len());
-        for session in rc.values() {
-            v.push(
-                crate::live::ownership::enrich_with_ownership(session, &state.cli_sessions).await,
-            );
-        }
-        v.sort_by(|a, b| (b.closed_at.unwrap_or(0)).cmp(&a.closed_at.unwrap_or(0)));
-        v
+        let ring = state.closed_ring.read().await;
+        ring.iter().rev().cloned().collect() // newest first
     };
     let process_count = state
         .live_manager

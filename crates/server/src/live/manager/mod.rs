@@ -100,9 +100,9 @@ pub struct LiveSessionManager {
     hook_event_channels: Arc<tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
     /// Shared coordinator for routing mutations through the 4-phase pipeline.
     coordinator: Arc<SessionCoordinator>,
-    /// Ephemeral recently-closed sessions — captured on reap, lost on restart.
-    /// Pure display buffer, not persisted anywhere.
-    recently_closed: LiveSessionMap,
+    /// Bounded ring buffer of recently-closed sessions (max 100, FIFO eviction).
+    /// Pure display buffer, not persisted anywhere. Newest at back.
+    closed_ring: Arc<RwLock<std::collections::VecDeque<super::state::LiveSession>>>,
     /// CLI session store for ownership resolution during broadcast.
     cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
     /// Side-map for full interaction data, keyed by request_id.
@@ -142,14 +142,15 @@ impl LiveSessionManager {
     ) -> (
         Arc<Self>,
         LiveSessionMap,
-        LiveSessionMap,
+        Arc<RwLock<std::collections::VecDeque<LiveSession>>>,
         TranscriptMap,
         broadcast::Sender<SessionEvent>,
         Arc<SessionCoordinator>,
     ) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
-        let recently_closed: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
+        let closed_ring: Arc<RwLock<std::collections::VecDeque<LiveSession>>> =
+            Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(100)));
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
 
         // Debounced snapshot writer channel
@@ -194,7 +195,7 @@ impl LiveSessionManager {
             dirty_tx,
             hook_event_channels,
             coordinator: coordinator.clone(),
-            recently_closed: recently_closed.clone(),
+            closed_ring: closed_ring.clone(),
             cli_sessions,
             interaction_data,
             backfill_miss_count: AtomicU64::new(0),
@@ -296,7 +297,7 @@ impl LiveSessionManager {
         (
             manager,
             sessions,
-            recently_closed,
+            closed_ring,
             transcript_to_session,
             tx,
             coordinator,

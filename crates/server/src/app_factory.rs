@@ -81,7 +81,9 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
         pricing: Arc::new(claude_view_core::pricing::load_pricing()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-        recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+        closed_ring: Arc::new(tokio::sync::RwLock::new(
+            std::collections::VecDeque::with_capacity(100),
+        )),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
@@ -194,7 +196,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         facet_ingest: Arc::new(facet_ingest::FacetIngestState::new()),
         pricing: Arc::new(claude_view_core::pricing::load_pricing()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
-        recently_closed: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
+        closed_ring: Arc::new(tokio::sync::RwLock::new(
+            std::collections::VecDeque::with_capacity(100),
+        )),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
             .expect("home dir exists")
@@ -350,7 +354,7 @@ pub fn create_app_full(
         tokio::sync::RwLock<std::collections::HashMap<String, claude_view_types::InteractionBlock>>,
     > = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
-    let (manager, live_sessions, recently_closed, transcript_to_session, live_tx, coordinator) =
+    let (manager, live_sessions, closed_ring, transcript_to_session, live_tx, coordinator) =
         live::manager::LiveSessionManager::start(
             pricing.clone(),
             db.clone(),
@@ -403,7 +407,7 @@ pub fn create_app_full(
         facet_ingest: Arc::new(FacetIngestState::new()),
         pricing,
         live_sessions,
-        recently_closed,
+        closed_ring,
         live_tx,
         rules_dir: dirs::home_dir()
             .expect("home dir exists")

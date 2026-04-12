@@ -173,12 +173,10 @@ pub async fn dismiss_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let removed_session = state.recently_closed.write().await.remove(&id);
-    if let Some(session) = removed_session {
-        let _ = state.live_tx.send(SessionEvent::SessionRemove {
-            session_id: id,
-            session,
-        });
+    let mut ring = state.closed_ring.write().await;
+    let before = ring.len();
+    ring.retain(|s| s.id != id);
+    if ring.len() < before {
         (
             axum::http::StatusCode::OK,
             Json(serde_json::json!({"dismissed": true})),
@@ -198,17 +196,8 @@ pub async fn dismiss_session(
     )
 )]
 pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let count = {
-        let mut rc = state.recently_closed.write().await;
-        let entries: Vec<(String, crate::live::state::LiveSession)> = rc.drain().collect();
-        let count = entries.len();
-        for (id, session) in entries {
-            let _ = state.live_tx.send(SessionEvent::SessionRemove {
-                session_id: id,
-                session,
-            });
-        }
-        count
-    };
+    let mut ring = state.closed_ring.write().await;
+    let count = ring.len();
+    ring.clear();
     Json(serde_json::json!({"dismissedCount": count}))
 }

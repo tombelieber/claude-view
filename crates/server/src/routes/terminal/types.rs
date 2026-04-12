@@ -113,12 +113,12 @@ pub(super) async fn resolve_jsonl_path(
         }
     }
 
-    // 2. Recently closed (ephemeral, post-reap)
+    // 2. Closed ring buffer (ephemeral, post-reap)
     {
-        let map = state.recently_closed.read().await;
-        if let Some(fp) = map.get(session_id).map(|s| s.jsonl.file_path.clone()) {
-            if !fp.is_empty() {
-                return Some(std::path::PathBuf::from(fp));
+        let ring = state.closed_ring.read().await;
+        if let Some(session) = ring.iter().find(|s| s.id == session_id) {
+            if !session.jsonl.file_path.is_empty() {
+                return Some(std::path::PathBuf::from(&session.jsonl.file_path));
             }
         }
     }

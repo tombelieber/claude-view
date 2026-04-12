@@ -12,6 +12,7 @@ use crate::live::buffer::PendingMutations;
 use crate::live::coordinator::{MutationContext, SessionCoordinator};
 use crate::live::debug_log::DebugEventLog;
 use crate::live::manager::{LiveSessionManager, LiveSessionMap, TranscriptMap};
+use crate::live::state::LiveSession;
 use crate::live::state::SessionEvent;
 use crate::routes::cli_sessions::terminal::TerminalManager;
 use crate::routes::marketplace_refresh::MarketplaceRefreshTracker;
@@ -105,8 +106,9 @@ pub struct AppState {
     pub pricing: Arc<PricingTable>,
     /// Live session state for Live Monitor (in-memory, not persisted).
     pub live_sessions: LiveSessionMap,
-    /// Ephemeral recently-closed sessions — captured on reap, lost on restart.
-    pub recently_closed: LiveSessionMap,
+    /// Bounded ring buffer of recently-closed sessions (max 100, FIFO eviction).
+    /// Captured on reap, lost on restart. Newest at back.
+    pub closed_ring: Arc<tokio::sync::RwLock<std::collections::VecDeque<LiveSession>>>,
     /// Broadcast sender for live session SSE events.
     pub live_tx: broadcast::Sender<SessionEvent>,
     /// Directory where coaching rule files are stored (~/.claude/rules).
@@ -270,7 +272,9 @@ impl AppStateBuilder {
             facet_ingest: Arc::new(FacetIngestState::new()),
             pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            recently_closed: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
+            closed_ring: Arc::new(tokio::sync::RwLock::new(
+                std::collections::VecDeque::with_capacity(100),
+            )),
             live_tx: broadcast::channel(256).0,
             rules_dir: dirs::home_dir()
                 .expect("home dir exists")
