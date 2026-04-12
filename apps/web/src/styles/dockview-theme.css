@@ -7,6 +7,7 @@
 
 .dockview-theme-cv {
   /* Tab container */
+  --dv-tabs-and-actions-container-height: 40px;
   --dv-paneview-header-border-color: #d0d7de;
   --dv-tabs-and-actions-container-background-color: #f6f8fa;
 

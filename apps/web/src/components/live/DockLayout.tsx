@@ -18,6 +18,8 @@ import { useMonitorStore } from '../../store/monitor-store'
 import { CliTerminal } from '../cli-terminal/CliTerminal'
 import { CliTerminalPanel } from '../cli-terminal/CliTerminalPanel'
 import { CliTerminalTabRenderer } from '../cli-terminal/CliTerminalTabRenderer'
+import { TabContent } from '../dockview/TabContent'
+import { TabContextMenu } from '../dockview/TabContextMenu'
 import { BlockTerminalPane } from './BlockTerminalPane'
 import { MonitorPane } from './MonitorPane'
 import type { LiveSession } from './use-live-sessions'
@@ -114,35 +116,14 @@ function EmptyWatermark(_props: IWatermarkPanelProps) {
   )
 }
 
-/** Session status → Tailwind dot color (working=green, paused=amber, done=gray). */
-function statusDotColor(status: string | null): string {
-  switch (status) {
-    case 'working':
-      return 'bg-green-500'
-    case 'paused':
-      return 'bg-amber-500'
-    default:
-      return 'bg-gray-300 dark:bg-gray-600'
-  }
-}
-
-function SessionTabRenderer({
-  api,
-  containerApi: _containerApi,
-  params,
-}: IDockviewPanelHeaderProps) {
+function SessionTabRenderer({ api, params, containerApi }: IDockviewPanelHeaderProps) {
   const status = (params.status as string | null) ?? null
   const agentStateGroup = (params.agentStateGroup as string | null) ?? null
   const tmuxSessionId = (params.tmuxSessionId as string | undefined) ?? undefined
   const isTmux = !!tmuxSessionId
 
-  const dotColor = statusDotColor(status)
-  const isAutonomous = agentStateGroup === 'autonomous'
-  const showPulse = isAutonomous && status === 'working'
-
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation()
-    e.preventDefault()
     if (tmuxSessionId) {
       fetch(`/api/cli-sessions/${tmuxSessionId}`, { method: 'DELETE' }).catch(() => {})
     }
@@ -150,49 +131,31 @@ function SessionTabRenderer({
   }
 
   const handleMiddleClick = (e: React.MouseEvent) => {
-    if (e.button === 1) {
-      handleClose(e)
-    }
+    if (e.button === 1) handleClose(e)
   }
 
-  return (
-    <div
-      className="group flex items-center gap-1.5 px-3 h-full text-xs"
-      onMouseDown={handleMiddleClick}
-    >
-      <div className="flex-shrink-0 relative inline-flex">
-        {showPulse && (
-          <span
-            className={`absolute inline-flex w-2 h-2 rounded-full opacity-60 motion-safe:animate-live-ring ${dotColor}`}
-          />
-        )}
-        <span
-          className={`relative inline-flex w-2 h-2 rounded-full ${dotColor} ${showPulse ? 'motion-safe:animate-live-breathe' : ''}`}
-        />
-      </div>
-      <span className="truncate max-w-[120px]">{api.title}</span>
-      {isTmux && (
-        <button
-          type="button"
-          onClick={handleClose}
-          title="Kill CLI session"
-          className="ml-1 shrink-0 flex items-center justify-center w-5 h-5 rounded text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600/50 transition-colors"
-        >
-          <svg
-            width="10"
-            height="10"
-            viewBox="0 0 10 10"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.25"
-            strokeLinecap="round"
-          >
-            <path d="M2 2l6 6M8 2l-6 6" />
-          </svg>
-        </button>
-      )}
-    </div>
+  const panel = containerApi.panels.find((p) => p.id === api.id)
+
+  const tab = (
+    <TabContent
+      title={api.title ?? ''}
+      status={status}
+      agentStateGroup={agentStateGroup}
+      isTmux={isTmux}
+      onClose={handleClose}
+      onMiddleClick={handleMiddleClick}
+    />
   )
+
+  if (panel) {
+    return (
+      <TabContextMenu panel={panel} api={containerApi} splitComponent="session">
+        {tab}
+      </TabContextMenu>
+    )
+  }
+
+  return tab
 }
 
 export function DockLayout({
@@ -256,7 +219,7 @@ export function DockLayout({
           event.api.addPanel({
             id,
             component: 'session',
-            title: session?.projectDisplayName ?? id.slice(0, 8),
+            title: session?.slug || session?.projectDisplayName || id.slice(0, 8),
             params: {
               sessionId: id,
               displayMode: currentDisplayMode,
@@ -306,7 +269,7 @@ export function DockLayout({
       return !!pp?.tmuxSessionId && !pp?.sessionId
     }
 
-    // Update existing session panels with fresh displayMode
+    // Update existing session panels with fresh displayMode + title
     for (const panel of api.panels) {
       if (isStandaloneCliPanel(panel)) continue
       const session = sessions.find((s) => s.id === panel.id)
@@ -319,6 +282,11 @@ export function DockLayout({
           tmuxSessionId:
             session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
         })
+        // Align title with ChatPageV2: slug > projectDisplayName > id
+        const title = session.slug || session.projectDisplayName || session.id.slice(0, 8)
+        if (title !== panel.title) {
+          panel.api.setTitle(title)
+        }
       }
     }
 
@@ -332,7 +300,7 @@ export function DockLayout({
         api.addPanel({
           id: session.id,
           component: 'session',
-          title: session.projectDisplayName ?? session.id.slice(0, 8),
+          title: session.slug || session.projectDisplayName || session.id.slice(0, 8),
           params: {
             sessionId: session.id,
             displayMode,

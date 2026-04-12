@@ -4,13 +4,15 @@ import type { ReactNode } from 'react'
 import { toast } from 'sonner'
 import { useSessionMutations } from '../../hooks/use-session-mutations'
 
-export interface ChatTabContextMenuProps {
+export interface TabContextMenuProps {
   children: ReactNode
   panel: IDockviewPanel
   api: DockviewApi
+  /** Component type for split panels (e.g. 'chat', 'session'). */
+  splitComponent: string
 }
 
-export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuProps) {
+export function TabContextMenu({ children, panel, api, splitComponent }: TabContextMenuProps) {
   const sessionId = (panel.params as { sessionId?: string })?.sessionId
   const { deleteSession } = useSessionMutations()
 
@@ -32,31 +34,15 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
     }
   }
 
-  const handleSplitRight = () => {
+  const handleSplit = (direction: 'right' | 'below') => {
     if (!sessionId) return
+    const dir = direction === 'right' ? 'right' : 'below'
     api.addPanel({
-      id: `chat-${sessionId}-split-r-${Date.now()}`,
-      component: 'chat',
+      id: `${splitComponent}-${sessionId}-split-${dir[0]}-${Date.now()}`,
+      component: splitComponent,
       title: panel.title ?? sessionId.slice(0, 8),
-      params: {
-        sessionId,
-        ownershipTier: (panel.params as { ownershipTier?: string })?.ownershipTier ?? null,
-      },
-      position: { referencePanel: panel.id, direction: 'right' },
-    })
-  }
-
-  const handleSplitDown = () => {
-    if (!sessionId) return
-    api.addPanel({
-      id: `chat-${sessionId}-split-d-${Date.now()}`,
-      component: 'chat',
-      title: panel.title ?? sessionId.slice(0, 8),
-      params: {
-        sessionId,
-        ownershipTier: (panel.params as { ownershipTier?: string })?.ownershipTier ?? null,
-      },
-      position: { referencePanel: panel.id, direction: 'below' },
+      params: { ...(panel.params as Record<string, unknown>) },
+      position: { referencePanel: panel.id, direction: dir },
     })
   }
 
@@ -87,8 +73,12 @@ export function ChatTabContextMenu({ children, panel, api }: ChatTabContextMenuP
 
           <ContextMenu.Separator className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
 
-          <MenuItem label="Split Right" shortcut="Ctrl+\" onClick={handleSplitRight} />
-          <MenuItem label="Split Down" shortcut="Ctrl+Shift+\" onClick={handleSplitDown} />
+          <MenuItem label="Split Right" shortcut="Ctrl+\" onClick={() => handleSplit('right')} />
+          <MenuItem
+            label="Split Down"
+            shortcut="Ctrl+Shift+\"
+            onClick={() => handleSplit('below')}
+          />
 
           <ContextMenu.Separator className="h-px bg-gray-200 dark:bg-gray-700 my-1" />
 
