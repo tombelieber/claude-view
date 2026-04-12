@@ -88,7 +88,10 @@ pub struct LiveSessionManager {
     claude_view_dir: std::path::PathBuf,
     /// Transcript path -> session ID dedup map, shared with AppState.
     transcript_to_session: TranscriptMap,
-    /// Unified process oracle receiver for reading process data.
+    /// Unified process oracle receiver — retained for future per-session resource
+    /// lookups (e.g. crash detection via stale oracle snapshots). Currently unused
+    /// in the manager; the oracle_rx in AppState drives the monitor SSE endpoint.
+    #[allow(dead_code)]
     oracle_rx: super::process_oracle::OracleReceiver,
     /// Event-driven process death watcher (kqueue on macOS).
     _death_watcher: super::process_death::ProcessDeathWatcher,
