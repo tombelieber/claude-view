@@ -210,6 +210,9 @@ pub struct AppState {
     pub app_config: claude_view_core::app_config::AppConfig,
     /// In-memory store for tmux-backed CLI sessions.
     pub cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
+    /// Secondary index: Claude session UUID → LiveSessionMap key.
+    /// Enables JSONL watcher to find tmux-keyed entries by UUID.
+    pub claude_session_id_index: Arc<tokio::sync::RwLock<HashMap<String, String>>>,
     /// Side-map for full interaction data, keyed by requestId.
     /// Compact meta goes on LiveSession; full data fetched via GET.
     pub interaction_data:
@@ -331,6 +334,7 @@ impl AppStateBuilder {
                 .join("webhook-secrets.json"),
             app_config: claude_view_core::app_config::AppConfig::default(),
             cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            claude_session_id_index: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             interaction_data: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         })

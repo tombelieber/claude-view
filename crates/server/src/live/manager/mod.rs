@@ -116,6 +116,12 @@ pub struct LiveSessionManager {
     /// Count of sessions discovered by reconciler backfill (Born event missed).
     /// If >0 in production, the notify watcher has a reliability problem.
     pub(crate) backfill_miss_count: AtomicU64,
+    /// Secondary index: Claude session UUID → LiveSessionMap key.
+    /// Enables JSONL watcher to find tmux-keyed entries by UUID.
+    /// Updated in the same write-lock scope as map mutations.
+    /// No consumers yet — wired in Task 8 (Born handler enrichment).
+    #[allow(dead_code)]
+    pub(crate) claude_session_id_index: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl LiveSessionManager {
@@ -152,6 +158,7 @@ impl LiveSessionManager {
         TranscriptMap,
         broadcast::Sender<SessionEvent>,
         Arc<SessionCoordinator>,
+        Arc<RwLock<HashMap<String, String>>>,
     ) {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
@@ -160,6 +167,8 @@ impl LiveSessionManager {
                 crate::live::state::CLOSED_RING_CAPACITY,
             )));
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
+        let claude_session_id_index: Arc<RwLock<HashMap<String, String>>> =
+            Arc::new(RwLock::new(HashMap::new()));
 
         // Debounced snapshot writer channel
         let (snapshot_tx, snapshot_rx) = mpsc::channel::<()>(1);
@@ -208,6 +217,7 @@ impl LiveSessionManager {
             interaction_data,
             session_pids_tx,
             backfill_miss_count: AtomicU64::new(0),
+            claude_session_id_index: claude_session_id_index.clone(),
         });
 
         // Spawn background tasks
@@ -311,6 +321,7 @@ impl LiveSessionManager {
             transcript_to_session,
             tx,
             coordinator,
+            claude_session_id_index,
         )
     }
 

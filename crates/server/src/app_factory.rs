@@ -151,6 +151,9 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
         app_config: claude_view_core::app_config::AppConfig::default(),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        claude_session_id_index: Arc::new(tokio::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
@@ -266,6 +269,9 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
         app_config: claude_view_core::app_config::AppConfig::default(),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+        claude_session_id_index: Arc::new(tokio::sync::RwLock::new(
+            std::collections::HashMap::new(),
+        )),
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
@@ -356,25 +362,32 @@ pub fn create_app_full(
         tokio::sync::RwLock<std::collections::HashMap<String, claude_view_types::InteractionBlock>>,
     > = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
-    let (manager, live_sessions, closed_ring, transcript_to_session, live_tx, coordinator) =
-        live::manager::LiveSessionManager::start(
-            pricing.clone(),
-            db.clone(),
-            search_index.clone(),
-            registry.clone(),
-            Some(sidecar.clone()),
-            teams.clone(),
-            claude_dir,
-            claude_view_dir,
-            llm_status.clone(),
-            llm_config.clone(),
-            llm_client,
-            oracle_rx.clone(),
-            hook_event_channels.clone(),
-            cli_sessions.clone(),
-            interaction_data.clone(),
-            session_pids_tx,
-        );
+    let (
+        manager,
+        live_sessions,
+        closed_ring,
+        transcript_to_session,
+        live_tx,
+        coordinator,
+        claude_session_id_index,
+    ) = live::manager::LiveSessionManager::start(
+        pricing.clone(),
+        db.clone(),
+        search_index.clone(),
+        registry.clone(),
+        Some(sidecar.clone()),
+        teams.clone(),
+        claude_dir,
+        claude_view_dir,
+        llm_status.clone(),
+        llm_config.clone(),
+        llm_client,
+        oracle_rx.clone(),
+        hook_event_channels.clone(),
+        cli_sessions.clone(),
+        interaction_data.clone(),
+        session_pids_tx,
+    );
 
     // Hook registration deferred — caller must invoke register_hooks()
     // AFTER binding the actual port (which may auto-increment on conflict).
@@ -473,6 +486,7 @@ pub fn create_app_full(
         webhook_secrets_path,
         app_config,
         cli_sessions,
+        claude_session_id_index,
         interaction_data,
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
     });
