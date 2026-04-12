@@ -32,7 +32,7 @@ getrandom = { version = "0.2.17", default-features = false, features = ["std"] }
 hashbrown = { version = "0.14.5", default-features = false, features = ["ahash", "inline-more", "raw"] }
 hyper = { version = "1.9.0", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1.20", features = ["client-legacy", "server-auto", "service"] }
-indexmap = { version = "2.13.1", features = ["serde"] }
+indexmap = { version = "2.14.0", features = ["serde"] }
 libc = { version = "0.2.184", features = ["extra_traits"] }
 log = { version = "0.4.29", default-features = false, features = ["std"] }
 memchr = { version = "2.8.0" }
@@ -45,8 +45,8 @@ regex = { version = "1.12.3" }
 regex-automata = { version = "0.4.14" }
 regex-syntax = { version = "0.8.10" }
 reqwest = { version = "0.12.28", features = ["blocking", "json", "rustls-tls"] }
-rustls = { version = "0.23.37", default-features = false, features = ["aws-lc-rs", "aws_lc_rs", "std"] }
-rustls-webpki = { version = "0.103.10", default-features = false, features = ["aws-lc-rs", "std"] }
+rustls = { version = "0.23.38", default-features = false, features = ["aws-lc-rs", "aws_lc_rs", "std"] }
+rustls-webpki = { version = "0.103.11", default-features = false, features = ["aws-lc-rs", "std"] }
 serde = { version = "1.0.228", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1.0.228", features = ["alloc", "rc"] }
 serde_json = { version = "1.0.149", features = ["raw_value"] }
@@ -79,7 +79,7 @@ digest = { version = "0.10.7", features = ["mac", "oid", "std"] }
 flate2 = { version = "1.1.9", features = ["zlib-rs"] }
 generic-array = { version = "0.14.7", default-features = false, features = ["more_lengths", "zeroize"] }
 getrandom = { version = "0.2.17", default-features = false, features = ["std"] }
-indexmap = { version = "2.13.1", features = ["serde"] }
+indexmap = { version = "2.14.0", features = ["serde"] }
 log = { version = "0.4.29", default-features = false, features = ["std"] }
 memchr = { version = "2.8.0" }
 rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
@@ -98,17 +98,17 @@ zeroize = { version = "1.8.2", features = ["zeroize_derive"] }
 [target.aarch64-apple-darwin.dependencies]
 bitflags = { version = "2.11.0", default-features = false, features = ["std"] }
 errno = { version = "0.3.14" }
-hyper-rustls = { version = "0.27.7", default-features = false, features = ["aws-lc-rs", "http1", "http2", "ring", "rustls-native-certs", "tls12", "webpki-tokio"] }
+hyper-rustls = { version = "0.27.8", default-features = false, features = ["aws-lc-rs", "http1", "http2", "ring", "rustls-native-certs", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1.20", default-features = false, features = ["client-proxy", "client-proxy-system"] }
 miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd", "with-alloc"] }
-rustls = { version = "0.23.37", default-features = false, features = ["ring", "tls12"] }
-rustls-webpki = { version = "0.103.10", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.38", default-features = false, features = ["ring", "tls12"] }
+rustls-webpki = { version = "0.103.11", default-features = false, features = ["ring"] }
 security-framework-sys = { version = "2.17.0" }
 tower = { version = "0.5.3", default-features = false, features = ["retry"] }
 tower-http = { version = "0.6.8", default-features = false, features = ["follow-redirect"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
-cc = { version = "1.2.59", default-features = false, features = ["parallel"] }
+cc = { version = "1.2.60", default-features = false, features = ["parallel"] }
 libc = { version = "0.2.184", features = ["extra_traits"] }
 miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd", "with-alloc"] }
 

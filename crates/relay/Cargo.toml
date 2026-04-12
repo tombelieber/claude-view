@@ -23,6 +23,7 @@ rand = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 anyhow = { workspace = true }
+rustls = { workspace = true }
 sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
 sentry-tracing = "0.38"
 axum-extra = { version = "0.10", features = ["typed-header"] }

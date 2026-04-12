@@ -248,6 +248,11 @@ fn format_bytes(bytes: u64) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install TLS crypto provider before ANY network I/O. Cargo feature unification
+    // compiles both ring and aws-lc-rs into the binary; rustls 0.23+ panics at runtime
+    // if it can't auto-detect a single provider. Explicit selection = no ambiguity.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // Initialize tracing — respects RUST_LOG env var, defaults to WARN.
     // RUST_LOG=debug in dev:server script enables info/debug logs for classify, etc.
     let subscriber = FmtSubscriber::builder()

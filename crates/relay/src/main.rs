@@ -8,6 +8,11 @@ use claude_view_relay::rate_limit::RateLimiter;
 
 #[tokio::main]
 async fn main() {
+    // Install TLS crypto provider before ANY network I/O. Cargo feature unification
+    // compiles both ring and aws-lc-rs into the binary; rustls 0.23+ panics at runtime
+    // if it can't auto-detect a single provider. Explicit selection = no ambiguity.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     // Sentry init — REPLACES the standalone tracing_subscriber::fmt().init()
     let _sentry = sentry::init((
         std::env::var("SENTRY_DSN").unwrap_or_default(),

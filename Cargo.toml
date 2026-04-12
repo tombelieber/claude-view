@@ -60,6 +60,11 @@ open = "5"
 
 # HTTP client (auth, sidecar proxy, telemetry)
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "blocking"] }
+# TLS — explicit provider selection. Cargo feature unification compiles BOTH ring and
+# aws-lc-rs into the binary (reqwest→aws-lc-rs, sentry/hyper-rustls→ring on macOS).
+# rustls 0.23+ panics when both are present without an explicit install_default() call.
+# We pick aws-lc-rs: rustls default, BoringSSL lineage, FIPS-capable, AWS-maintained.
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
 clap = { version = "4", features = ["derive"] }
 
 # Checksums and encoding
