@@ -3,6 +3,8 @@ import { X } from 'lucide-react'
 /** Session status -> Tailwind dot color (working=green, paused=amber, done=gray). */
 function statusDotColor(status: string | null): string {
   switch (status) {
+    case 'spawning':
+      return 'bg-blue-500'
     case 'working':
       return 'bg-green-500'
     case 'paused':
@@ -34,7 +36,8 @@ export function TabContent({
 }: TabContentProps) {
   const dotColor = dotColorOverride ?? statusDotColor(status)
   const isAutonomous = agentStateGroup === 'autonomous'
-  const showPulse = !dotColorOverride && isAutonomous && status === 'working'
+  const showPulse =
+    !dotColorOverride && (status === 'spawning' || (isAutonomous && status === 'working'))
 
   return (
     <div
