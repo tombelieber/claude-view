@@ -676,6 +676,7 @@ dependencies = [
  "ts-rs",
  "utoipa",
  "uuid",
+ "walkdir",
  "workspace-hack",
 ]
 

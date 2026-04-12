@@ -71,6 +71,17 @@ impl CliSessionStore {
         }
     }
 
+    /// Set the `claude_session_id` for a CLI session. Returns `true` if found and updated.
+    pub async fn set_claude_session_id(&self, id: &str, claude_session_id: String) -> bool {
+        let mut map = self.inner.write().await;
+        if let Some(session) = map.get_mut(id) {
+            session.claude_session_id = Some(claude_session_id);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Find a running CLI session whose `claude_session_id` matches the given UUID.
     pub async fn find_by_claude_session_id(&self, session_id: &str) -> Option<CliSession> {
         let map = self.inner.read().await;
@@ -147,6 +158,35 @@ mod tests {
 
         let result = store.find_by_claude_session_id("uuid-abc").await;
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn set_claude_session_id_updates_store() {
+        let store = CliSessionStore::new();
+        store
+            .insert(make_cli_session("cli-1", CliSessionStatus::Running, None))
+            .await;
+
+        // Before: no claude_session_id
+        assert!(store.find_by_claude_session_id("uuid-abc").await.is_none());
+
+        // Write back to store
+        assert!(
+            store
+                .set_claude_session_id("cli-1", "uuid-abc".into())
+                .await
+        );
+
+        // After: ownership resolves
+        let found = store.find_by_claude_session_id("uuid-abc").await;
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, "cli-1");
+    }
+
+    #[tokio::test]
+    async fn set_claude_session_id_returns_false_for_missing() {
+        let store = CliSessionStore::new();
+        assert!(!store.set_claude_session_id("nope", "uuid".into()).await);
     }
 
     #[tokio::test]
