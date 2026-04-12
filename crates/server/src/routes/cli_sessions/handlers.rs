@@ -135,6 +135,13 @@ pub async fn create_session(
                             .cli_sessions
                             .set_claude_session_id(&id, sid.clone())
                             .await;
+                        // Emit SessionUpdated so SSE enriches with the
+                        // newly-resolved ownership.tmux binding.
+                        if let Some(session) = state.live_sessions.read().await.get(&sid) {
+                            let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                                session: session.clone(),
+                            });
+                        }
                         return;
                     }
                 }
@@ -179,7 +186,13 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                             .cli_sessions
                             .set_claude_session_id(&session.id, sid.clone())
                             .await;
-                        session.claude_session_id = Some(sid);
+                        session.claude_session_id = Some(sid.clone());
+                        // Emit SessionUpdated so SSE enriches with ownership.tmux
+                        if let Some(live) = state.live_sessions.read().await.get(&sid) {
+                            let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                                session: live.clone(),
+                            });
+                        }
                     }
                 }
             }
