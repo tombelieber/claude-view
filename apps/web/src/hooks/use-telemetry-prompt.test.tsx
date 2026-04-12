@@ -71,6 +71,7 @@ describe('useTelemetryPrompt', () => {
       auth: false,
       sharing: false,
       version: '1.0.0',
+      features: { search: true, systemMonitor: true },
     })
     const { useTelemetryPrompt } = await import('./use-telemetry-prompt')
     const { result } = renderHook(() => useTelemetryPrompt(), { wrapper: createWrapper() })
@@ -87,6 +88,7 @@ describe('useTelemetryPrompt', () => {
       auth: false,
       sharing: false,
       version: '1.0.0',
+      features: { search: true, systemMonitor: true },
     })
     const { useTelemetryPrompt } = await import('./use-telemetry-prompt')
     const { result } = renderHook(() => useTelemetryPrompt(), { wrapper: createWrapper() })
