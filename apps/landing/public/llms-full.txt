@@ -3290,6 +3290,29 @@ npx claude-view@latest
 ```
 
 
+--- changelog/v0.34.1.md ---
+
+---
+title: "v0.34.1 — Rust Toolchain & Nextest"
+date: 2026-04-12
+version: v0.34.1
+---
+
+## Improvements
+
+**Pinned Rust toolchain to 1.94.1 stable** — ensures reproducible builds across all contributors and CI environments with `rust-toolchain.toml`.
+
+**cargo-nextest routing in cq** — `./scripts/cq test` now automatically routes through `cargo-nextest` when installed, falling back to `cargo test` for `--doc` tests or when `--` args are present. Faster test execution with better output formatting.
+
+**Rust tests added to pre-push gate** — lefthook pre-push now runs `cq test --workspace` alongside clippy and cargo-deny, catching test failures before they reach CI.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
 --- changelog/v0.4.0.md ---
 
 ---
