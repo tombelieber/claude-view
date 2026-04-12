@@ -191,6 +191,8 @@ mod tests {
             session_pids_tx: tokio::sync::watch::channel(Vec::<u32>::new()).0,
             backfill_miss_count: std::sync::atomic::AtomicU64::new(0),
             claude_session_id_index: Arc::new(RwLock::new(HashMap::new())),
+            tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
+            tmux: Arc::new(crate::routes::cli_sessions::tmux::mock::MockTmux::new()),
         });
 
         (manager, rx, snapshot_rx)

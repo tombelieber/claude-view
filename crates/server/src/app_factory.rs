@@ -350,6 +350,8 @@ pub fn create_app_full(
     let tmux_index = Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::from_names(
         existing.iter().map(|s| s.id.clone()).collect(),
     ));
+    let tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static> =
+        Arc::new(tmux_impl);
 
     // Create interaction data side-map early so it can be shared with the live
     // manager (for coordinator side effects) and AppState (for HTTP endpoints).
@@ -381,6 +383,8 @@ pub fn create_app_full(
         hook_event_channels.clone(),
         interaction_data.clone(),
         session_pids_tx,
+        tmux_index.clone(),
+        tmux.clone(),
     );
 
     // Hook registration deferred — caller must invoke register_hooks()
@@ -481,7 +485,7 @@ pub fn create_app_full(
         app_config,
         claude_session_id_index,
         interaction_data,
-        tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
+        tmux,
         tmux_index,
     });
 

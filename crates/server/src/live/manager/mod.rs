@@ -117,9 +117,14 @@ pub struct LiveSessionManager {
     /// Secondary index: Claude session UUID → LiveSessionMap key.
     /// Enables JSONL watcher to find tmux-keyed entries by UUID.
     /// Updated in the same write-lock scope as map mutations.
-    /// No consumers yet — wired in Task 8 (Born handler enrichment).
-    #[allow(dead_code)]
+    /// Consumed by Born handler to update tmux-keyed entries.
     pub(crate) claude_session_id_index: Arc<RwLock<HashMap<String, String>>>,
+    /// Tmux session name index (shared with AppState).
+    /// Used by Born handler to match PID → tmux session name.
+    tmux_index: Arc<crate::routes::cli_sessions::TmuxSessionIndex>,
+    /// Tmux command abstraction (shared with AppState).
+    /// Used by Born handler to look up pane PIDs.
+    tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
 }
 
 impl LiveSessionManager {
@@ -148,6 +153,8 @@ impl LiveSessionManager {
             tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>,
         >,
         session_pids_tx: watch::Sender<Vec<u32>>,
+        tmux_index: Arc<crate::routes::cli_sessions::TmuxSessionIndex>,
+        tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -214,6 +221,8 @@ impl LiveSessionManager {
             session_pids_tx,
             backfill_miss_count: AtomicU64::new(0),
             claude_session_id_index: claude_session_id_index.clone(),
+            tmux_index,
+            tmux,
         });
 
         // Spawn background tasks
