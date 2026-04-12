@@ -364,8 +364,8 @@ mod tests {
         tx.send(SessionEvent::SessionDiscovered { session })
             .unwrap();
 
-        // Wait for delivery.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Wait for delivery (500ms — 200ms was flaky under concurrent test load).
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         shutdown_tx.send(true).unwrap();
         tokio::time::timeout(Duration::from_secs(2), handle)
