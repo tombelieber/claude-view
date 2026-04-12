@@ -41,6 +41,7 @@ pub async fn live_stream(
     let mut rx = state.live_tx.subscribe();
     let sessions = state.live_sessions.clone();
     let live_manager = state.live_manager.clone();
+    let cli_sessions = state.cli_sessions.clone();
     let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
@@ -54,12 +55,15 @@ pub async fn live_stream(
                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
             }
             for session in map.values() {
+                let enriched = crate::live::ownership::enrich_with_ownership(
+                    session, &cli_sessions,
+                ).await;
                 let event_name = if session.closed_at.is_some() {
                     "session_closed"
                 } else {
                     "session_discovered"
                 };
-                match serde_json::to_string(session) {
+                match serde_json::to_string(&enriched) {
                     Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                 }
@@ -83,7 +87,29 @@ pub async fn live_stream(
                                 SessionEvent::CliSessionUpdated { .. } => "cli_session_updated",
                                 SessionEvent::CliSessionRemoved { .. } => "cli_session_removed",
                             };
-                            match serde_json::to_string(&session_event) {
+                            // Enrich session events with computed ownership
+                            let enriched_event = match session_event {
+                                SessionEvent::SessionDiscovered { session } => {
+                                    let s = crate::live::ownership::enrich_with_ownership(
+                                        &session, &cli_sessions,
+                                    ).await;
+                                    SessionEvent::SessionDiscovered { session: s }
+                                }
+                                SessionEvent::SessionUpdated { session } => {
+                                    let s = crate::live::ownership::enrich_with_ownership(
+                                        &session, &cli_sessions,
+                                    ).await;
+                                    SessionEvent::SessionUpdated { session: s }
+                                }
+                                SessionEvent::SessionClosed { session } => {
+                                    let s = crate::live::ownership::enrich_with_ownership(
+                                        &session, &cli_sessions,
+                                    ).await;
+                                    SessionEvent::SessionClosed { session: s }
+                                }
+                                other => other,
+                            };
+                            match serde_json::to_string(&enriched_event) {
                                 Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                             }
@@ -103,12 +129,15 @@ pub async fn live_stream(
                                 Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                             }
                             for session in map.values() {
+                                let enriched = crate::live::ownership::enrich_with_ownership(
+                                    session, &cli_sessions,
+                                ).await;
                                 let event_name = if session.closed_at.is_some() {
                                     "session_closed"
                                 } else {
                                     "session_discovered"
                                 };
-                                match serde_json::to_string(session) {
+                                match serde_json::to_string(&enriched) {
                                     Ok(data) => yield Ok(Event::default().event(event_name).data(data)),
                                     Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
                                 }
