@@ -50,3 +50,7 @@ pre-push:
           done
         fi
         cargo deny check
+    rust-test:
+      run: ./scripts/cq test --workspace
+    cq-nextest-routing:
+      run: bash test/cq-nextest-routing.sh
