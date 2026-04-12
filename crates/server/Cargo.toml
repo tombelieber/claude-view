@@ -19,7 +19,10 @@ path = "src/main.rs"
 #
 # This enables safe rollback if a feature causes issues post-release.
 [features]
-default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
+default = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview", "swagger"]
+
+# All runtime features without dev tooling — used by `--profile dist` in CI/release.
+dist = ["time-range", "heatmap-tooltip", "sync-redesign", "ai-generation", "storage-overview"]
 
 # Gate ts-rs file generation. Not in default — only generate-types.sh enables this.
 codegen = ["claude-view-core/codegen", "claude-view-db/codegen", "claude-view-search/codegen", "claude-view-server-insights/codegen", "claude-view-server-jobs/codegen", "claude-view-server-live-state/codegen", "claude-view-server-teams/codegen", "claude-view-server-types/codegen"]
@@ -38,6 +41,9 @@ ai-generation = []
 
 # Storage overview endpoint
 storage-overview = []
+
+# Swagger UI (/api/docs) — dev-only, embeds ~3-4MB of JS/CSS assets
+swagger = ["dep:utoipa-swagger-ui"]
 
 [dependencies]
 claude-view-core = { workspace = true }
@@ -103,7 +109,7 @@ flate2 = "1.1.9"
 serde_yaml = "0.9"
 utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
-utoipa-swagger-ui = { workspace = true }
+utoipa-swagger-ui = { workspace = true, optional = true }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 tempfile = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }

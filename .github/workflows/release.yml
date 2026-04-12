@@ -99,8 +99,8 @@ jobs:
           npm install
           npm run build
 
-      - name: Build Rust binary
-        run: cargo build --release -p claude-view-server
+      - name: Build Rust binary (dist profile)
+        run: cargo build --profile dist -p claude-view-server --no-default-features --features dist
         env:
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           RELAY_URL: wss://claude-view-relay.fly.dev/ws
@@ -117,7 +117,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           mkdir -p staging
-          cp target/release/${{ matrix.binary }} staging/
+          cp target/dist/${{ matrix.binary }} staging/
           cp -r apps/web/dist staging/
           tar -czf ${{ matrix.artifact }} -C staging .
 
@@ -126,7 +126,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path staging
-          Copy-Item "target\release\${{ matrix.binary }}" -Destination staging\
+          Copy-Item "target\dist\${{ matrix.binary }}" -Destination staging\
           Copy-Item -Recurse apps\web\dist staging\dist
           Compress-Archive -Path staging\* -DestinationPath ${{ matrix.artifact }}
 

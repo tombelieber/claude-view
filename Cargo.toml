@@ -117,14 +117,37 @@ claude-view-server-process-tree = { path = "crates/server-process-tree" }
 claude-view-server-local-llm = { path = "crates/server-local-llm" }
 claude-view-server-types = { path = "crates/server-types" }
 
+# ── Build Profiles ────────────────────────────────────────────────────
+#
+# dev      — fastest compile, debug iteration
+# release  — fast optimized: thin LTO, parallel codegen, unwind-safe
+# dist     — ship-quality: fat LTO, PGO-ready, panic=abort, smallest+fastest
+# test     — light optimization for faster test execution
+#
+# Daily:   ./scripts/cq build --release
+# Ship:    ./scripts/build-dist.sh [--pgo]
+# CI:      cargo build --profile dist -p claude-view-server --no-default-features --features dist
+
 [profile.dev]
 opt-level = 0          # Fastest compile (no optimization)
 debug = 1              # Minimal debug info (2→1 saves ~40% disk + link time)
 incremental = true     # Reuse previous compilation work
 
 [profile.release]
-lto = true
-strip = true
+opt-level = 2          # 95% of -O3 speed, measurably faster compile than -O3
+lto = "thin"           # Parallel thin LTO (LLVM 21 — mature, 80% of fat LTO benefit)
+strip = true           # No debug symbols
+# codegen-units = 16 (default) — max LLVM parallelism
+# panic = "unwind" (default) — keeps tokio task isolation for dev debugging
+
+[profile.dist]
+inherits = "release"
+opt-level = 3          # Maximum optimization — aggressive inlining, vectorization
+lto = true             # Fat LTO: single-threaded whole-program LLVM optimization
+codegen-units = 1      # Single codegen unit: maximum cross-function optimization scope
+panic = "abort"        # No unwinding tables (~2.9MB saved), no unwinding overhead
+strip = true           # No debug symbols in shipped binary
+# trim-paths via RUSTFLAGS in build-dist.sh (not stable in Cargo.toml yet)
 
 [profile.test]
 opt-level = 1  # Faster test compilation
