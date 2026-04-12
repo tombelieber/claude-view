@@ -651,7 +651,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-view-core"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -680,7 +680,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -759,7 +759,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -840,7 +840,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-insights"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "serde",
  "ts-rs",
@@ -850,7 +850,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-jobs"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "chrono",
  "serde",
@@ -863,7 +863,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-live-state"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "claude-view-core",
  "claude-view-db",
@@ -879,7 +879,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-local-llm"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "claude-view-core",
  "claude-view-types",
@@ -897,7 +897,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-process-tree"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "chrono",
  "libc",
@@ -910,7 +910,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-sidecar"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "libc",
  "reqwest",
@@ -923,7 +923,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-teams"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -940,7 +940,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-types"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "axum 0.8.8",
  "claude-view-core",
@@ -961,7 +961,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-types"
-version = "0.34.0"
+version = "0.34.1"
 dependencies = [
  "serde",
  "serde_json",
