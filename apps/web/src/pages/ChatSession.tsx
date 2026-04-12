@@ -22,7 +22,7 @@ import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
-import type { OwnershipTier } from '../lib/derive-panel-mode'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import type { PermissionMode } from '../types/control'
 
 const DEFAULT_MODEL = 'sonnet'
@@ -58,7 +58,7 @@ function ModeToggle({ mode, onChange }: { mode: DisplayMode; onChange: (m: Displ
 
 interface ChatSessionProps {
   sessionId: string | undefined
-  ownershipTier: OwnershipTier
+  ownership: SessionOwnership | null
   /** Decoded project path from Live Monitor — passed to SDK on resume/fork for correct cwd. */
   liveProjectPath?: string
   /** Authoritative context gauge data from Live Monitor SSE. Undefined when no live session. */
@@ -71,7 +71,7 @@ interface ChatSessionProps {
 
 export function ChatSession({
   sessionId,
-  ownershipTier,
+  ownership,
   liveProjectPath,
   liveContextData,
   onSessionCreated,
@@ -104,8 +104,8 @@ export function ChatSession({
 
   // Dispatch OWNERSHIP_CHANGED when ownership or projectPath changes
   useEffect(() => {
-    dispatch({ type: 'OWNERSHIP_CHANGED', tier: ownershipTier, projectPath: liveProjectPath })
-  }, [ownershipTier, liveProjectPath, dispatch])
+    dispatch({ type: 'OWNERSHIP_CHANGED', tier: ownership, projectPath: liveProjectPath })
+  }, [ownership, liveProjectPath, dispatch])
 
   // Notify dockview when FSM creates a new session (blank panel → create flow)
   const notifiedSessionRef = useRef<string | null>(null)

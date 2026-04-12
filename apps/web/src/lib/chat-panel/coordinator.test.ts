@@ -175,7 +175,7 @@ describe('coordinator', () => {
     }
     const [store] = coordinate(acquiringStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
     })
     expect(store.panel.phase).toBe('acquiring')
   })
@@ -425,7 +425,7 @@ describe('coordinator', () => {
     }
     const [store, cmds] = coordinate(historyStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
     })
     expect(store.panel.phase).toBe('cc_cli')
     if (store.panel.phase === 'cc_cli') {
@@ -449,13 +449,13 @@ describe('coordinator', () => {
     // Step 1: OWNERSHIP_CHANGED arrives while loading — should NOT transition to cc_cli
     const [midStore, midCmds] = coordinate(loadingStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
     })
     expect(midStore.panel.phase).toBe('nobody') // still nobody!
     if (midStore.panel.phase === 'nobody') {
       expect(midStore.panel.sub.sub).toBe('loading')
       if (midStore.panel.sub.sub === 'loading') {
-        expect(midStore.panel.sub.pendingLive).toBe('tmux')
+        expect(midStore.panel.sub.pendingLive).toBe(true)
       }
     }
     expect(midCmds).toHaveLength(0) // no OPEN_TERMINAL_WS yet
@@ -617,7 +617,7 @@ describe('coordinator', () => {
     }
     const [store] = coordinate(acquiringStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
       projectPath: '/new/path',
     })
     expect(store.panel.phase).toBe('acquiring')
@@ -656,7 +656,7 @@ describe('coordinator', () => {
     }
     const [store] = coordinate(historyStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
       projectPath: '/from/sse',
     })
     expect(store.projectPath).toBe('/from/sse')

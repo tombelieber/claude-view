@@ -369,7 +369,7 @@ describe('historyPagination preserved across phase transitions', () => {
     const store = paginatedStore('nobody')
     const next = step(store, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
     } as RawEvent)
 
     expect(next.panel.phase).toBe('cc_cli')

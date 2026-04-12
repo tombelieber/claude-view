@@ -269,9 +269,9 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
                     onHide={() => hidePane(session.id)}
                     onContextMenu={(e) => handleContextMenu(e, session.id)}
                   >
-                    {session.ownership?.tier === 'tmux' ? (
+                    {session.ownership?.tmux ? (
                       <CliTerminal
-                        tmuxSessionId={session.ownership.cliSessionId}
+                        tmuxSessionId={session.ownership.tmux.cliSessionId}
                         className="h-full"
                       />
                     ) : (

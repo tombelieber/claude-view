@@ -60,7 +60,7 @@ describe('integration: full resume flow', () => {
       // 4. User sends → acquiring(posting), emits POST_RESUME
       { type: 'SEND_MESSAGE', text: 'hello', localId: 'l1' },
       // 5. SSE race — OWNERSHIP_CHANGED ignored during acquiring
-      { type: 'OWNERSHIP_CHANGED', tier: 'tmux' },
+      { type: 'OWNERSHIP_CHANGED', tier: { tmux: { cliSessionId: 'cv-1' } } },
       // 6. Resume OK → acquiring(ws_connecting)
       { type: 'ACQUIRE_OK', controlId: 'ctrl-1' },
       // 7. WS opens → acquiring(ws_initializing), emits START_TIMER(init-timeout)
@@ -221,9 +221,7 @@ describe('integration: takeover flow (fork)', () => {
     // Fork-based: no kill, uses POST_FORK
     expect(allCmds).not.toContainEqual(expect.objectContaining({ cmd: 'KILL_CLI_SESSION' }))
     expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'CLOSE_TERMINAL_WS' }))
-    expect(allCmds).toContainEqual(
-      expect.objectContaining({ cmd: 'POST_FORK', sessionId: 'abc' }),
-    )
+    expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'POST_FORK', sessionId: 'abc' }))
   })
 })
 
@@ -611,9 +609,7 @@ describe('integration: CLI watching mode lifecycle', () => {
       historyPagination: null,
     }
 
-    const { store, allCmds } = drive(watchingStore, [
-      { type: 'OWNERSHIP_CHANGED', tier: null },
-    ])
+    const { store, allCmds } = drive(watchingStore, [{ type: 'OWNERSHIP_CHANGED', tier: null }])
 
     expect(store.panel.phase).toBe('nobody')
     if (store.panel.phase === 'nobody') {
@@ -634,7 +630,7 @@ describe('integration: watching mode streaming', () => {
       // 2. History loads → nobody(ready, blocks)
       { type: 'HISTORY_OK', blocks: mockBlocks },
       // 3. SSE says CLI owns it → cc_cli(watching) with history blocks
-      { type: 'OWNERSHIP_CHANGED', tier: 'tmux' },
+      { type: 'OWNERSHIP_CHANGED', tier: { tmux: { cliSessionId: 'cv-1' } } },
       // 4. Terminal WS connected
       { type: 'TERMINAL_CONNECTED' },
       // 5. Live block streams in — new user message
@@ -685,13 +681,13 @@ describe('integration: watching mode streaming', () => {
       // 1. Select session → nobody(loading)
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       // 2. SSE arrives FIRST (race!) — tmux while still loading
-      { type: 'OWNERSHIP_CHANGED', tier: 'tmux' },
+      { type: 'OWNERSHIP_CHANGED', tier: { tmux: { cliSessionId: 'cv-1' } } },
     ])
 
     // Should NOT be cc_cli yet — still nobody with pendingLive
     expect(midStore.panel.phase).toBe('nobody')
     if (midStore.panel.phase === 'nobody' && midStore.panel.sub.sub === 'loading') {
-      expect(midStore.panel.sub.pendingLive).toBe('tmux')
+      expect(midStore.panel.sub.pendingLive).toBe(true)
     }
 
     // Now history arrives → completes deferred transition
@@ -715,7 +711,7 @@ describe('integration: watching mode streaming', () => {
   test('select → tmux (race!) → HISTORY_FAILED → cc_cli with empty blocks', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
-      { type: 'OWNERSHIP_CHANGED', tier: 'tmux' },
+      { type: 'OWNERSHIP_CHANGED', tier: { tmux: { cliSessionId: 'cv-1' } } },
       { type: 'HISTORY_FAILED', error: 'not found' },
     ])
 
@@ -753,7 +749,7 @@ describe('integration: watching mode streaming', () => {
     const { store } = drive(INITIAL, [
       { type: 'SELECT_SESSION', sessionId: 'abc' },
       { type: 'HISTORY_OK', blocks: mockBlocks },
-      { type: 'OWNERSHIP_CHANGED', tier: 'tmux' },
+      { type: 'OWNERSHIP_CHANGED', tier: { tmux: { cliSessionId: 'cv-1' } } },
       { type: 'TERMINAL_CONNECTED' },
       // Stream some blocks
       { type: 'TERMINAL_BLOCK', block: { type: 'user', id: 'u2', text: 'msg2', timestamp: 2 } },

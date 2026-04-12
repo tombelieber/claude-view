@@ -8,7 +8,7 @@ import { SessionSidebar } from '../components/conversation/sidebar/SessionSideba
 import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
 import type { LiveContextData } from '../hooks/use-context-percent'
-import type { OwnershipTier } from '../lib/derive-panel-mode'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import type { SessionInfo } from '../types/generated/SessionInfo'
 
 /** Derive tab title using the same logic as the sidebar's SessionListItem. */
@@ -50,18 +50,15 @@ function makeSessionPanelArgs(
         statuslineUsedPct: liveSession.statuslineUsedPct ?? null,
       }
     : undefined
-  const tier = (liveSession?.ownership?.tier ?? null) as OwnershipTier
-  const tmuxSessionId =
-    liveSession?.ownership?.tier === 'tmux'
-      ? (liveSession.ownership as { cliSessionId: string }).cliSessionId
-      : undefined
+  const ownership = liveSession?.ownership ?? null
+  const tmuxSessionId = ownership?.tmux?.cliSessionId
   return {
     id: `chat-${sid}`,
     component: 'chat' as const,
     title: deriveTabTitle(sid, cachedSessions, live),
     params: {
       sessionId: sid,
-      ownershipTier: tier,
+      ownership,
       status: liveSession?.status ?? 'done',
       liveProjectPath: liveSession?.projectPath,
       liveContextData,
@@ -73,13 +70,14 @@ function makeSessionPanelArgs(
 
 /** Build addPanel args for a tmux terminal tab (no Claude session yet). */
 function makeTmuxPanelArgs(tmuxSessionId: string) {
+  const ownership: SessionOwnership = { tmux: { cliSessionId: tmuxSessionId } }
   return {
     id: `chat-cli-${tmuxSessionId}`,
     component: 'chat' as const,
     title: `CLI: ${tmuxSessionId.slice(0, 11)}`,
     params: {
       sessionId: '',
-      ownershipTier: 'tmux' as OwnershipTier,
+      ownership,
       status: 'working' as const,
       tmuxSessionId,
     },
@@ -183,7 +181,7 @@ export function ChatPageV2() {
   }, [])
 
   // CLI (tmux) session creation — uses the same chat component as everything else.
-  // ChatPanel renders xterm when tmuxSessionId + ownershipTier='tmux' are in params.
+  // ChatPanel renders xterm when tmuxSessionId is in params.
   const createCliSession = useCreateCliSession()
   const openNewCliSession = useCallback(async () => {
     const api = dockApiRef.current
@@ -229,17 +227,14 @@ export function ChatPageV2() {
             statuslineUsedPct: live.statuslineUsedPct ?? null,
           }
         : undefined
-      const tier = (live?.ownership?.tier ?? null) as OwnershipTier
+      const ownership = live?.ownership ?? null
       panel.api.updateParameters({
-        ownershipTier: tier,
+        ownership,
         status: live?.status ?? 'done',
         liveProjectPath: live?.projectPath,
         liveContextData: liveCtx,
         agentStateGroup: live?.agentState?.group ?? null,
-        tmuxSessionId:
-          live?.ownership?.tier === 'tmux'
-            ? (live.ownership as { cliSessionId: string }).cliSessionId
-            : undefined,
+        tmuxSessionId: ownership?.tmux?.cliSessionId,
       })
       const title = deriveTabTitle(sid, cached, liveSessions.sessions)
       if (title !== sid.slice(0, 8) && panel.title === sid.slice(0, 8)) {

@@ -3,8 +3,8 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import {
   useInteractionResponder,
   type InteractRequest,
-  type SessionOwnership,
 } from '@claude-view/shared/hooks/useInteractionResponder'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 
 // --- Mock fetch ---
 const mockFetch = vi.fn()
@@ -20,21 +20,18 @@ afterEach(() => {
 
 // --- Helpers ---
 const sdkOwnership: SessionOwnership = {
-  tier: 'sdk',
-  controlId: 'ctrl-1',
+  sdk: { controlId: 'ctrl-1' },
   source: null,
   entrypoint: null,
 }
 
 const tmuxOwnership: SessionOwnership = {
-  tier: 'tmux',
-  cliSessionId: 'cli-1',
+  tmux: { cliSessionId: 'cli-1' },
   source: null,
   entrypoint: null,
 }
 
 const observedOwnership: SessionOwnership = {
-  tier: 'observed',
   source: null,
   entrypoint: null,
 }

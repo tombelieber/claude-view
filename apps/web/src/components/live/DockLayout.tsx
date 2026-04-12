@@ -95,8 +95,8 @@ function SessionPanel({
       onHide={() => hidePane(sessionId)}
       onContextMenu={() => {}}
     >
-      {session.ownership?.tier === 'tmux' ? (
-        <CliTerminal tmuxSessionId={session.ownership.cliSessionId} className="h-full" />
+      {session.ownership?.tmux ? (
+        <CliTerminal tmuxSessionId={session.ownership.tmux.cliSessionId} className="h-full" />
       ) : (
         <BlockTerminalPane sessionId={sessionId} isVisible={true} />
       )}
@@ -201,8 +201,7 @@ export function DockLayout({
                 displayMode: currentDisplayMode,
                 status: session.status,
                 agentStateGroup: session.agentState?.group ?? null,
-                tmuxSessionId:
-                  session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
+                tmuxSessionId: session.ownership?.tmux?.cliSessionId,
               })
             }
           }
@@ -225,8 +224,7 @@ export function DockLayout({
               displayMode: currentDisplayMode,
               status: session?.status ?? 'done',
               agentStateGroup: session?.agentState?.group ?? null,
-              tmuxSessionId:
-                session?.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
+              tmuxSessionId: session?.ownership?.tmux?.cliSessionId,
             },
             // First panel gets its own group, rest stack or split
             position: i === 0 ? undefined : { referencePanel: ids[0], direction: 'right' },
@@ -279,8 +277,7 @@ export function DockLayout({
           displayMode,
           status: session.status,
           agentStateGroup: session.agentState?.group ?? null,
-          tmuxSessionId:
-            session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
+          tmuxSessionId: session.ownership?.tmux?.cliSessionId,
         })
         // Align title with ChatPageV2: slug > projectDisplayName > id
         const title = session.slug || session.projectDisplayName || session.id.slice(0, 8)
@@ -306,8 +303,7 @@ export function DockLayout({
             displayMode,
             status: session.status,
             agentStateGroup: session.agentState?.group ?? null,
-            tmuxSessionId:
-              session.ownership?.tier === 'tmux' ? session.ownership.cliSessionId : undefined,
+            tmuxSessionId: session.ownership?.tmux?.cliSessionId,
           },
           inactive: hasCliPanels,
         })

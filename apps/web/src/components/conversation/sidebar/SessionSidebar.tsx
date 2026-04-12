@@ -167,8 +167,8 @@ export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: Ses
     (sessionId: string) => {
       const session = enrichedHistory.find((s) => s.id === sessionId)
       const ownership = session?.liveData?.ownership
-      if (ownership?.tier === 'tmux') {
-        killCliSession.mutate(ownership.cliSessionId)
+      if (ownership?.tmux) {
+        killCliSession.mutate(ownership.tmux.cliSessionId)
       } else {
         deleteSession.mutate(sessionId)
       }

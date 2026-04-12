@@ -61,7 +61,7 @@ describe('ChatPanel drag-drop signal', () => {
 
     render(
       <ChatPanel
-        params={{ sessionId: 'test-123', ownershipTier: undefined, liveProjectPath: undefined }}
+        params={{ sessionId: 'test-123', ownership: undefined, liveProjectPath: undefined }}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
         api={mock.api as any}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
@@ -77,7 +77,7 @@ describe('ChatPanel drag-drop signal', () => {
 
     render(
       <ChatPanel
-        params={{ sessionId: 'test-123', ownershipTier: undefined, liveProjectPath: undefined }}
+        params={{ sessionId: 'test-123', ownership: undefined, liveProjectPath: undefined }}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
         api={mock.api as any}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
@@ -100,7 +100,7 @@ describe('ChatPanel drag-drop signal', () => {
 
     render(
       <ChatPanel
-        params={{ sessionId: 'test-123', ownershipTier: undefined, liveProjectPath: undefined }}
+        params={{ sessionId: 'test-123', ownership: undefined, liveProjectPath: undefined }}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
         api={mock.api as any}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
@@ -130,7 +130,7 @@ describe('ChatPanel drag-drop signal', () => {
 
     const { unmount } = render(
       <ChatPanel
-        params={{ sessionId: 'test-123', ownershipTier: undefined, liveProjectPath: undefined }}
+        params={{ sessionId: 'test-123', ownership: undefined, liveProjectPath: undefined }}
         // biome-ignore lint/suspicious/noExplicitAny: test mock
         api={mock.api as any}
         // biome-ignore lint/suspicious/noExplicitAny: test mock

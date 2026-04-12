@@ -65,7 +65,7 @@ export function useChatKeyboardShortcuts(api: DockviewApi | null) {
               title: active.title ?? sessionId.slice(0, 8),
               params: {
                 sessionId,
-                ownershipTier: (active.params as { ownershipTier?: string })?.ownershipTier ?? null,
+                ownership: (active.params as { ownership?: unknown })?.ownership ?? null,
               },
               position: { referencePanel: active.id, direction: 'right' },
             })
@@ -87,7 +87,7 @@ export function useChatKeyboardShortcuts(api: DockviewApi | null) {
               title: active.title ?? sessionId.slice(0, 8),
               params: {
                 sessionId,
-                ownershipTier: (active.params as { ownershipTier?: string })?.ownershipTier ?? null,
+                ownership: (active.params as { ownership?: unknown })?.ownership ?? null,
               },
               position: { referencePanel: active.id, direction: 'below' },
             })

@@ -18,7 +18,7 @@ export interface SessionLike {
 export type SessionSource = 'terminal' | 'sdk'
 
 export function getSessionSource(session: SessionLike): SessionSource {
-  return session.liveData?.ownership?.tier === 'sdk' ? 'sdk' : 'terminal'
+  return session.liveData?.ownership?.sdk ? 'sdk' : 'terminal'
 }
 
 // --- Urgency grouping ---
@@ -72,7 +72,7 @@ export function deriveDropdownActions(
     resume: isHistory,
     takeOver: false, // TODO: re-enable when fork flow is fixed
     fork: false, // TODO: re-enable when fork flow is fixed
-    shutDown: ownership?.tier === 'sdk' || ownership?.tier === 'tmux',
+    shutDown: !!ownership?.sdk || !!ownership?.tmux,
     openInMonitor: !isHistory,
     archive: isHistory,
   }

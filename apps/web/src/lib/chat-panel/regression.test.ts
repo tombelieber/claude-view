@@ -503,7 +503,7 @@ describe('regression: watching mode (nobody → cc_cli.watching)', () => {
   test('OWNERSHIP_CHANGED tmux → cc_cli(watching), terminal WS opened', () => {
     const { store, cmds } = step(readyStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
       projectPath: '/cli/project',
     })
     expect(store.panel.phase).toBe('cc_cli')
@@ -534,11 +534,11 @@ describe('regression: watching mode (nobody → cc_cli.watching)', () => {
     // Step 1: OWNERSHIP_CHANGED while loading → deferred
     const { store: mid, cmds: midCmds } = step(loadingStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
     })
     expect(mid.panel.phase).toBe('nobody')
     if (mid.panel.phase === 'nobody' && mid.panel.sub.sub === 'loading') {
-      expect(mid.panel.sub.pendingLive).toBe('tmux')
+      expect(mid.panel.sub.pendingLive).toBe(true)
     }
     expect(midCmds).toHaveLength(0) // no terminal WS yet
 
@@ -755,7 +755,7 @@ describe('regression: resume from closed (closed → resume → sdk_owned)', () 
   test('OWNERSHIP_CHANGED tmux from closed → enters watching mode', () => {
     const { store, cmds } = step(closedStore, {
       type: 'OWNERSHIP_CHANGED',
-      tier: 'tmux',
+      tier: { tmux: { cliSessionId: 'cv-1' } },
     })
     expect(store.panel.phase).toBe('cc_cli')
     if (store.panel.phase === 'cc_cli') {

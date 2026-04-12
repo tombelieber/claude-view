@@ -30,7 +30,7 @@ function renderTab(
       api={mockApi(apiOverrides) as any}
       // biome-ignore lint/suspicious/noExplicitAny: mock dockview API in test
       containerApi={mockContainerApi() as any}
-      params={{ agentStateGroup: null, ownershipTier: null, ...params }}
+      params={{ agentStateGroup: null, ownership: null, ...params }}
       tabLocation="header"
     />,
   )
@@ -82,7 +82,7 @@ describe('ChatTabRenderer', () => {
     const { container } = renderTab(
       { isActive: false },
       {
-        ownershipTier: 'tmux',
+        ownership: { tmux: { cliSessionId: 'cv-abc123' } },
         tmuxSessionId: 'cv-abc123',
       },
     )
@@ -97,7 +97,7 @@ describe('ChatTabRenderer', () => {
     const { container } = renderTab(
       { close: closeFn },
       {
-        ownershipTier: 'tmux',
+        ownership: { tmux: { cliSessionId: 'cv-abc123' } },
         tmuxSessionId: 'cv-abc123',
       },
     )

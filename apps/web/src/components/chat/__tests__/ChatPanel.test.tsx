@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 
 // Mock react-router-dom
 vi.mock('react-router-dom', () => ({
@@ -10,12 +11,12 @@ vi.mock('react-router-dom', () => ({
 vi.mock('../../../pages/ChatSession', () => ({
   ChatSession: ({
     sessionId,
-    ownershipTier,
-  }: { sessionId?: string; ownershipTier?: string | null }) => (
+    ownership,
+  }: { sessionId?: string; ownership?: SessionOwnership | null }) => (
     <div
       data-testid="chat-session"
       data-session-id={sessionId ?? ''}
-      data-ownership-tier={ownershipTier ?? ''}
+      data-ownership={ownership ? JSON.stringify(ownership) : ''}
     />
   ),
 }))
@@ -31,12 +32,12 @@ import { ChatPanel } from '../ChatPanel'
 
 function renderPanel(overrides?: {
   sessionId?: string
-  ownershipTier?: string | null
+  ownership?: SessionOwnership | null
   tmuxSessionId?: string
 }) {
   const params = {
     sessionId: overrides?.sessionId ?? 'sess-123',
-    ownershipTier: overrides?.ownershipTier ?? null,
+    ownership: overrides?.ownership ?? null,
     tmuxSessionId: overrides?.tmuxSessionId,
   }
   const props = {
@@ -61,20 +62,22 @@ describe('ChatPanel', () => {
     expect(el.getAttribute('data-session-id')).toBe('abc-123')
   })
 
-  it('passes ownershipTier to ChatSession', () => {
-    renderPanel({ ownershipTier: 'tmux' })
+  it('passes ownership to ChatSession', () => {
+    renderPanel({ ownership: { tmux: { cliSessionId: 'cv-1' } } })
     const el = screen.getByTestId('chat-session')
-    expect(el.getAttribute('data-ownership-tier')).toBe('tmux')
+    expect(el.getAttribute('data-ownership')).toBe(
+      JSON.stringify({ tmux: { cliSessionId: 'cv-1' } }),
+    )
   })
 
-  it('passes ownershipTier=null by default', () => {
+  it('passes ownership=null by default', () => {
     renderPanel()
     const el = screen.getByTestId('chat-session')
-    expect(el.getAttribute('data-ownership-tier')).toBe('')
+    expect(el.getAttribute('data-ownership')).toBe('')
   })
 
-  it('renders CliTerminal when ownershipTier is tmux and tmuxSessionId is set', () => {
-    renderPanel({ ownershipTier: 'tmux', tmuxSessionId: 'cv-abc123' })
+  it('renders CliTerminal when tmuxSessionId is set', () => {
+    renderPanel({ tmuxSessionId: 'cv-abc123' })
     expect(screen.getByTestId('cli-terminal')).toBeInTheDocument()
     expect(screen.getByTestId('cli-terminal').getAttribute('data-tmux-session-id')).toBe(
       'cv-abc123',
@@ -82,15 +85,15 @@ describe('ChatPanel', () => {
     expect(screen.queryByTestId('chat-session')).not.toBeInTheDocument()
   })
 
-  it('renders ChatSession when ownershipTier is tmux but tmuxSessionId is missing', () => {
+  it('renders ChatSession when tmuxSessionId is missing', () => {
     // Edge case: ownership resolved but tmuxSessionId not yet in params
-    renderPanel({ ownershipTier: 'tmux' })
+    renderPanel({ ownership: { tmux: { cliSessionId: 'cv-1' } } })
     expect(screen.getByTestId('chat-session')).toBeInTheDocument()
     expect(screen.queryByTestId('cli-terminal')).not.toBeInTheDocument()
   })
 
   it('renders ChatSession for sdk ownership', () => {
-    renderPanel({ ownershipTier: 'sdk' })
+    renderPanel({ ownership: { sdk: { controlId: 'ctl-1' } } })
     expect(screen.getByTestId('chat-session')).toBeInTheDocument()
     expect(screen.queryByTestId('cli-terminal')).not.toBeInTheDocument()
   })

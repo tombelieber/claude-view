@@ -25,14 +25,13 @@ const liveNeedsYou = {
 
 const liveSdkManaged = {
   ...liveAutonomous,
-  ownership: { tier: 'sdk' as const, controlId: 'ctrl-1', source: null, entrypoint: null },
+  ownership: { sdk: { controlId: 'ctrl-1' }, source: null, entrypoint: null },
 }
 
 const liveTmuxManaged = {
   ...liveAutonomous,
   ownership: {
-    tier: 'tmux' as const,
-    cliSessionId: 'cv-test-1',
+    tmux: { cliSessionId: 'cv-test-1' },
     source: null,
     entrypoint: null,
   },

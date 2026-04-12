@@ -2,17 +2,17 @@ import type { SessionOwnership } from '@claude-view/shared/types/generated/Sessi
 import type { InputBarState } from '../components/chat/ChatInputBar'
 import type { ConnectionHealth } from '../types/control'
 
-/** Ownership tier extracted from backend SSE. null = no live data / inactive. */
-export type OwnershipTier = SessionOwnership['tier'] | null
-
 /**
- * True when session is CLI/terminal-owned (watching mode, not interactive).
- * Both tmux and observed open terminal WS for read-only block streaming.
- * Distinction: tmux sessions can be shut down (we launched them);
- * observed sessions are read-only (someone else's CLI).
+ * True when session is watchable (non-interactive).
+ * Without SDK control, sessions are watchable:
+ * - tmux = xterm watching (launched by this app)
+ * - no bindings = block streaming watching (observed CLI)
+ * With SDK = interactive (not watchable).
+ * null/undefined ownership = no live data / inactive = not watchable.
  */
-export function isWatchable(tier: OwnershipTier): boolean {
-  return tier === 'tmux' || tier === 'observed'
+export function isWatchable(ownership: SessionOwnership | null | undefined): boolean {
+  if (!ownership) return false
+  return !ownership.sdk
 }
 
 export type OwnSubState = 'active' | 'streaming' | 'waiting_permission' | 'compacting'
@@ -41,12 +41,12 @@ export type PanelMode =
 
 export function derivePanelMode(
   sessionId: string | undefined,
-  ownershipTier: OwnershipTier,
+  ownership: SessionOwnership | null | undefined,
   sessionState: SessionState,
 ): PanelMode {
   if (!sessionId) return { mode: 'blank' }
 
-  if (isWatchable(ownershipTier)) return { mode: 'watching' }
+  if (isWatchable(ownership)) return { mode: 'watching' }
 
   switch (sessionState) {
     case 'initializing':

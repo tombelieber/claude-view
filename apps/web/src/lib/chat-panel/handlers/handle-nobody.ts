@@ -156,7 +156,7 @@ export function handleNobody(store: ChatPanelStore, event: RawEvent): Transition
             ...updatedStore,
             panel: {
               ...p,
-              sub: { sub: 'loading', pendingLive: event.tier as 'tmux' | 'observed' },
+              sub: { sub: 'loading', pendingLive: true },
             },
           },
           [],

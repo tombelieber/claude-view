@@ -1,11 +1,7 @@
 import { useCallback } from 'react'
+import type { SessionOwnership } from '../types/generated/SessionOwnership'
 
 export type InteractResult = { ok: true } | { ok: false; status: number; reason: string }
-
-export type SessionOwnership =
-  | { tier: 'sdk'; controlId: string; source: string | null; entrypoint: string | null }
-  | { tier: 'tmux'; cliSessionId: string; source: string | null; entrypoint: string | null }
-  | { tier: 'observed'; source: string | null; entrypoint: string | null }
 
 export type InteractRequest =
   | { variant: 'permission'; requestId: string; allowed: boolean; updatedPermissions?: unknown[] }
@@ -22,7 +18,7 @@ export type InteractRequest =
 /**
  * Returns a callback that dispatches an interaction response to the backend,
  * or `undefined` when the session cannot be interacted with (null ownership
- * or observation-only tier).
+ * or observed-only — no sdk/tmux binding).
  */
 export function useInteractionResponder(
   sessionId: string,
@@ -46,6 +42,7 @@ export function useInteractionResponder(
     [sessionId],
   )
 
-  if (!ownership || ownership.tier === 'observed') return undefined
+  // Interactive only when SDK or tmux-controlled — not when observed (no bindings)
+  if (!ownership || (!ownership.sdk && !ownership.tmux)) return undefined
   return respond
 }

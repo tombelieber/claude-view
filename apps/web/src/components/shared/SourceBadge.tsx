@@ -59,7 +59,7 @@ export function SourceBadge({ source, size = 'sm', ownership }: SourceBadgeProps
   const iconSize = size === 'sm' ? 10 : 12
 
   // SDK session — sidecar-controlled, interactive.
-  if (ownership?.tier === 'sdk') {
+  if (ownership?.sdk) {
     const textClass = 'text-xs'
     return (
       <span
@@ -73,7 +73,7 @@ export function SourceBadge({ source, size = 'sm', ownership }: SourceBadgeProps
   }
 
   // Tmux CLI session launched by this app.
-  if (ownership?.tier === 'tmux') {
+  if (ownership?.tmux) {
     const textClass = 'text-xs'
     return (
       <span

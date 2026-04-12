@@ -2,16 +2,16 @@ import type { IDockviewPanelProps } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import type { LiveContextData } from '../../hooks/use-context-percent'
-import type { OwnershipTier } from '../../lib/derive-panel-mode'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import { CliTerminal } from '../cli-terminal/CliTerminal'
 import { ChatSession } from '../../pages/ChatSession'
 
 interface ChatPanelParams {
   sessionId: string
-  ownershipTier?: OwnershipTier
+  ownership?: SessionOwnership | null
   liveProjectPath?: string
   liveContextData?: LiveContextData
-  /** Tmux session ID — when set with ownershipTier='tmux', renders xterm terminal. */
+  /** Tmux session ID — when set, renders xterm terminal. */
   tmuxSessionId?: string
 }
 
@@ -22,7 +22,7 @@ interface ChatPanelParams {
  * permission handling, model selection, and command palette.
  */
 export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>) {
-  const { sessionId, ownershipTier, liveProjectPath, liveContextData, tmuxSessionId } = params
+  const { sessionId, ownership, liveProjectPath, liveContextData, tmuxSessionId } = params
   const containerRef = useRef<HTMLDivElement>(null)
   const navigate = useNavigate()
 
@@ -73,7 +73,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
 
   // Tmux-owned session with resolved tmuxSessionId → render xterm terminal.
   // React handles the swap when ownership arrives via SSE param update.
-  if (ownershipTier === 'tmux' && tmuxSessionId) {
+  if (tmuxSessionId) {
     return (
       <div ref={containerRef} className="flex flex-col h-full min-w-0 overflow-hidden">
         <CliTerminal tmuxSessionId={tmuxSessionId} className="h-full" />
@@ -85,7 +85,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     <div ref={containerRef} className="flex flex-col h-full min-w-0 overflow-hidden">
       <ChatSession
         sessionId={sessionId || undefined}
-        ownershipTier={ownershipTier ?? null}
+        ownership={ownership ?? null}
         liveProjectPath={liveProjectPath}
         liveContextData={liveContextData}
         onSessionCreated={!sessionId ? onSessionCreated : undefined}

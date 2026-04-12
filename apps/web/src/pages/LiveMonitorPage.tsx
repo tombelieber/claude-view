@@ -294,7 +294,7 @@ export function LiveMonitorPage() {
   )
 
   // CLI sessions now flow through visibleSessions → MonitorView renders xterm
-  // based on ownership.tier === 'tmux'. No separate panel sync needed.
+  // based on ownership.tmux. No separate panel sync needed.
 
   // Session selection
   const handleSelectSession = useCallback((id: string) => {

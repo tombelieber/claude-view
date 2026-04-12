@@ -9,8 +9,8 @@ export type SidebarSession = SessionInfo & {
 /**
  * Pure mapper: merges history sessions with live session data.
  *
- * isActive is derived from ownership tier: sdk/tmux are always active,
- * observed is active only if the session is working/paused.
+ * isActive is derived from ownership: sdk/tmux bindings are always active,
+ * observed (no bindings) is active only if the session is working/paused.
  * No live data → inactive.
  */
 export function toSidebarItems(
@@ -86,7 +86,6 @@ export function toSidebarItems(
 
 function isSessionActive(live: LiveSession | null): boolean {
   if (!live) return false
-  const tier = live.ownership?.tier
-  if (tier === 'sdk' || tier === 'tmux') return true
+  if (live.ownership?.sdk || live.ownership?.tmux) return true
   return live.status === 'working' || live.status === 'paused'
 }
