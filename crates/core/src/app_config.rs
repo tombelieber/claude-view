@@ -2,18 +2,10 @@
 
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 #[serde(default)]
 pub struct AppConfig {
     pub features: FeatureFlags,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            features: FeatureFlags::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
