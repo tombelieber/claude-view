@@ -6,6 +6,7 @@ import {
   type SerializedDockview,
 } from 'dockview-react'
 import { useCallback, useRef } from 'react'
+import { useDockviewPersistence } from '../../hooks/use-dockview-persistence'
 import { ChatPanel } from './ChatPanel'
 import { ChatTabRenderer } from './ChatTabRenderer'
 import { TabBarActions } from './TabBarActions'
@@ -20,33 +21,13 @@ const chatTabComponents = { chat: ChatTabRenderer }
 // our light-mode CSS variables in dockview-theme.css).
 const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
 
-const STORAGE_KEY = 'claude-view:chat-layout'
-
-/** Read saved dockview layout from localStorage. */
-export function readSavedChatLayout(): SerializedDockview | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw) as SerializedDockview
-  } catch {
-    // Corrupt — start fresh
-  }
-  return null
-}
-
-/** Write dockview layout to localStorage. */
-function saveChatLayout(layout: SerializedDockview): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(layout))
-  } catch {
-    // QuotaExceeded — best effort
-  }
-}
-
 interface ChatDockLayoutProps {
   /** Serialized layout to restore on mount. Null = empty dock. */
   initialLayout: SerializedDockview | null
   /** Called with the DockviewApi once dockview is ready. */
   onReady?: (api: DockviewApi) => void
+  /** Persist layout on every structural change. */
+  onLayoutChange: (layout: SerializedDockview) => void
 }
 
 function ChatWatermark(_props: IWatermarkPanelProps) {
@@ -61,10 +42,11 @@ function ChatWatermark(_props: IWatermarkPanelProps) {
   )
 }
 
-export function ChatDockLayout({ initialLayout, onReady }: ChatDockLayoutProps) {
-  const apiRef = useRef<DockviewApi | null>(null)
+export function ChatDockLayout({ initialLayout, onReady, onLayoutChange }: ChatDockLayoutProps) {
   const onReadyRef = useRef(onReady)
   onReadyRef.current = onReady
+
+  const attachListeners = useDockviewPersistence(onLayoutChange)
 
   // onReady fires ONCE per dockview instance. All mutable values are read
   // via refs so the callback identity is stable and dockview never re-initializes.
@@ -73,39 +55,27 @@ export function ChatDockLayout({ initialLayout, onReady }: ChatDockLayoutProps) 
   // its own listeners that persist for its lifetime.
   const handleReady = useCallback(
     (event: DockviewReadyEvent) => {
-      apiRef.current = event.api
-      // Restore saved layout via dockview's native fromJSON
       if (initialLayout) {
         try {
           event.api.fromJSON(initialLayout)
+          // Defense-in-depth: strip stale CLI panels from pre-migration
+          // localStorage data. Save path already strips via stripCliPanels(),
+          // but old data may still contain them.
+          const staleCliPanels = event.api.panels.filter((p) => p.id.startsWith('chat-cli-'))
+          for (const p of staleCliPanels) event.api.removePanel(p)
         } catch {
           // Corrupt or incompatible layout — start fresh
           event.api.clear()
         }
       }
 
-      // Notify parent (ChatPageV2) with the API handle
       onReadyRef.current?.(event.api)
-
-      // Attach persistence listeners — debounced to batch rapid mutations
-      let debounceTimer: ReturnType<typeof setTimeout> | null = null
-      const persistLayout = () => {
-        if (debounceTimer) clearTimeout(debounceTimer)
-        debounceTimer = setTimeout(() => {
-          if (apiRef.current) {
-            saveChatLayout(apiRef.current.toJSON())
-          }
-        }, 100)
-      }
-      event.api.onDidAddPanel(persistLayout)
-      event.api.onDidRemovePanel(persistLayout)
-      event.api.onDidLayoutChange(persistLayout)
-      event.api.onDidActivePanelChange(persistLayout)
+      attachListeners(event.api)
     },
     // initialLayout is read once at mount — changes after mount are irrelevant
     // (the layout is already live). onReadyRef is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [initialLayout],
+    [initialLayout, attachListeners],
   )
 
   return (

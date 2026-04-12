@@ -1,7 +1,7 @@
 import type { DockviewApi } from 'dockview-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { useLayoutMode } from '../../hooks/use-layout-mode'
-import { useLayoutPresets } from '../../hooks/use-layout-presets'
+import { useDockLayoutStore } from '../../store/dock-layout-store'
+import { useShallow } from 'zustand/react/shallow'
 import { useMonitorStore } from '../../store/monitor-store'
 import { DockLayout } from './DockLayout'
 import { GridControls } from './GridControls'
@@ -49,10 +49,34 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
   const hidePane = useMonitorStore((s) => s.hidePane)
   const setDisplayMode = useMonitorStore((s) => s.setDisplayMode)
 
-  // Phase E: layout mode + presets
-  const { mode, setMode, toggleMode, savedLayout, setSavedLayout, activePreset, setActivePreset } =
-    useLayoutMode()
-  const { customPresets, savePreset, deletePreset } = useLayoutPresets()
+  // Layout mode + presets — unified dock layout store
+  const {
+    monitorLayoutMode: mode,
+    monitorLayout: savedLayout,
+    activePreset,
+    monitorPresets: customPresets,
+    setMonitorLayoutMode: setMode,
+    toggleMonitorLayoutMode: toggleMode,
+    saveMonitorLayout: setSavedLayout,
+    clearMonitorLayout,
+    setActivePreset,
+    savePreset,
+    deletePreset,
+  } = useDockLayoutStore(
+    useShallow((s) => ({
+      monitorLayoutMode: s.monitorLayoutMode,
+      monitorLayout: s.monitorLayout,
+      activePreset: s.activePreset,
+      monitorPresets: s.monitorPresets,
+      setMonitorLayoutMode: s.setMonitorLayoutMode,
+      toggleMonitorLayoutMode: s.toggleMonitorLayoutMode,
+      saveMonitorLayout: s.saveMonitorLayout,
+      clearMonitorLayout: s.clearMonitorLayout,
+      setActivePreset: s.setActivePreset,
+      savePreset: s.savePreset,
+      deletePreset: s.deletePreset,
+    })),
+  )
   const dockviewApiRef = useRef<DockviewApi | null>(null)
 
   // Visibility tracking from MonitorGrid's IntersectionObserver
@@ -190,9 +214,9 @@ export function MonitorView({ sessions, onSelectSession, onDockApiReady }: Monit
   )
 
   const handleResetLayout = useCallback(() => {
-    setSavedLayout(null)
+    clearMonitorLayout()
     setMode('auto-grid')
-  }, [setSavedLayout, setMode])
+  }, [clearMonitorLayout, setMode])
 
   // Context menu session
   const contextMenuSession = contextMenu

@@ -172,6 +172,14 @@ impl SessionCoordinator {
                     crate::live::manager::helpers::enrich_from_session_file(&mut new_session, pid);
                 }
 
+                // Compute ownership on session creation so the first broadcast
+                // carries tmux/SDK bindings. Without this, sessions discovered
+                // after server restart (reconcile) or sessions whose 6s polling
+                // window expired would have ownership=null permanently.
+                new_session.ownership = Some(
+                    crate::live::ownership::compute_ownership(&new_session, ctx.cli_sessions).await,
+                );
+
                 sessions.insert(session_id.to_string(), new_session);
 
                 // Drain buffered mutations — apply them inline before the
@@ -268,9 +276,10 @@ impl SessionCoordinator {
         }
 
         // -- Phase 4: Broadcast --
-        // Ownership is a stored field in the session record (written by
-        // write_ownership / bind_control / unbind_control). The snapshot
-        // goes out with whatever ownership is currently stored.
+        // Ownership is a stored field in the session record — computed on
+        // session creation (Phase 2+3) and updated by write_ownership /
+        // bind_control / unbind_control. The snapshot goes out with
+        // whatever ownership is currently stored.
         let snapshot = snapshot;
 
         match broadcast_action {

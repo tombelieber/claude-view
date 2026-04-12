@@ -1,9 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
-import type { DockviewApi, SerializedDockview } from 'dockview-react'
+import type { DockviewApi } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useCreateCliSession } from '../hooks/use-cli-sessions'
-import { ChatDockLayout, readSavedChatLayout } from '../components/chat/ChatDockLayout'
+import { ChatDockLayout } from '../components/chat/ChatDockLayout'
+import { useDockLayoutStore } from '../store/dock-layout-store'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
 import { useActiveSessions } from '../store/live-session-store'
 import type { LiveSession } from '@claude-view/shared/types/generated'
@@ -91,11 +92,9 @@ function makeNewChatPanelArgs() {
   }
 }
 
-// Read saved layout once at module level — stable across renders.
-// Dockview's fromJSON restores panels, groups, sizes, and active tab natively.
-const savedLayout: SerializedDockview | null = readSavedChatLayout()
-
 export function ChatPageV2() {
+  const savedLayout = useDockLayoutStore((s) => s.chatLayout)
+  const saveChatLayout = useDockLayoutStore((s) => s.saveChatLayout)
   const { sessionId } = useParams<{ sessionId?: string }>()
   const liveSessionsList = useActiveSessions()
   const queryClient = useQueryClient()
@@ -248,7 +247,11 @@ export function ChatPageV2() {
         onNewCliSession={openNewCliSession}
       />
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
-        <ChatDockLayout initialLayout={savedLayout} onReady={handleDockReady} />
+        <ChatDockLayout
+          initialLayout={savedLayout}
+          onReady={handleDockReady}
+          onLayoutChange={saveChatLayout}
+        />
       </div>
     </div>
   )

@@ -13,6 +13,7 @@ import {
 // our light-mode CSS variables in dockview-theme.css).
 const cvTheme = { name: 'cv', className: 'dockview-theme-cv' }
 import { createContext, useCallback, useContext, useEffect, useRef } from 'react'
+import { useDockviewPersistence } from '../../hooks/use-dockview-persistence'
 import type { DisplayMode } from '../../store/monitor-store'
 import { useMonitorStore } from '../../store/monitor-store'
 import { CliTerminal } from '../cli-terminal/CliTerminal'
@@ -166,12 +167,16 @@ export function DockLayout({
   onSelectSession,
 }: DockLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null)
+  // Track session IDs that have been seen — only auto-add panels for genuinely
+  // NEW sessions (first appearance). Without this, the useEffect re-adds panels
+  // for sessions the user manually closed, because the session is still live.
+  const knownSessionIdsRef = useRef(new Set(sessions.map((s) => s.id)))
   const sessionsRef = useRef(sessions)
   sessionsRef.current = sessions
   const displayModeRef = useRef(displayMode)
   displayModeRef.current = displayMode
-  const onLayoutChangeRef = useRef(onLayoutChange)
-  onLayoutChangeRef.current = onLayoutChange
+
+  const attachListeners = useDockviewPersistence(onLayoutChange)
 
   // onReady fires ONCE when dockview mounts. All mutable values (sessions,
   // displayMode) are read via refs so the callback identity is stable and
@@ -187,18 +192,14 @@ export function DockLayout({
       let restored = false
       if (initialLayout) {
         try {
-          // Restore saved layout
           event.api.fromJSON(initialLayout)
           restored = true
-          // Sanitize restored layout against current live sessions:
-          // 1. Remove stale panels (cli- migration + sessions no longer active)
+          // Remove panels for sessions no longer active
           const currentIds = new Set(currentSessions.map((s) => s.id))
-          const stalePanels = event.api.panels.filter(
-            (p) => p.id.startsWith('cli-') || !currentIds.has(p.id),
-          )
+          const stalePanels = event.api.panels.filter((p) => !currentIds.has(p.id))
           for (const p of stalePanels) event.api.removePanel(p)
 
-          // 2. Update surviving panels with fresh session data
+          // Update surviving panels with fresh session data
           for (const panel of event.api.panels) {
             const session = currentSessions.find((s) => s.id === panel.id)
             if (session) {
@@ -212,7 +213,7 @@ export function DockLayout({
             }
           }
 
-          // 3. Add panels for new sessions not in saved layout
+          // Add panels for new sessions not in saved layout
           const restoredIds = new Set(event.api.panels.map((p) => p.id))
           for (const session of currentSessions) {
             if (!restoredIds.has(session.id)) {
@@ -251,30 +252,18 @@ export function DockLayout({
               agentStateGroup: session?.agentState?.group ?? null,
               tmuxSessionId: session?.ownership?.tmux?.cliSessionId,
             },
-            // First panel gets its own group, rest stack or split
             position: i === 0 ? undefined : { referencePanel: ids[0], direction: 'right' },
           })
         }
       }
 
-      // Listen for structural layout changes (add/remove/move panels, resize)
-      // and persist. Debounce avoids N localStorage.setItem calls during bulk
-      // mutations (e.g. preset application that adds 4 panels in quick succession).
-      let debounceTimer: ReturnType<typeof setTimeout> | null = null
-      const persistLayout = () => {
-        if (debounceTimer) clearTimeout(debounceTimer)
-        debounceTimer = setTimeout(() => {
-          if (apiRef.current) {
-            onLayoutChangeRef.current(apiRef.current.toJSON())
-          }
-        }, 100)
-      }
-      event.api.onDidAddPanel(persistLayout)
-      event.api.onDidRemovePanel(persistLayout)
-      event.api.onDidLayoutChange(persistLayout)
+      // Mark all current sessions as known so useEffect doesn't re-add them
+      for (const s of currentSessions) knownSessionIdsRef.current.add(s.id)
+
+      attachListeners(event.api)
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refs are stable; initialLayout is the only true dep
-    [initialLayout, onApiReady],
+    [initialLayout, onApiReady, attachListeners],
   )
 
   useEffect(() => {
@@ -299,10 +288,12 @@ export function DockLayout({
       }
     }
 
-    // Add panels for new sessions
+    // Add panels only for genuinely NEW sessions (not seen before).
+    // Without knownSessionIdsRef, every SSE tick would re-add panels the user
+    // manually closed — the session is still live, so it looks "missing."
     const existingIds = new Set(api.panels.map((p) => p.id))
     for (const session of sessions) {
-      if (!existingIds.has(session.id)) {
+      if (!existingIds.has(session.id) && !knownSessionIdsRef.current.has(session.id)) {
         api.addPanel({
           id: session.id,
           component: 'session',
@@ -316,6 +307,7 @@ export function DockLayout({
           },
         })
       }
+      knownSessionIdsRef.current.add(session.id)
     }
 
     // Remove panels for ended sessions.
@@ -324,6 +316,10 @@ export function DockLayout({
     const panelsToRemove = api.panels.filter((p) => !currentIds.has(p.id))
     for (const panel of panelsToRemove) {
       api.removePanel(panel)
+    }
+    // Prune ended sessions from known set so they get auto-added if they return
+    for (const id of knownSessionIdsRef.current) {
+      if (!currentIds.has(id)) knownSessionIdsRef.current.delete(id)
     }
   }, [sessions, displayMode])
 

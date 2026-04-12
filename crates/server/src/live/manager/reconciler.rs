@@ -89,6 +89,12 @@ impl LiveSessionManager {
                 // Check for session files whose PIDs are dead (crashed without cleanup).
                 manager.detect_and_clean_crashed_sessions().await;
 
+                // Phase 2c: Ownership reconciliation (every 30s)
+                // Defense-in-depth: compute ownership for active sessions where it
+                // was never set (e.g. Birth fired before CLI handler's 6s poller
+                // resolved claude_session_id).
+                manager.reconcile_ownership().await;
+
                 // Unconditional snapshot save (defense in depth)
                 manager.save_session_snapshot_from_state().await;
             }
@@ -145,6 +151,41 @@ impl LiveSessionManager {
                 let pid = session.pid;
                 self.handle_session_birth(session, pid).await;
             }
+        }
+    }
+
+    /// Compute ownership for active sessions where it was never set.
+    ///
+    /// Covers the edge case where `handle_session_birth` created a session
+    /// before the CLI handler's 6s poller resolved `claude_session_id`. Once
+    /// ownership is computed (even if empty — no bindings), this won't retry
+    /// on subsequent ticks.
+    async fn reconcile_ownership(self: &Arc<Self>) {
+        let unresolved: Vec<String> = {
+            let sessions = self.sessions.read().await;
+            sessions
+                .iter()
+                .filter(|(_, s)| s.status != SessionStatus::Done && s.ownership.is_none())
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+
+        if unresolved.is_empty() {
+            return;
+        }
+
+        tracing::debug!(
+            count = unresolved.len(),
+            "Reconciling ownership for unresolved sessions"
+        );
+        for session_id in &unresolved {
+            crate::live::ownership::write_ownership(
+                &self.sessions,
+                session_id,
+                &self.cli_sessions,
+                &self.tx,
+            )
+            .await;
         }
     }
 

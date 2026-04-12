@@ -70,7 +70,7 @@ import { ChatDockLayout } from '../ChatDockLayout'
 describe('ChatDockLayout', () => {
   it('adds panel when session is activated from sidebar', () => {
     const onReady = vi.fn()
-    render(<ChatDockLayout initialLayout={null} onReady={onReady} />)
+    render(<ChatDockLayout initialLayout={null} onReady={onReady} onLayoutChange={() => {}} />)
 
     // Simulate dockview ready
     const mockApi = new MockDockApi()
@@ -81,20 +81,20 @@ describe('ChatDockLayout', () => {
   })
 
   it('removes panel when session tab is closed', () => {
-    render(<ChatDockLayout initialLayout={null} />)
+    render(<ChatDockLayout initialLayout={null} onLayoutChange={() => {}} />)
     // Dockview handles panel close internally via tab close button.
     // We just verify the DockviewReact is rendered.
     expect(capturedComponents).toHaveProperty('chat')
   })
 
   it('split right creates second group with same session type', () => {
-    render(<ChatDockLayout initialLayout={null} />)
+    render(<ChatDockLayout initialLayout={null} onLayoutChange={() => {}} />)
     // TabBarActions is wired as rightHeaderActionsComponent
     expect(capturedRightHeaderActions).toBeDefined()
   })
 
   it('restores layout from localStorage if saved', () => {
-    render(<ChatDockLayout initialLayout={null} />)
+    render(<ChatDockLayout initialLayout={null} onLayoutChange={() => {}} />)
 
     // Verify the components and tab components are registered
     expect(capturedComponents).toHaveProperty('chat')
@@ -102,7 +102,7 @@ describe('ChatDockLayout', () => {
   })
 
   it('passes min-w-0 to DockviewReact for responsive shrinking', () => {
-    render(<ChatDockLayout initialLayout={null} />)
+    render(<ChatDockLayout initialLayout={null} onLayoutChange={() => {}} />)
     // Without min-w-0, DockviewReact as a flex child refuses to shrink
     // below its content width when the browser narrows.
     expect(capturedClassName).toContain('min-w-0')

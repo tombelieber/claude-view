@@ -338,6 +338,22 @@ impl LiveSessionManager {
         let cwd = session.cwd.clone();
         let session_id = session.session_id.clone();
 
+        // Eagerly resolve the JSONL path from cwd + session_id. Without this,
+        // the coordinator's Phase 1b falls back to accumulator_file_path, which
+        // only works if the JSONL watcher's initial_scan has already completed.
+        // On startup, Birth events race with initial_scan — sessions enter the
+        // map empty when the accumulator hasn't been populated yet.
+        let transcript_path = {
+            let project_key = claude_view_core::discovery::encode_project_name(&cwd);
+            let candidate = claude_view_core::discovery::claude_projects_dir()
+                .ok()
+                .map(|dir| dir.join(&project_key).join(format!("{session_id}.jsonl")));
+            candidate.filter(|p| p.exists())
+        };
+        let tp_str = transcript_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string());
+
         let result = self
             .coordinator
             .handle(
@@ -346,9 +362,9 @@ impl LiveSessionManager {
                 super::mutation::types::SessionMutation::Birth(session),
                 Some(pid),
                 now,
-                None,       // no hook event
-                Some(&cwd), // cwd for fallback project resolution
-                None,       // no transcript_path (JSONL may not exist yet)
+                None,              // no hook event
+                Some(&cwd),        // cwd for fallback project resolution
+                tp_str.as_deref(), // eagerly resolved JSONL path
             )
             .await;
 

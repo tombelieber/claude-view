@@ -45,7 +45,9 @@ pub async fn compute_ownership(
 }
 
 /// Enrich a LiveSession clone with computed ownership before serialization.
-/// Called at the SSE/REST boundary — never stores the result in the sessions map.
+/// Retained for tests — production code computes ownership on session creation
+/// (coordinator pipeline Phase 2+3) and updates via `write_ownership`.
+#[cfg(test)]
 pub async fn enrich_with_ownership(
     session: &LiveSession,
     cli_sessions: &CliSessionStore,
