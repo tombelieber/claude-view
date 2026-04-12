@@ -150,7 +150,9 @@ impl LiveSessionManager {
         let (tx, _rx) = broadcast::channel(256);
         let sessions: LiveSessionMap = Arc::new(RwLock::new(HashMap::new()));
         let closed_ring: Arc<RwLock<std::collections::VecDeque<LiveSession>>> =
-            Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(100)));
+            Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(
+                crate::live::state::CLOSED_RING_CAPACITY,
+            )));
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
 
         // Debounced snapshot writer channel

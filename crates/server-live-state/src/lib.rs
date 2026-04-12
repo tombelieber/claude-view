@@ -38,7 +38,10 @@ pub use classify::is_pid_alive;
 
 // core
 pub use core::test_live_session;
-pub use core::{ControlBinding, LiveSession, SessionSnapshot, SessionStatus, SnapshotEntry};
+pub use core::{
+    ControlBinding, LiveSession, SessionSnapshot, SessionStatus, SnapshotEntry,
+    CLOSED_RING_CAPACITY,
+};
 
 // event
 pub use event::{append_capped_hook_event, MAX_HOOK_EVENTS_PER_SESSION};

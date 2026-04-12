@@ -1,5 +1,8 @@
 //! Core session types: LiveSession, SessionStatus, ControlBinding, snapshots.
 
+/// Maximum number of recently-closed sessions kept in the ring buffer.
+pub const CLOSED_RING_CAPACITY: usize = 100;
+
 use claude_view_types::{PendingInteractionMeta, SessionOwnership};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;

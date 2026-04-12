@@ -82,7 +82,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         pricing: Arc::new(claude_view_core::pricing::load_pricing()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         closed_ring: Arc::new(tokio::sync::RwLock::new(
-            std::collections::VecDeque::with_capacity(100),
+            std::collections::VecDeque::with_capacity(crate::live::state::CLOSED_RING_CAPACITY),
         )),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()
@@ -197,7 +197,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         pricing: Arc::new(claude_view_core::pricing::load_pricing()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         closed_ring: Arc::new(tokio::sync::RwLock::new(
-            std::collections::VecDeque::with_capacity(100),
+            std::collections::VecDeque::with_capacity(crate::live::state::CLOSED_RING_CAPACITY),
         )),
         live_tx: tokio::sync::broadcast::channel(256).0,
         rules_dir: dirs::home_dir()

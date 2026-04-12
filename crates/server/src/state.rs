@@ -273,7 +273,7 @@ impl AppStateBuilder {
             pricing: Arc::new(claude_view_core::pricing::load_pricing()),
             live_sessions: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             closed_ring: Arc::new(tokio::sync::RwLock::new(
-                std::collections::VecDeque::with_capacity(100),
+                std::collections::VecDeque::with_capacity(crate::live::state::CLOSED_RING_CAPACITY),
             )),
             live_tx: broadcast::channel(256).0,
             rules_dir: dirs::home_dir()

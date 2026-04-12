@@ -77,10 +77,10 @@ impl LiveSessionManager {
             (transcript_path, closed)
         };
 
-        // Phase 1b: Push to bounded ring buffer (max 100, FIFO).
+        // Phase 1b: Push to bounded ring buffer (FIFO).
         {
             let mut ring = self.closed_ring.write().await;
-            if ring.len() >= 100 {
+            if ring.len() >= crate::live::state::CLOSED_RING_CAPACITY {
                 ring.pop_front(); // evict oldest
             }
             ring.push_back(closed_session.clone());
@@ -184,7 +184,9 @@ mod tests {
             dirty_tx,
             hook_event_channels: Arc::new(RwLock::new(HashMap::new())),
             coordinator: Arc::new(SessionCoordinator::new()),
-            closed_ring: Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(100))),
+            closed_ring: Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(
+                crate::live::state::CLOSED_RING_CAPACITY,
+            ))),
             cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
             interaction_data: Arc::new(RwLock::new(HashMap::new())),
             backfill_miss_count: std::sync::atomic::AtomicU64::new(0),
@@ -412,6 +414,50 @@ mod tests {
         assert!(
             mgr.sessions.read().await.is_empty(),
             "all sessions should be gone"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Ring buffer eviction
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn test_ring_buffer_evicts_oldest_at_capacity() {
+        let (mgr, mut _rx, _snap_rx) = make_test_manager().await;
+        let cap = crate::live::state::CLOSED_RING_CAPACITY;
+
+        // Fill ring to capacity by reaping `cap` sessions.
+        for i in 0..cap {
+            let id = format!("ring-{i}");
+            let session = make_dead_session(&id, DEAD_PID + i as u32, &format!("/tmp/r{i}.jsonl"));
+            mgr.sessions.write().await.insert(id.clone(), session);
+            mgr.reap_session(&id).await;
+        }
+        assert_eq!(mgr.closed_ring.read().await.len(), cap);
+
+        // Reap one more — should evict the oldest (ring-0).
+        let overflow_id = "ring-overflow";
+        let session = make_dead_session(overflow_id, DEAD_PID + cap as u32, "/tmp/overflow.jsonl");
+        mgr.sessions
+            .write()
+            .await
+            .insert(overflow_id.to_string(), session);
+        mgr.reap_session(overflow_id).await;
+
+        let ring = mgr.closed_ring.read().await;
+        assert_eq!(ring.len(), cap, "ring should stay at capacity");
+        assert!(
+            !ring.iter().any(|s| s.id == "ring-0"),
+            "oldest entry (ring-0) should have been evicted"
+        );
+        assert!(
+            ring.iter().any(|s| s.id == overflow_id),
+            "newest entry should be present"
+        );
+        // Second entry should still be there.
+        assert!(
+            ring.iter().any(|s| s.id == "ring-1"),
+            "ring-1 should survive (only oldest evicted)"
         );
     }
 

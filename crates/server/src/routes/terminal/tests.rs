@@ -29,7 +29,7 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
         pricing: Arc::new(std::collections::HashMap::new()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         closed_ring: Arc::new(tokio::sync::RwLock::new(
-            std::collections::VecDeque::with_capacity(100),
+            std::collections::VecDeque::with_capacity(crate::live::state::CLOSED_RING_CAPACITY),
         )),
         live_tx: tokio::sync::broadcast::channel(256).0,
 
@@ -266,7 +266,7 @@ async fn ws_unknown_session_returns_error() {
         pricing: Arc::new(std::collections::HashMap::new()),
         live_sessions: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         closed_ring: Arc::new(tokio::sync::RwLock::new(
-            std::collections::VecDeque::with_capacity(100),
+            std::collections::VecDeque::with_capacity(crate::live::state::CLOSED_RING_CAPACITY),
         )),
         live_tx: tokio::sync::broadcast::channel(256).0,
 
