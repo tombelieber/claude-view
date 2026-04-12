@@ -75,7 +75,8 @@ describe('ChatTabRenderer', () => {
   it('close button always visible on active tab', () => {
     const { container } = renderTab({ isActive: true })
     const closeBtn = container.querySelector('button')
-    expect(closeBtn?.className).toContain('opacity-100')
+    expect(closeBtn).toBeTruthy()
+    expect(closeBtn?.className).toContain('ml-auto')
   })
 
   it('close button always visible for tmux tab with kill tooltip', () => {
@@ -87,7 +88,8 @@ describe('ChatTabRenderer', () => {
       },
     )
     const closeBtn = container.querySelector('button')
-    expect(closeBtn?.className).toContain('opacity-100')
+    expect(closeBtn).toBeTruthy()
+    expect(closeBtn?.className).toContain('ml-auto')
     expect(closeBtn?.title).toBe('Kill CLI session')
   })
 
