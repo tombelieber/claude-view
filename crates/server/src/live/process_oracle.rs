@@ -265,23 +265,26 @@ fn collect_oracle_snapshot(
             )
         });
 
-    // Top processes by CPU+memory, grouped by normalized name
+    // Top processes by CPU+memory, grouped by normalized name.
+    // Memory = physical footprint on macOS (matches Activity Monitor), RSS elsewhere.
     let mut groups: HashMap<String, (u32, f32, u64)> = HashMap::new();
     let mut process_resources: HashMap<u32, ProcessResourceEntry> = HashMap::new();
     for (pid, proc) in sys.processes() {
+        let pid_u32 = pid.as_u32();
+        let mem = super::process_tree::proc_memory::process_memory_bytes(pid_u32, proc.memory());
         let raw_name = proc.name().to_string_lossy().to_string();
         let norm = normalize_process_name(&raw_name);
         let entry = groups.entry(norm).or_insert((0, 0.0, 0));
         entry.0 += 1;
         entry.1 += proc.cpu_usage();
-        entry.2 += proc.memory();
+        entry.2 += mem;
 
         // Store per-PID resources for session lookups
         process_resources.insert(
-            pid.as_u32(),
+            pid_u32,
             ProcessResourceEntry {
                 cpu_percent: proc.cpu_usage(),
-                memory_bytes: proc.memory(),
+                memory_bytes: mem,
             },
         );
     }

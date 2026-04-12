@@ -125,9 +125,11 @@ fn find_sidecar_pid(sys: &System) -> Option<u32> {
         let is_sidecar = cmd.contains("sidecar/dist/index.js")
             || (cmd.contains("sidecar/node_modules/tsx") && cmd.contains("index.ts"));
         if is_sidecar {
-            let mem = proc_.memory();
+            let pid_u32 = pid.as_u32();
+            let mem =
+                super::process_tree::proc_memory::process_memory_bytes(pid_u32, proc_.memory());
             if best.is_none() || mem > best.unwrap().1 {
-                best = Some((pid.as_u32(), mem));
+                best = Some((pid_u32, mem));
             }
         }
     }
@@ -135,13 +137,17 @@ fn find_sidecar_pid(sys: &System) -> Option<u32> {
 }
 
 /// Look up CPU and memory for a PID from the already-refreshed System.
+/// Memory = physical footprint on macOS (matches Activity Monitor), RSS elsewhere.
 fn pid_metrics(sys: &System, pid: Option<u32>) -> (f32, u64) {
     let Some(pid) = pid else {
         return (0.0, 0);
     };
     let spid = sysinfo::Pid::from_u32(pid);
     match sys.process(spid) {
-        Some(proc) => (proc.cpu_usage(), proc.memory()),
+        Some(proc) => {
+            use super::process_tree::proc_memory::process_memory_bytes;
+            (proc.cpu_usage(), process_memory_bytes(pid, proc.memory()))
+        }
         None => (0.0, 0),
     }
 }

@@ -55,7 +55,7 @@ pub struct ProcessGroup {
     pub process_count: u32,
     /// Total CPU usage across all processes in this group (0.0–N cores).
     pub cpu_percent: f32,
-    /// Total resident memory in bytes.
+    /// Total memory in bytes (physical footprint on macOS, RSS elsewhere).
     #[ts(type = "number")]
     pub memory_bytes: u64,
 }
@@ -74,7 +74,7 @@ pub struct SessionResource {
     pub pid: u32,
     /// CPU usage of this process (0.0–100.0 per core).
     pub cpu_percent: f32,
-    /// Resident memory in bytes.
+    /// Memory in bytes (physical footprint on macOS, RSS elsewhere).
     #[ts(type = "number")]
     pub memory_bytes: u64,
 }
@@ -213,15 +213,20 @@ pub fn collect_snapshot(
             )
         });
 
-    // Top processes — group by normalized name, take top 10
+    // Top processes — group by normalized name, take top 10.
+    // Memory = physical footprint on macOS (matches Activity Monitor), RSS elsewhere.
     let mut groups: HashMap<String, (u32, f32, u64)> = HashMap::new();
-    for proc in sys.processes().values() {
+    for (pid, proc) in sys.processes() {
+        let mem = claude_view_server_process_tree::proc_memory::process_memory_bytes(
+            pid.as_u32(),
+            proc.memory(),
+        );
         let raw_name = proc.name().to_string_lossy().to_string();
         let norm = normalize_process_name(&raw_name);
         let entry = groups.entry(norm).or_insert((0, 0.0, 0));
         entry.0 += 1;
         entry.1 += proc.cpu_usage();
-        entry.2 += proc.memory();
+        entry.2 += mem;
     }
     let mut top_processes: Vec<ProcessGroup> = groups
         .into_iter()
@@ -251,7 +256,10 @@ pub fn collect_snapshot(
                 session_id: session.id.clone(),
                 pid,
                 cpu_percent: proc.cpu_usage(),
-                memory_bytes: proc.memory(),
+                memory_bytes: claude_view_server_process_tree::proc_memory::process_memory_bytes(
+                    pid,
+                    proc.memory(),
+                ),
             })
         })
         .collect();

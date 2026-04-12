@@ -47,7 +47,7 @@ pub fn collect_raw_processes(sys: &System, own_pid: u32) -> Vec<RawProcessInfo> 
             name,
             command,
             cpu_percent: process.cpu_usage(),
-            memory_bytes: process.memory(),
+            memory_bytes: crate::proc_memory::process_memory_bytes(pid_u32, process.memory()),
             start_time: process.start_time() as i64,
             needs_ps,
         });
