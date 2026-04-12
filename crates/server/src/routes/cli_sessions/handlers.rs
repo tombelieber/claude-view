@@ -137,10 +137,14 @@ pub async fn create_session(
                             .await;
                         // Emit SessionUpdated so SSE enriches with the
                         // newly-resolved ownership.tmux binding.
+                        // Guard: skip Done sessions — client already moved them
+                        // to recentlyClosed; re-emitting would resurrect them.
                         if let Some(session) = state.live_sessions.read().await.get(&sid) {
-                            let _ = state.live_tx.send(SessionEvent::SessionUpdated {
-                                session: session.clone(),
-                            });
+                            if session.status != crate::live::state::SessionStatus::Done {
+                                let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                                    session: session.clone(),
+                                });
+                            }
                         }
                         return;
                     }
@@ -189,9 +193,11 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                         session.claude_session_id = Some(sid.clone());
                         // Emit SessionUpdated so SSE enriches with ownership.tmux
                         if let Some(live) = state.live_sessions.read().await.get(&sid) {
-                            let _ = state.live_tx.send(SessionEvent::SessionUpdated {
-                                session: live.clone(),
-                            });
+                            if live.status != crate::live::state::SessionStatus::Done {
+                                let _ = state.live_tx.send(SessionEvent::SessionUpdated {
+                                    session: live.clone(),
+                                });
+                            }
                         }
                     }
                 }
