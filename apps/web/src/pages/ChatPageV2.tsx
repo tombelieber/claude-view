@@ -1,11 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
 import type { DockviewApi, SerializedDockview } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useOutletContext, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { useCreateCliSession } from '../hooks/use-cli-sessions'
 import { ChatDockLayout, readSavedChatLayout } from '../components/chat/ChatDockLayout'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
-import type { UseLiveSessionsResult } from '../components/live/use-live-sessions'
+import { useActiveSessions } from '../store/live-session-store'
+import type { LiveSession } from '@claude-view/shared/types/generated'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
 import type { LiveContextData } from '../hooks/use-context-percent'
 import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
@@ -15,7 +16,7 @@ import type { SessionInfo } from '../types/generated/SessionInfo'
 function deriveTabTitle(
   sid: string,
   cachedSessions: SessionInfo[],
-  liveSessions: UseLiveSessionsResult['sessions'],
+  liveSessions: LiveSession[],
 ): string {
   const cached = cachedSessions.find((s) => s.id === sid)
   if (cached) {
@@ -37,11 +38,7 @@ function readSidebarCache(queryClient: ReturnType<typeof useQueryClient>): Sessi
 }
 
 /** Build addPanel args for a session tab. Single source of truth for panel shape. */
-function makeSessionPanelArgs(
-  sid: string,
-  cachedSessions: SessionInfo[],
-  live: UseLiveSessionsResult['sessions'],
-) {
+function makeSessionPanelArgs(sid: string, cachedSessions: SessionInfo[], live: LiveSession[]) {
   const liveSession = live.find((s) => s.id === sid)
   const liveContextData: LiveContextData | undefined = liveSession
     ? {
@@ -100,7 +97,7 @@ const savedLayout: SerializedDockview | null = readSavedChatLayout()
 
 export function ChatPageV2() {
   const { sessionId } = useParams<{ sessionId?: string }>()
-  const { liveSessions } = useOutletContext<{ liveSessions: UseLiveSessionsResult }>()
+  const liveSessionsList = useActiveSessions()
   const queryClient = useQueryClient()
 
   const [dockApi, setDockApi] = useState<DockviewApi | null>(null)
@@ -112,8 +109,8 @@ export function ChatPageV2() {
   // if declared after the callback.
   const sessionIdRef = useRef(sessionId)
   sessionIdRef.current = sessionId
-  const liveSessionsRef = useRef(liveSessions.sessions)
-  liveSessionsRef.current = liveSessions.sessions
+  const liveSessionsRef = useRef(liveSessionsList)
+  liveSessionsRef.current = liveSessionsList
   const queryClientRef = useRef(queryClient)
   queryClientRef.current = queryClient
 
@@ -163,11 +160,11 @@ export function ChatPageV2() {
         return
       }
       const resolvedTitle =
-        title ?? deriveTabTitle(sid, readSidebarCache(queryClient), liveSessions.sessions)
-      const args = makeSessionPanelArgs(sid, readSidebarCache(queryClient), liveSessions.sessions)
+        title ?? deriveTabTitle(sid, readSidebarCache(queryClient), liveSessionsList)
+      const args = makeSessionPanelArgs(sid, readSidebarCache(queryClient), liveSessionsList)
       api.addPanel({ ...args, title: resolvedTitle })
     },
-    [liveSessions.sessions, queryClient],
+    [liveSessionsList, queryClient],
   )
 
   const openNewChat = useCallback(() => {
@@ -219,7 +216,7 @@ export function ChatPageV2() {
     for (const panel of api.panels) {
       const sid = (panel.params as { sessionId?: string })?.sessionId
       if (!sid) continue
-      const live = liveSessions.sessions.find((s) => s.id === sid)
+      const live = liveSessionsList.find((s) => s.id === sid)
       const liveCtx: LiveContextData | undefined = live
         ? {
             contextWindowTokens: live.contextWindowTokens,
@@ -236,17 +233,17 @@ export function ChatPageV2() {
         agentStateGroup: live?.agentState?.group ?? null,
         tmuxSessionId: ownership?.tmux?.cliSessionId,
       })
-      const title = deriveTabTitle(sid, cached, liveSessions.sessions)
+      const title = deriveTabTitle(sid, cached, liveSessionsList)
       if (title !== sid.slice(0, 8) && panel.title === sid.slice(0, 8)) {
         panel.api.setTitle(title)
       }
     }
-  }, [liveSessions.sessions, queryClient])
+  }, [liveSessionsList, queryClient])
 
   return (
     <div className="flex h-full overflow-hidden">
       <SessionSidebar
-        liveSessions={liveSessions.sessions}
+        liveSessions={liveSessionsList}
         onNewChat={openNewChat}
         onNewCliSession={openNewCliSession}
       />

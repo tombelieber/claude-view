@@ -1,63 +1,13 @@
-import type { LiveSession } from '@claude-view/shared/types/generated'
-export type { LiveSession }
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect } from 'react'
+import { useLiveSessionStore } from '../../store/live-session-store'
 import { sseUrl } from '../../lib/sse-url'
 
-const STALL_THRESHOLD_MS = 3000
-
-export interface LiveSummary {
-  needsYouCount: number
-  autonomousCount: number
-  totalCostTodayUsd: number
-  totalTokensToday: number
-  processCount: number
-  inputTokens: number
-  outputTokens: number
-  cacheReadTokens: number
-  cacheCreationTokens: number
-  inputCostUsd: number
-  outputCostUsd: number
-  cacheReadCostUsd: number
-  cacheCreationCostUsd: number
-  cacheSavingsUsd: number
-}
-
-export interface UseLiveSessionsResult {
-  sessions: LiveSession[]
-  summary: LiveSummary | null
-  isConnected: boolean
-  /** True after the first SSE summary event arrives (server has done its initial scan) */
-  isInitialized: boolean
-  lastUpdate: Date | null
-  /** Session IDs with no SSE event for >3 seconds */
-  stalledSessions: Set<string>
-  /** Unix epoch seconds, ticks every ~1s for duration computation */
-  currentTime: number
-  recentlyClosed: LiveSession[]
-  dismissSession: (sessionId: string) => Promise<void>
-  dismissAllClosed: () => Promise<void>
-}
-
-export function sessionTotalCost(session: LiveSession): number {
-  const subAgentTotal = session.subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
-  return (session.cost?.totalUsd ?? 0) + subAgentTotal
-}
-
-export function useLiveSessions(): UseLiveSessionsResult {
-  const [sessions, setSessions] = useState<Map<string, LiveSession>>(new Map())
-  const [recentlyClosed, setRecentlyClosed] = useState<Map<string, LiveSession>>(new Map())
-  const [summary, setSummary] = useState<LiveSummary | null>(null)
-  const [isConnected, setIsConnected] = useState(false)
-  const [isInitialized, setIsInitialized] = useState(false)
-  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
-  const lastEventTimes = useRef<Map<string, number>>(new Map())
-  const [stalledSessions, setStalledSessions] = useState<Set<string>>(new Set())
-  const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
-  const resyncRef = useRef<{
-    ids: Set<string>
-    timer: number | null
-  } | null>(null)
-
+/**
+ * Pure SSE transport — opens EventSource, routes events into the zustand store.
+ * Call once at the app root (App.tsx). Stateless: all state lives in useLiveSessionStore.
+ */
+export function useLiveSSE(): void {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: useLiveSessionStore is a stable module-level zustand store singleton, not a React value
   useEffect(() => {
     let es: EventSource | null = null
     let retryDelay = 1000
@@ -65,127 +15,42 @@ export function useLiveSessions(): UseLiveSessionsResult {
 
     function connect() {
       if (unmounted) return
-
       const url = sseUrl('/api/live/stream')
       es = new EventSource(url)
 
       es.onopen = () => {
         if (!unmounted) {
-          setIsConnected(true)
+          useLiveSessionStore.getState().setConnectionState('connected')
           retryDelay = 1000
         }
       }
 
-      es.addEventListener('session_discovered', (e: MessageEvent) => {
+      es.addEventListener('snapshot', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          const session = data.session ?? data
-          if (session?.id) {
-            setSessions((prev) => new Map(prev).set(session.id, session))
-            setLastUpdate(new Date())
-            lastEventTimes.current.set(session.id, Date.now())
-            if (resyncRef.current) resyncRef.current.ids.add(session.id)
-          }
+          useLiveSessionStore
+            .getState()
+            .handleSnapshot(data.summary ?? {}, data.sessions ?? [], data.recentlyClosed ?? [])
         } catch {
           /* ignore malformed */
         }
       })
 
-      es.addEventListener('session_updated', (e: MessageEvent) => {
+      es.addEventListener('session_upsert', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
           const session = data.session ?? data
-          if (session?.id) {
-            setSessions((prev) => new Map(prev).set(session.id, session))
-            setLastUpdate(new Date())
-            lastEventTimes.current.set(session.id, Date.now())
-          }
+          if (session?.id) useLiveSessionStore.getState().handleUpsert(session)
         } catch {
           /* ignore */
         }
       })
 
-      es.addEventListener('session_completed', (e: MessageEvent) => {
+      es.addEventListener('session_remove', (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data)
-          if (data.sessionId) {
-            setSessions((prev) => {
-              const next = new Map(prev)
-              next.delete(data.sessionId)
-              return next
-            })
-            lastEventTimes.current.delete(data.sessionId)
-            setRecentlyClosed((prev) => {
-              const next = new Map(prev)
-              next.delete(data.sessionId)
-              return next
-            })
-            setLastUpdate(new Date())
-          }
-        } catch {
-          /* ignore */
-        }
-      })
-
-      es.addEventListener('session_closed', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data)
-          const session = data.session ?? data
-          if (session?.id) {
-            setSessions((prev) => {
-              const next = new Map(prev)
-              next.delete(session.id)
-              return next
-            })
-            lastEventTimes.current.delete(session.id)
-            setRecentlyClosed((prev) => new Map(prev).set(session.id, session))
-            setLastUpdate(new Date())
-          }
-        } catch {
-          /* ignore malformed */
-        }
-      })
-
-      es.addEventListener('summary', (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data)
-          setSummary({
-            needsYouCount: data.needsYouCount ?? 0,
-            autonomousCount: data.autonomousCount ?? 0,
-            totalCostTodayUsd: data.totalCostTodayUsd ?? 0,
-            totalTokensToday: data.totalTokensToday ?? 0,
-            processCount: data.processCount ?? 0,
-            inputTokens: data.inputTokens ?? 0,
-            outputTokens: data.outputTokens ?? 0,
-            cacheReadTokens: data.cacheReadTokens ?? 0,
-            cacheCreationTokens: data.cacheCreationTokens ?? 0,
-            inputCostUsd: data.inputCostUsd ?? 0,
-            outputCostUsd: data.outputCostUsd ?? 0,
-            cacheReadCostUsd: data.cacheReadCostUsd ?? 0,
-            cacheCreationCostUsd: data.cacheCreationCostUsd ?? 0,
-            cacheSavingsUsd: data.cacheSavingsUsd ?? 0,
-          })
-          setIsInitialized(true)
-          setLastUpdate(new Date())
-
-          // Resync: prune active sessions not re-sent after summary
-          // Note: resync only prunes active sessions, not recentlyClosed (separate state)
-          resyncRef.current = { ids: new Set<string>(), timer: null }
-          resyncRef.current.timer = window.setTimeout(() => {
-            if (resyncRef.current) {
-              const validIds = resyncRef.current.ids
-              if (validIds.size > 0) {
-                setSessions((prev) => {
-                  const next = new Map<string, LiveSession>()
-                  for (const [id, session] of prev) {
-                    if (validIds.has(id)) next.set(id, session)
-                  }
-                  return next
-                })
-              }
-              resyncRef.current = null
-            }
-          }, 500)
+          if (data.sessionId && data.session)
+            useLiveSessionStore.getState().handleRemove(data.sessionId, data.session)
         } catch {
           /* ignore */
         }
@@ -200,8 +65,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
       ] as const) {
         es.addEventListener(eventName, (e: MessageEvent) => {
           try {
-            const detail = JSON.parse(e.data)
-            window.dispatchEvent(new CustomEvent(`cv:${eventName}`, { detail }))
+            window.dispatchEvent(new CustomEvent(`cv:${eventName}`, { detail: JSON.parse(e.data) }))
           } catch {
             /* malformed */
           }
@@ -210,7 +74,7 @@ export function useLiveSessions(): UseLiveSessionsResult {
 
       es.onerror = () => {
         if (unmounted) return
-        setIsConnected(false)
+        useLiveSessionStore.getState().setConnectionState('reconnecting')
         es?.close()
         setTimeout(connect, retryDelay)
         retryDelay = Math.min(retryDelay * 2, 30000)
@@ -218,71 +82,31 @@ export function useLiveSessions(): UseLiveSessionsResult {
     }
 
     connect()
-
     return () => {
       unmounted = true
       es?.close()
     }
   }, [])
+}
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const now = Date.now()
-      setStalledSessions((prev) => {
-        const stalled = new Set<string>()
-        for (const [id, lastTime] of lastEventTimes.current.entries()) {
-          if (now - lastTime > STALL_THRESHOLD_MS) stalled.add(id)
-        }
-        if (stalled.size === prev.size && [...stalled].every((id) => prev.has(id))) return prev
-        return stalled
-      })
-      setCurrentTime(Math.floor(now / 1000))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [])
+// --- Re-exports for backward compatibility ---
+// Many files import LiveSession, LiveSummary, sessionTotalCost from this file.
+// Keep these re-exports so consumers don't need to change their import paths.
 
-  const sessionList = useMemo(
-    () => Array.from(sessions.values()).sort((a, b) => b.lastActivityAt - a.lastActivityAt),
-    [sessions],
-  )
+export type { LiveSession } from '@claude-view/shared/types/generated'
+export type { LiveSummary } from '../../store/live-session-store'
+export {
+  useActiveSessions,
+  useRecentlyClosed,
+  useLiveSummary,
+  useIsLiveConnected,
+  useIsLiveInitialized,
+  useLiveSessionStore,
+} from '../../store/live-session-store'
 
-  const recentlyClosedList = useMemo(
-    () => Array.from(recentlyClosed.values()).sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0)),
-    [recentlyClosed],
-  )
-
-  const dismissSession = useCallback(async (sessionId: string) => {
-    setRecentlyClosed((prev) => {
-      const next = new Map(prev)
-      next.delete(sessionId)
-      return next
-    })
-    try {
-      await fetch(`/api/live/sessions/${sessionId}/dismiss`, { method: 'DELETE' })
-    } catch {
-      /* best-effort */
-    }
-  }, [])
-
-  const dismissAllClosed = useCallback(async () => {
-    setRecentlyClosed(new Map())
-    try {
-      await fetch('/api/live/recently-closed', { method: 'DELETE' })
-    } catch {
-      /* best-effort */
-    }
-  }, [])
-
-  return {
-    sessions: sessionList,
-    summary,
-    isConnected,
-    isInitialized,
-    lastUpdate,
-    stalledSessions,
-    currentTime,
-    recentlyClosed: recentlyClosedList,
-    dismissSession,
-    dismissAllClosed,
-  }
+export function sessionTotalCost(
+  session: import('@claude-view/shared/types/generated').LiveSession,
+): number {
+  const subAgentTotal = session.subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
+  return (session.cost?.totalUsd ?? 0) + subAgentTotal
 }

@@ -12,7 +12,8 @@ import { StatusBar } from './components/StatusBar'
 import { TelemetryBanner } from './components/TelemetryBanner'
 import { useTelemetryPrompt } from './hooks/use-telemetry-prompt'
 import { CompactCodeBlock } from './components/live/CompactCodeBlock'
-import { useLiveSessions } from './components/live/use-live-sessions'
+import { useLiveSSE } from './components/live/use-live-sessions'
+import { useActiveSessions } from './store/live-session-store'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { useNotificationSound } from './hooks/use-notification-sound'
 import { usePatternAlert } from './hooks/use-pattern-alert'
@@ -35,13 +36,14 @@ export default function App() {
   const { enableTelemetry, disableTelemetry, isPending: isTelemetryPending } = useTelemetry()
   const { shouldPrompt } = useTelemetryPrompt()
   const indexingProgress = useIndexingProgress()
-  const liveSessions = useLiveSessions()
+  useLiveSSE() // SSE transport — pushes events into zustand store
+  const activeSessions = useActiveSessions()
   const {
     settings: soundSettings,
     updateSettings: updateSoundSettings,
     previewSound,
     audioUnlocked,
-  } = useNotificationSound(liveSessions.sessions)
+  } = useNotificationSound(activeSessions)
   const liveContext = useLiveCommandStore((s) => s.context)
   usePatternAlert()
 
@@ -117,7 +119,7 @@ export default function App() {
           <Sidebar projects={summaries ?? []} collapsed={sidebarCollapsed} />
 
           <main id="main" className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-950">
-            <Outlet context={{ summaries: summaries ?? [], liveSessions, indexingProgress }} />
+            <Outlet context={{ summaries: summaries ?? [], indexingProgress }} />
           </main>
         </div>
 

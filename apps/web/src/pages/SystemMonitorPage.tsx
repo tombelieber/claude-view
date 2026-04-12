@@ -1,6 +1,6 @@
 import { Activity } from 'lucide-react'
 import { useMemo, useRef } from 'react'
-import { useLiveSessions } from '../components/live/use-live-sessions'
+import { useActiveSessions } from '../store/live-session-store'
 import { ClaudeSessionsPanel } from '../components/monitor/ClaudeSessionsPanel'
 import {
   ClaudeSessionsPanelSkeleton,
@@ -13,7 +13,7 @@ import { useSystemMonitor } from '../hooks/use-system-monitor'
 
 export function SystemMonitorPage() {
   const { status, systemInfo, snapshot, processTree, components } = useSystemMonitor()
-  const { sessions } = useLiveSessions()
+  const sessions = useActiveSessions()
   const hasRevealedRef = useRef(false)
 
   // Single source of truth: same filter as ClaudeSessionsPanel's `merged` list

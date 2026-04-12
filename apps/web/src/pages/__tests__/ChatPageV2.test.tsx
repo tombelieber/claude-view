@@ -29,8 +29,12 @@ vi.mock('../../hooks/use-chat-keyboard-shortcuts', () => ({
 // Mock react-router-dom
 vi.mock('react-router-dom', () => ({
   useParams: () => ({}),
-  useOutletContext: () => ({ liveSessions: { sessions: [] } }),
   useNavigate: () => () => {},
+}))
+
+// Mock live session store — ChatPageV2 now reads directly from zustand
+vi.mock('../../store/live-session-store', () => ({
+  useActiveSessions: () => [],
 }))
 
 import { ChatPageV2 } from '../ChatPageV2'

@@ -1,5 +1,20 @@
 import { create } from 'zustand'
 import { type StorageValue, persist } from 'zustand/middleware'
+
+// Migrate: strip pinnedPaneIds/hiddenPaneIds from persisted state (now in-memory only).
+try {
+  const stored = localStorage.getItem('claude-view:monitor-grid-prefs')
+  if (stored) {
+    const parsed = JSON.parse(stored)
+    if (parsed?.state?.pinnedPaneIds || parsed?.state?.hiddenPaneIds) {
+      parsed.state.pinnedPaneIds = undefined
+      parsed.state.hiddenPaneIds = undefined
+      localStorage.setItem('claude-view:monitor-grid-prefs', JSON.stringify(parsed))
+    }
+  }
+} catch {
+  /* ignore */
+}
 /** Inlined from action-log/types to break import dependency on soon-to-be-deleted directory. */
 type ActionCategory =
   | 'skill'
@@ -133,8 +148,6 @@ export const useMonitorStore = create<MonitorState>()(
       partialize: (state) => ({
         gridOverride: state.gridOverride,
         compactHeaders: state.compactHeaders,
-        pinnedPaneIds: state.pinnedPaneIds,
-        hiddenPaneIds: state.hiddenPaneIds,
         verboseFilter: state.verboseFilter,
         richRenderMode: state.richRenderMode,
         displayMode: state.displayMode,
@@ -151,14 +164,7 @@ export const useMonitorStore = create<MonitorState>()(
             console.error('monitor-store: corrupt localStorage, resetting')
             return null
           }
-          // Convert arrays back to Sets after deserialization
           if (parsed.state) {
-            if (Array.isArray(parsed.state.pinnedPaneIds)) {
-              parsed.state.pinnedPaneIds = new Set(parsed.state.pinnedPaneIds as string[])
-            }
-            if (Array.isArray(parsed.state.hiddenPaneIds)) {
-              parsed.state.hiddenPaneIds = new Set(parsed.state.hiddenPaneIds as string[])
-            }
             // Migrate old verboseMode → displayMode (localStorage backward compat)
             if (
               parsed.state.displayMode === undefined &&
@@ -179,22 +185,7 @@ export const useMonitorStore = create<MonitorState>()(
           return parsed as StorageValue<Partial<MonitorState>>
         },
         setItem: (name: string, value: StorageValue<Partial<MonitorState>>) => {
-          // Convert Sets to arrays for JSON serialization
-          const toStore = { ...value }
-          if (toStore.state) {
-            toStore.state = { ...toStore.state }
-            if (toStore.state.pinnedPaneIds instanceof Set) {
-              toStore.state.pinnedPaneIds = [
-                ...toStore.state.pinnedPaneIds,
-              ] as unknown as Set<string>
-            }
-            if (toStore.state.hiddenPaneIds instanceof Set) {
-              toStore.state.hiddenPaneIds = [
-                ...toStore.state.hiddenPaneIds,
-              ] as unknown as Set<string>
-            }
-          }
-          localStorage.setItem(name, JSON.stringify(toStore))
+          localStorage.setItem(name, JSON.stringify(value))
         },
         removeItem: (name: string) => localStorage.removeItem(name),
       },

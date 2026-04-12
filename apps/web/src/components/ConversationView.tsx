@@ -48,16 +48,16 @@ import { developerRegistry } from '@claude-view/shared/components/conversation/b
 import { SessionDetailPanel } from './live/SessionDetailPanel'
 import { DisplayModeToggle } from './live/DisplayModeToggle'
 import { historyToPanelData } from './live/session-panel-data'
-import type { UseLiveSessionsResult } from './live/use-live-sessions'
+import { useActiveSessions } from '../store/live-session-store'
 
 export function ConversationView() {
   const { sessionId } = useParams()
   const navigate = useNavigate()
-  const { summaries, liveSessions } = useOutletContext<{
+  const { summaries } = useOutletContext<{
     summaries: ProjectSummary[]
-    liveSessions: UseLiveSessionsResult
   }>()
-  const liveSession = liveSessions.sessions.find((s) => s.id === sessionId)
+  const activeSessions = useActiveSessions()
+  const liveSession = activeSessions.find((s) => s.id === sessionId)
   const ownership: SessionOwnership | null = liveSession?.ownership ?? null
 
   // Session metadata

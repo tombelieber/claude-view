@@ -28,9 +28,16 @@ import { useLiveSessionFilters } from '../components/live/use-live-session-filte
 import {
   type LiveSession,
   type LiveSummary,
-  type UseLiveSessionsResult,
   sessionTotalCost,
 } from '../components/live/use-live-sessions'
+import {
+  useActiveSessions,
+  useRecentlyClosed,
+  useLiveSummary,
+  useIsLiveConnected,
+  useIsLiveInitialized,
+  useLiveSessionStore,
+} from '../store/live-session-store'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
 import { useTrackEvent } from '../hooks/use-track-event'
 import { useLiveCommandStore } from '../store/live-command-context'
@@ -49,26 +56,39 @@ function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
 }
 
 export function LiveMonitorPage() {
-  const { liveSessions, indexingProgress } = useOutletContext<{
-    liveSessions: UseLiveSessionsResult
+  const { indexingProgress } = useOutletContext<{
     indexingProgress?: IndexingProgress
   }>()
   const trackEvent = useTrackEvent()
   useEffect(() => {
     trackEvent('live_monitor_viewed')
   }, [])
-  const {
-    sessions,
-    summary: serverSummary,
-    isConnected,
-    isInitialized,
-    lastUpdate,
-    stalledSessions,
-    currentTime,
-    recentlyClosed,
-    dismissSession,
-    dismissAllClosed,
-  } = liveSessions
+  const sessions = useActiveSessions()
+  const serverSummary = useLiveSummary()
+  const isConnected = useIsLiveConnected()
+  const isInitialized = useIsLiveInitialized()
+  const lastUpdate = useLiveSessionStore((s) => s.lastUpdate)
+  const lastEventTimes = useLiveSessionStore((s) => s.lastEventTimes)
+  const recentlyClosed = useRecentlyClosed()
+  const dismissSession = useLiveSessionStore((s) => s.dismissSession)
+  const dismissAllClosed = useLiveSessionStore((s) => s.dismissAllClosed)
+
+  // Derive stalled sessions from lastEventTimes (sessions with no event for >3s)
+  const stalledSessions = useMemo(() => {
+    const now = Date.now()
+    const stalled = new Set<string>()
+    for (const [id, lastTime] of lastEventTimes.entries()) {
+      if (now - lastTime > 3000) stalled.add(id)
+    }
+    return stalled
+  }, [lastEventTimes])
+
+  // Tick every ~1s for duration computation
+  const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
+  useEffect(() => {
+    const interval = setInterval(() => setCurrentTime(Math.floor(Date.now() / 1000)), 1000)
+    return () => clearInterval(interval)
+  }, [])
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))

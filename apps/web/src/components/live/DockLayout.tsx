@@ -190,12 +190,15 @@ export function DockLayout({
           // Restore saved layout
           event.api.fromJSON(initialLayout)
           restored = true
-          // Migration: remove stale cliTerminal panels from persisted layouts.
-          // These were standalone CLI panels (removed in single-identity refactor).
-          // Sessions with tmux ownership now render via the 'session' component.
-          const staleCliPanels = event.api.panels.filter((p) => p.id.startsWith('cli-'))
-          for (const p of staleCliPanels) event.api.removePanel(p)
-          // Update panel params with current displayMode
+          // Sanitize restored layout against current live sessions:
+          // 1. Remove stale panels (cli- migration + sessions no longer active)
+          const currentIds = new Set(currentSessions.map((s) => s.id))
+          const stalePanels = event.api.panels.filter(
+            (p) => p.id.startsWith('cli-') || !currentIds.has(p.id),
+          )
+          for (const p of stalePanels) event.api.removePanel(p)
+
+          // 2. Update surviving panels with fresh session data
           for (const panel of event.api.panels) {
             const session = currentSessions.find((s) => s.id === panel.id)
             if (session) {
@@ -205,6 +208,25 @@ export function DockLayout({
                 status: session.status,
                 agentStateGroup: session.agentState?.group ?? null,
                 tmuxSessionId: session.ownership?.tmux?.cliSessionId,
+              })
+            }
+          }
+
+          // 3. Add panels for new sessions not in saved layout
+          const restoredIds = new Set(event.api.panels.map((p) => p.id))
+          for (const session of currentSessions) {
+            if (!restoredIds.has(session.id)) {
+              event.api.addPanel({
+                id: session.id,
+                component: 'session',
+                title: session.slug || session.projectDisplayName || session.id.slice(0, 8),
+                params: {
+                  sessionId: session.id,
+                  displayMode: currentDisplayMode,
+                  status: session.status,
+                  agentStateGroup: session.agentState?.group ?? null,
+                  tmuxSessionId: session.ownership?.tmux?.cliSessionId,
+                },
               })
             }
           }
