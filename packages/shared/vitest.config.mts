@@ -13,6 +13,7 @@ export default defineConfig({
       'src/components/conversation/blocks/shared/__tests__/StatusBadge.test.tsx',
       'src/components/conversation/blocks/shared/__tests__/ToolChip.test.tsx',
       'src/components/conversation/blocks/shared/__tests__/InteractionCardFields.test.tsx',
+      'src/components/conversation/blocks/shared/InteractionBlock.test.tsx',
       'src/components/conversation/blocks/chat/system-variants/__tests__/system-variants.test.tsx',
       'src/components/conversation/blocks/chat/__tests__/TeamTranscriptBlock.test.tsx',
       'src/components/conversation/blocks/chat/__tests__/TurnBoundary.test.tsx',

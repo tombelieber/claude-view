@@ -58,7 +58,10 @@ fn plan_interaction_synthesised_for_exit_plan_mode_turn() {
         "ExitPlanMode is a strong detection signal"
     );
     assert!(plan.id.starts_with("hist-interaction-"));
-    assert!(plan.request_id.is_none(), "historical → no sidecar requestId");
+    assert!(
+        plan.request_id.is_none(),
+        "historical → no sidecar requestId"
+    );
 
     let plan_content = plan.data["planContent"].as_str().unwrap_or("");
     assert!(
@@ -90,7 +93,10 @@ fn plan_interaction_positioned_immediately_after_assistant_block() {
 
     // The next block should be the synthesised InteractionBlock.
     assert!(
-        matches!(blocks.get(assistant_idx + 1), Some(ConversationBlock::Interaction(_))),
+        matches!(
+            blocks.get(assistant_idx + 1),
+            Some(ConversationBlock::Interaction(_))
+        ),
         "InteractionBlock must follow the triggering AssistantBlock directly"
     );
 }
@@ -124,10 +130,15 @@ fn existing_fixture_with_ask_user_question_gets_question_interaction() {
         Some(HistoricalSource::InferredFromToolPattern)
     );
     // The fixture uses legacy string-array format: ["What domain...", "What language..."]
-    // joined with newline.
-    let question = q.data["question"].as_str().unwrap_or("");
+    // The synthesizer normalizes each string into {question, header, options, multiSelect}.
+    let questions = q.data["questions"].as_array().expect("questions array");
     assert!(
-        question.contains("domain") || question.contains("Domain"),
-        "question text should mention domain, got: {question}"
+        !questions.is_empty(),
+        "should have at least one question entry"
+    );
+    let first_q = questions[0]["question"].as_str().unwrap_or("");
+    assert!(
+        first_q.contains("domain") || first_q.contains("Domain"),
+        "first question should mention domain, got: {first_q}"
     );
 }

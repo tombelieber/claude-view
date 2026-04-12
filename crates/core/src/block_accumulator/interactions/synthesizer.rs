@@ -98,12 +98,15 @@ pub fn synthesize_historical_interactions(blocks: &mut Vec<ConversationBlock>) {
                             ));
                         }
                         "AskUserQuestion" => {
-                            let question = extract_question_text(&execution.tool_input);
                             let user_response = execution
                                 .result
                                 .as_ref()
                                 .map(|r: &ToolResult| r.output.clone());
                             let resolved = user_response.is_some();
+                            // Build data matching the live AskQuestion shape so the
+                            // frontend renderer doesn't crash on `.questions.map()`.
+                            // Normalize to [{question, header, options, multiSelect}].
+                            let questions = normalize_questions_array(&execution.tool_input);
                             insertions.push((
                                 i,
                                 InteractionBlock {
@@ -115,9 +118,9 @@ pub fn synthesize_historical_interactions(blocks: &mut Vec<ConversationBlock>) {
                                         HistoricalSource::InferredFromToolPattern,
                                     ),
                                     data: json!({
-                                        "question": question,
-                                        "userResponse": user_response.unwrap_or_default(),
-                                        "toolUseName": "AskUserQuestion",
+                                        "type": "ask_question",
+                                        "requestId": "",
+                                        "questions": questions,
                                     }),
                                 },
                             ));
@@ -267,4 +270,60 @@ fn count_tool_segments(block: &AssistantBlock, exclude_tool_use_id: Option<&str>
             }
         })
         .count()
+}
+
+/// Normalize tool_input.questions into the frontend-compatible shape:
+/// `[{question, header, options, multiSelect}]`.
+///
+/// Handles three cases:
+/// 1. Structured objects `[{question: "...", header: "...", options: [...]}]` → pass through
+/// 2. Legacy string arrays `["Q1", "Q2"]` → wrap each into a structured object
+/// 3. Missing/empty → single entry from `extract_question_text` fallback
+fn normalize_questions_array(tool_input: &serde_json::Value) -> serde_json::Value {
+    let Some(questions) = tool_input.get("questions") else {
+        return json!([{
+            "question": "",
+            "header": "",
+            "options": [],
+            "multiSelect": false,
+        }]);
+    };
+    let Some(arr) = questions.as_array() else {
+        return json!([{
+            "question": "",
+            "header": "",
+            "options": [],
+            "multiSelect": false,
+        }]);
+    };
+    let normalized: Vec<serde_json::Value> = arr
+        .iter()
+        .map(|entry| {
+            if entry.is_object() {
+                // Already structured — ensure all fields exist with defaults
+                let mut obj = entry.clone();
+                let map = obj.as_object_mut().unwrap();
+                map.entry("header").or_insert_with(|| json!(""));
+                map.entry("options").or_insert_with(|| json!([]));
+                map.entry("multiSelect").or_insert_with(|| json!(false));
+                obj
+            } else if let Some(text) = entry.as_str() {
+                // Legacy string entry → wrap
+                json!({
+                    "question": text,
+                    "header": "",
+                    "options": [],
+                    "multiSelect": false,
+                })
+            } else {
+                json!({
+                    "question": "",
+                    "header": "",
+                    "options": [],
+                    "multiSelect": false,
+                })
+            }
+        })
+        .collect();
+    json!(normalized)
 }

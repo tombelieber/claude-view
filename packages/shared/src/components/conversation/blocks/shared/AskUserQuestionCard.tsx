@@ -20,7 +20,7 @@ export function AskUserQuestionCard({
   selectedAnswers,
   onTerminalDelegate,
 }: AskUserQuestionCardProps) {
-  const questions = question.questions
+  const questions = question.questions ?? []
 
   const [singleSelections, setSingleSelections] = useState<Record<number, number>>({})
   const [multiSelections, setMultiSelections] = useState<Record<number, Set<number>>>({})

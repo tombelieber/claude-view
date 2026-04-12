@@ -295,6 +295,31 @@ describe('InteractionBlock — read-only without context', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Tests: Historical question blocks with missing questions array
+// ---------------------------------------------------------------------------
+
+describe('InteractionBlock — historical question without questions array', () => {
+  it('does not crash when data has no questions field', () => {
+    const block: InteractionBlockType = {
+      id: 'hist-1',
+      type: 'interaction',
+      variant: 'question',
+      resolved: true,
+      historicalSource: 'inferred_from_tool_pattern',
+      data: {
+        question: 'What area?',
+        userResponse: 'Frontend',
+        toolUseName: 'AskUserQuestion',
+      } as any,
+    }
+    // Should render without throwing — the ?? [] guard prevents crash
+    render(<ChatInteractionBlock block={block} />)
+    // No question items rendered (questions is undefined → empty array)
+    expect(screen.getByText('Question')).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Tests: Mode switch persistence — resolved state survives unmount/remount
 // ---------------------------------------------------------------------------
 

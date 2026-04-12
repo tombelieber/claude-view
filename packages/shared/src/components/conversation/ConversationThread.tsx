@@ -3,6 +3,7 @@ import { ArrowDown, Loader2 } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import { cn } from '../../utils/cn'
+import { ErrorBoundary } from '../ErrorBoundary'
 import { buildThreadMap } from '../../utils/thread-map'
 import { type ChipDefinition, FilterChips } from './FilterChips'
 import { DayDivider, formatDayLabel } from './DayDivider'
@@ -566,11 +567,13 @@ export function ConversationThread({
       if (item.kind === 'agent_group') {
         return (
           <div className={compact ? 'py-0.5 px-2' : 'py-1.5 max-w-3xl mx-auto px-4'}>
-            {isDeveloperMode ? (
-              <DevAgentGroupRow blocks={item.blocks} />
-            ) : (
-              <ChatAgentGroupRow blocks={item.blocks} />
-            )}
+            <ErrorBoundary inline blockId={item.key}>
+              {isDeveloperMode ? (
+                <DevAgentGroupRow blocks={item.blocks} />
+              ) : (
+                <ChatAgentGroupRow blocks={item.blocks} />
+              )}
+            </ErrorBoundary>
           </div>
         )
       }
@@ -583,7 +586,9 @@ export function ConversationThread({
           className={compact ? 'py-0.5 px-2' : 'py-1.5 max-w-3xl mx-auto px-4'}
           style={indent > 0 ? { paddingLeft: `${indent * 24}px` } : undefined}
         >
-          <Renderer block={item.block} />
+          <ErrorBoundary inline blockId={item.block.id}>
+            <Renderer block={item.block} />
+          </ErrorBoundary>
         </div>
       )
     },

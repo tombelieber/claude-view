@@ -37,6 +37,8 @@ tempfile = { workspace = true }
 tokio-test = { workspace = true }
 pretty_assertions = { workspace = true }
 serial_test = "3"
+walkdir = { workspace = true }
+dirs = { workspace = true }
 
 [[bin]]
 name = "evidence-audit"

@@ -198,9 +198,12 @@ fn question_resolved_via_ask_user_question_result() {
     let i = interactions[0];
     assert_eq!(i.variant, InteractionVariant::Question);
     assert_eq!(i.resolved, true);
-    assert_eq!(i.data["question"], "What is the domain?");
-    assert_eq!(i.data["userResponse"], "Web development");
-    assert_eq!(i.data["toolUseName"], "AskUserQuestion");
+    // Data matches live AskQuestion shape — questions array passed through
+    assert_eq!(i.data["type"], "ask_question");
+    assert_eq!(i.data["requestId"], "");
+    let questions = i.data["questions"].as_array().unwrap();
+    assert_eq!(questions.len(), 1);
+    assert_eq!(questions[0]["question"], "What is the domain?");
     assert_eq!(
         i.historical_source,
         Some(HistoricalSource::InferredFromToolPattern)
@@ -222,13 +225,15 @@ fn question_unresolved_when_no_tool_result() {
     let interactions = interactions_only(&blocks);
     assert_eq!(interactions.len(), 1);
     assert_eq!(interactions[0].resolved, false);
-    assert_eq!(interactions[0].data["userResponse"], "");
+    // Data has AskQuestion shape with questions array
+    let questions = interactions[0].data["questions"].as_array().unwrap();
+    assert_eq!(questions[0]["question"], "Hanging?");
 }
 
 #[test]
-fn question_multi_joins_with_newlines() {
-    // Multi-question payload: join all question fields so the user can
-    // see what was asked, even when a single tool_use bundles several.
+fn question_multi_passes_through_all_questions() {
+    // Multi-question payload: the full questions array is passed through
+    // so the frontend can render each question with its options.
     let mut blocks = vec![assistant_block(
         "a1",
         vec![tool_segment(
@@ -236,8 +241,8 @@ fn question_multi_joins_with_newlines() {
             "tu-1",
             json!({
                 "questions": [
-                    {"question": "Domain?"},
-                    {"question": "Language?"},
+                    {"question": "Domain?", "header": "H1", "options": [], "multiSelect": false},
+                    {"question": "Language?", "header": "H2", "options": [], "multiSelect": false},
                 ]
             }),
             Some("Web / TS"),
@@ -245,13 +250,17 @@ fn question_multi_joins_with_newlines() {
     )];
     synthesize_historical_interactions(&mut blocks);
     let interactions = interactions_only(&blocks);
-    assert_eq!(interactions[0].data["question"], "Domain?\nLanguage?");
+    let questions = interactions[0].data["questions"].as_array().unwrap();
+    assert_eq!(questions.len(), 2);
+    assert_eq!(questions[0]["question"], "Domain?");
+    assert_eq!(questions[1]["question"], "Language?");
 }
 
 #[test]
-fn question_legacy_string_array_format() {
+fn question_legacy_string_array_format_normalized() {
     // Pre-existing fixtures use {questions: ["...", "..."]} rather than
-    // the structured form. Handle both so old JSONL keeps working.
+    // the structured form. The synthesizer normalizes each string into
+    // a structured object matching AskQuestion shape.
     let mut blocks = vec![assistant_block(
         "a1",
         vec![tool_segment(
@@ -263,7 +272,13 @@ fn question_legacy_string_array_format() {
     )];
     synthesize_historical_interactions(&mut blocks);
     let interactions = interactions_only(&blocks);
-    assert_eq!(interactions[0].data["question"], "Q1\nQ2");
+    let questions = interactions[0].data["questions"].as_array().unwrap();
+    assert_eq!(questions.len(), 2);
+    // Each string is normalized into {question, header, options, multiSelect}
+    assert_eq!(questions[0]["question"], "Q1");
+    assert_eq!(questions[0]["header"], "");
+    assert_eq!(questions[0]["options"].as_array().unwrap().len(), 0);
+    assert_eq!(questions[1]["question"], "Q2");
 }
 
 #[test]
