@@ -189,34 +189,6 @@ pub fn synthesize_historical_interactions(blocks: &mut Vec<ConversationBlock>) {
     }
 }
 
-/// Extract user-visible question text from an AskUserQuestion `tool_input`.
-///
-/// Claude Code's AskUserQuestion tool uses a structured input:
-/// `{questions: [{question, header, options, multiSelect}]}`. We join the
-/// `question` fields of every entry with a newline separator so the user
-/// can see what was asked even for multi-question payloads. Legacy fixtures
-/// use a bare string array; we handle both.
-fn extract_question_text(tool_input: &serde_json::Value) -> String {
-    let Some(questions) = tool_input.get("questions") else {
-        return String::new();
-    };
-    let Some(arr) = questions.as_array() else {
-        return String::new();
-    };
-    let parts: Vec<String> = arr
-        .iter()
-        .filter_map(|q| {
-            // Structured form: {question: "...", ...}
-            if let Some(obj_q) = q.get("question").and_then(|v| v.as_str()) {
-                return Some(obj_q.to_string());
-            }
-            // Legacy fixture form: "..."
-            q.as_str().map(String::from)
-        })
-        .collect();
-    parts.join("\n")
-}
-
 /// Count tool_use segments (excluding the triggering one) that appear after
 /// `trigger_index` up to (but not including) the next TurnBoundaryBlock.
 /// Used for ExitPlanMode approval-strength: how many tools ran after the
@@ -278,7 +250,7 @@ fn count_tool_segments(block: &AssistantBlock, exclude_tool_use_id: Option<&str>
 /// Handles three cases:
 /// 1. Structured objects `[{question: "...", header: "...", options: [...]}]` → pass through
 /// 2. Legacy string arrays `["Q1", "Q2"]` → wrap each into a structured object
-/// 3. Missing/empty → single entry from `extract_question_text` fallback
+/// 3. Missing/empty → single entry with empty question text
 fn normalize_questions_array(tool_input: &serde_json::Value) -> serde_json::Value {
     let Some(questions) = tool_input.get("questions") else {
         return json!([{
