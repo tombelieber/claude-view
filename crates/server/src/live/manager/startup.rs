@@ -105,19 +105,10 @@ impl LiveSessionManager {
                 continue;
             }
 
-            // PID reuse guard: verify the PID is still alive.
-            // Temporary — Task 4 will replace this with PID file check.
-            let is_claude = is_pid_alive(entry.pid);
-            if !is_claude {
-                info!(
-                    session_id = %session_id,
-                    pid = entry.pid,
-                    "PID not alive — discarding stale snapshot entry"
-                );
-                dead += 1;
-                dead_ids.push(session_id.clone());
-                continue;
-            }
+            // PID reuse guard placeholder: Task 4 will replace this with a
+            // PID file check (~/.claude/sessions/{pid}.json) to detect PID
+            // recycling. For now, liveness alone is sufficient since the
+            // reconciliation loop catches stale sessions within 30s.
 
             if let Some(path) = initial_paths
                 .iter()
