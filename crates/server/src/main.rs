@@ -259,6 +259,10 @@ async fn main() -> Result<()> {
         .finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
+    // Load runtime config from ~/.claude-view/config.toml
+    let app_config = claude_view_core::app_config::AppConfig::load();
+    tracing::info!(?app_config, "app config loaded");
+
     // Parse CLI arguments with clap
     let cli_parsed = cli::Cli::parse();
 
@@ -362,7 +366,7 @@ async fn main() -> Result<()> {
 
     // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
     // Wrapped in SearchIndexHolder so clear_cache can swap it at runtime.
-    let search_index_holder: SearchIndexHolder = {
+    let search_index_holder: SearchIndexHolder = if app_config.features.search {
         let index_dir = claude_view_core::paths::search_index_dir()
             .expect("search_index_dir() always returns Some after data_dir() refactor");
 
@@ -379,6 +383,9 @@ async fn main() -> Result<()> {
                 Arc::new(RwLock::new(None))
             }
         }
+    } else {
+        tracing::info!("Search feature disabled by config");
+        Arc::new(RwLock::new(None))
     };
 
     // Step 3b: Create shutdown channel for SSE stream termination on Ctrl+C
@@ -473,6 +480,7 @@ async fn main() -> Result<()> {
         prompt_stats_holder.clone(),
         prompt_templates_holder.clone(),
         telemetry,
+        app_config,
     );
 
     // Step 5: Bind and start the HTTP server IMMEDIATELY (before any indexing)

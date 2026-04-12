@@ -147,6 +147,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
+        app_config: claude_view_core::app_config::AppConfig::default(),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
@@ -259,6 +260,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         api_key_store_path: claude_view_core::paths::config_dir().join("api-keys.json"),
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
+        app_config: claude_view_core::app_config::AppConfig::default(),
         cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
@@ -286,6 +288,7 @@ pub fn create_app_full(
     prompt_stats: PromptStatsHolder,
     prompt_templates: PromptTemplatesHolder,
     telemetry: Option<telemetry::TelemetryClient>,
+    app_config: claude_view_core::app_config::AppConfig,
 ) -> (Router, Arc<local_llm::LocalLlmService>) {
     // Start live session monitoring (file watcher, process detector, cleanup).
     let pricing = Arc::new(claude_view_core::pricing::load_pricing());
@@ -305,7 +308,12 @@ pub fn create_app_full(
     local_llm_service.start_lifecycle();
 
     // Start the unified process oracle BEFORE the manager (both share the same receiver).
-    let oracle_rx = live::process_oracle::start_oracle(sidecar.clone(), llm_status.clone());
+    let oracle_rx = if app_config.features.system_monitor {
+        live::process_oracle::start_oracle(sidecar.clone(), llm_status.clone())
+    } else {
+        tracing::info!("System monitor feature disabled by config");
+        live::process_oracle::stub()
+    };
 
     // Create hook event channels before the manager so both manager and AppState share one instance.
     let hook_event_channels: std::sync::Arc<
@@ -456,6 +464,7 @@ pub fn create_app_full(
         api_key_store_path,
         webhook_config_path,
         webhook_secrets_path,
+        app_config,
         cli_sessions,
         interaction_data,
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),

@@ -15,6 +15,16 @@ use claude_view_core::telemetry_config::TelemetryStatus;
 #[derive(Debug, Serialize, TS, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "codegen", ts(export))]
+pub struct ConfigFeatureFlags {
+    /// Whether full-text search is enabled.
+    pub search: bool,
+    /// Whether the system resource monitor is enabled.
+    pub system_monitor: bool,
+}
+
+#[derive(Debug, Serialize, TS, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "codegen", ts(export))]
 pub struct ConfigResponse {
     /// Whether Supabase auth is configured (JWKS loaded).
     pub auth: bool,
@@ -28,6 +38,8 @@ pub struct ConfigResponse {
     pub posthog_key: Option<String>,
     /// Anonymous device ID for telemetry — null when running self-hosted.
     pub anonymous_id: Option<String>,
+    /// Feature flags loaded from ~/.claude-view/config.toml.
+    pub features: ConfigFeatureFlags,
 }
 
 #[utoipa::path(
@@ -63,6 +75,10 @@ pub async fn config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> 
         telemetry: telemetry_status,
         posthog_key,
         anonymous_id,
+        features: ConfigFeatureFlags {
+            search: state.app_config.features.search,
+            system_monitor: state.app_config.features.system_monitor,
+        },
     })
 }
 
@@ -127,5 +143,17 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(json["posthogKey"].is_null());
         assert!(json["anonymousId"].is_null());
+    }
+
+    #[tokio::test]
+    async fn config_includes_feature_flags() {
+        let db = Database::new_in_memory().await.unwrap();
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/config").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        // Default config has all features enabled
+        assert_eq!(json["features"]["search"], true);
+        assert_eq!(json["features"]["systemMonitor"], true);
     }
 }

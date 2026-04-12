@@ -1,6 +1,7 @@
 // crates/core/src/lib.rs
 pub mod accumulator;
 pub mod analytics_scope_contract;
+pub mod app_config;
 pub mod block_accumulator;
 pub use claude_view_types::block_types;
 pub mod branch_filter;
