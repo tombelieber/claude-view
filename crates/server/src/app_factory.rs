@@ -492,21 +492,6 @@ pub fn create_app_full(
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();
 
-    // Start sidecar eagerly for SDK model fetch.
-    {
-        let sidecar = state.sidecar.clone();
-        tokio::spawn(async move {
-            match sidecar.ensure_running().await {
-                Ok(_url) => {
-                    tracing::info!("Sidecar started eagerly for SDK model fetch");
-                }
-                Err(e) => {
-                    tracing::debug!("Sidecar eager start skipped: {e}");
-                }
-            };
-        });
-    }
-
     let mut app = Router::new()
         .merge(routes::api_routes(state))
         .layer(CompressionLayer::new())
