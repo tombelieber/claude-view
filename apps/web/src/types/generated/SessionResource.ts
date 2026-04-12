@@ -17,7 +17,7 @@ export type SessionResource = {
    */
   cpuPercent: number
   /**
-   * Resident memory in bytes.
+   * Memory in bytes (physical footprint on macOS, RSS elsewhere).
    */
   memoryBytes: number
 }

@@ -17,7 +17,7 @@ export type ProcessGroup = {
    */
   cpuPercent: number
   /**
-   * Total resident memory in bytes.
+   * Total memory in bytes (physical footprint on macOS, RSS elsewhere).
    */
   memoryBytes: number
 }
