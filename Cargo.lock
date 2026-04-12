@@ -651,7 +651,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-view-core"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -682,7 +682,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "axum 0.8.8",
  "chrono",
@@ -712,7 +712,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "anyhow",
  "axum 0.8.8",
@@ -740,7 +740,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -842,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-insights"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "serde",
  "ts-rs",
@@ -852,7 +852,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-jobs"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "chrono",
  "serde",
@@ -865,7 +865,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-live-state"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "claude-view-core",
  "claude-view-db",
@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-local-llm"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "claude-view-core",
  "claude-view-types",
@@ -899,7 +899,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-process-tree"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "chrono",
  "libc",
@@ -912,7 +912,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-sidecar"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "libc",
  "reqwest",
@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-teams"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -942,7 +942,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-types"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "axum 0.8.8",
  "claude-view-core",
@@ -963,7 +963,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-types"
-version = "0.35.0"
+version = "0.36.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3114,9 +3114,9 @@ dependencies = [
 
 [[package]]
 name = "openssl"
-version = "0.10.76"
+version = "0.10.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "951c002c75e16ea2c65b8c7e4d3d51d5530d8dfa7d060b4776828c88cfb18ecf"
+checksum = "bfe4646e360ec77dff7dde40ed3d6c5fee52d156ef4a62f53973d38294dad87f"
 dependencies = [
  "bitflags 2.11.0",
  "cfg-if",
@@ -3146,9 +3146,9 @@ checksum = "7c87def4c32ab89d880effc9e097653c8da5d6ef28e6b539d313baaacfbafcbe"
 
 [[package]]
 name = "openssl-sys"
-version = "0.9.112"
+version = "0.9.113"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57d55af3b3e226502be1526dfdba67ab0e9c96fc293004e79576b2b9edb0dbdb"
+checksum = "ad2f2c0eba47118757e4c6d2bff2838f3e0523380021356e7875e858372ce644"
 dependencies = [
  "cc",
  "libc",
@@ -3903,9 +3903,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.37"
+version = "0.23.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "758025cb5fccfd3bc2fd74708fd4682be41d99e5dff73c377c0646c6012c73a4"
+checksum = "69f9466fb2c14ea04357e91413efb882e2a6d4a406e625449bc0a5d360d53a21"
 dependencies = [
  "aws-lc-rs",
  "log",
