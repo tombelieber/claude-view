@@ -17,6 +17,22 @@ pub fn create_session_from_start(
         ..HookFields::default()
     };
 
+    // Resolve JSONL path eagerly when cwd is available.
+    let (project, file_path) = if let Some(ref cwd) = cwd {
+        let proj = claude_view_core::discovery::encode_project_name(cwd);
+        let fp = claude_view_core::discovery::claude_projects_dir()
+            .map(|d| {
+                d.join(&proj)
+                    .join(format!("{session_id}.jsonl"))
+                    .to_string_lossy()
+                    .to_string()
+            })
+            .unwrap_or_default();
+        (proj, fp)
+    } else {
+        (String::new(), String::new())
+    };
+
     LiveSession {
         id: session_id.to_string(),
         status: SessionStatus::Working,
@@ -30,7 +46,9 @@ pub fn create_session_from_start(
         statusline: StatuslineFields::default(),
         hook,
         jsonl: JsonlFields {
+            project,
             project_path: cwd.clone().unwrap_or_default(),
+            file_path,
             ..JsonlFields::default()
         },
         session_kind: None,
@@ -46,10 +64,20 @@ pub fn create_session_from_birth(
     session: &claude_view_core::session_files::ActiveSession,
     now: i64,
 ) -> LiveSession {
-    let resolved = claude_view_core::discovery::resolve_project_path_with_cwd(
-        &claude_view_core::discovery::encode_project_name(&session.cwd),
-        Some(&session.cwd),
-    );
+    let project = claude_view_core::discovery::encode_project_name(&session.cwd);
+    let resolved =
+        claude_view_core::discovery::resolve_project_path_with_cwd(&project, Some(&session.cwd));
+
+    // Resolve JSONL path eagerly so the WS handler can watch it immediately.
+    // Path is deterministic: ~/.claude/projects/{project}/{session_id}.jsonl
+    let file_path = claude_view_core::discovery::claude_projects_dir()
+        .map(|d| {
+            d.join(&project)
+                .join(format!("{}.jsonl", session.session_id))
+                .to_string_lossy()
+                .to_string()
+        })
+        .unwrap_or_default();
 
     LiveSession {
         id: session.session_id.clone(),
@@ -71,9 +99,10 @@ pub fn create_session_from_birth(
             ..HookFields::default()
         },
         jsonl: JsonlFields {
-            project: claude_view_core::discovery::encode_project_name(&session.cwd),
+            project,
             project_path: session.cwd.clone(),
             project_display_name: resolved.display_name,
+            file_path,
             ..JsonlFields::default()
         },
         session_kind: Some(session.kind.clone()),

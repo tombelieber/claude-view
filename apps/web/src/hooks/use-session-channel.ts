@@ -185,6 +185,13 @@ export function useSessionChannel(options: UseSessionChannelOptions): UseSession
         setConnectionState('disconnected')
         return
       }
+      // 4429 = per-session connection limit. Transient during React strict mode
+      // double-render — stale guards clean up within ms. Don't burn retry attempts.
+      if (ev.code === 4429) {
+        setConnectionState('connecting')
+        reconnectTimerRef.current = setTimeout(connect, 500)
+        return
+      }
       // Auto-reconnect with exponential backoff
       if (reconnectAttemptRef.current < MAX_RECONNECT_ATTEMPTS) {
         const delay = Math.min(
