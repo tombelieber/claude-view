@@ -1,6 +1,6 @@
-//! Resolve which tier owns a session: SDK > Tmux > Observed.
+//! Compute session ownership from independent sources of truth.
 
-use claude_view_types::SessionOwnership;
+use claude_view_types::{SdkBinding, SessionOwnership, TmuxBinding};
 
 use crate::live::state::LiveSession;
 use crate::routes::cli_sessions::store::CliSessionStore;
@@ -10,7 +10,6 @@ use crate::routes::cli_sessions::store::CliSessionStore;
 /// category enum (e.g. "terminal", "ide", "agent_sdk").
 fn source_label(session: &LiveSession) -> Option<String> {
     session.jsonl.source.as_ref().map(|info| {
-        // Use serde to get the canonical snake_case name.
         serde_json::to_value(&info.category)
             .ok()
             .and_then(|v| v.as_str().map(String::from))
@@ -18,34 +17,42 @@ fn source_label(session: &LiveSession) -> Option<String> {
     })
 }
 
-/// Resolve which tier owns a session. Priority: SDK > Tmux > Observed.
-pub async fn resolve_ownership(
+/// Compute ownership from two independent sources. No priority — facts coexist.
+pub async fn compute_ownership(
     session: &LiveSession,
     cli_sessions: &CliSessionStore,
 ) -> SessionOwnership {
     let source = source_label(session);
     let entrypoint = session.entrypoint.clone();
 
-    // SDK control binding present -> Sdk tier
-    if let Some(control) = &session.control {
-        return SessionOwnership::Sdk {
-            control_id: control.control_id.clone(),
-            source,
-            entrypoint,
-        };
-    }
+    let sdk = session.control.as_ref().map(|c| SdkBinding {
+        control_id: c.control_id.clone(),
+    });
 
-    // Tmux CLI session bound to this session UUID -> Tmux tier
-    if let Some(cli) = cli_sessions.find_by_claude_session_id(&session.id).await {
-        return SessionOwnership::Tmux {
-            cli_session_id: cli.id.clone(),
-            source,
-            entrypoint,
-        };
-    }
+    let tmux = cli_sessions
+        .find_by_claude_session_id(&session.id)
+        .await
+        .map(|cli| TmuxBinding {
+            cli_session_id: cli.id,
+        });
 
-    // No control channel -> Observed
-    SessionOwnership::Observed { source, entrypoint }
+    SessionOwnership {
+        tmux,
+        sdk,
+        source,
+        entrypoint,
+    }
+}
+
+/// Enrich a LiveSession clone with computed ownership before serialization.
+/// Called at the SSE/REST boundary — never stores the result in the sessions map.
+pub async fn enrich_with_ownership(
+    session: &LiveSession,
+    cli_sessions: &CliSessionStore,
+) -> LiveSession {
+    let mut enriched = session.clone();
+    enriched.ownership = Some(compute_ownership(session, cli_sessions).await);
+    enriched
 }
 
 #[cfg(test)]
@@ -77,70 +84,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sdk_wins_when_control_present() {
+    async fn sdk_set_when_control_present() {
         let mut session = test_live_session("sess-1");
         session.control = Some(make_control_binding("ctl-42"));
 
         let store = CliSessionStore::new();
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match result {
-            SessionOwnership::Sdk { control_id, .. } => {
-                assert_eq!(control_id, "ctl-42");
-            }
-            other => panic!("expected Sdk, got {:?}", other),
-        }
+        assert!(result.sdk.is_some());
+        assert_eq!(result.sdk.unwrap().control_id, "ctl-42");
     }
 
     #[tokio::test]
-    async fn tmux_wins_when_no_control_but_cli_session_matches() {
+    async fn tmux_set_when_cli_session_matches() {
         let session = test_live_session("sess-1");
         assert!(session.control.is_none());
 
         let store = CliSessionStore::new();
         store.insert(make_cli_session("cli-99", "sess-1")).await;
 
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match result {
-            SessionOwnership::Tmux { cli_session_id, .. } => {
-                assert_eq!(cli_session_id, "cli-99");
-            }
-            other => panic!("expected Tmux, got {:?}", other),
-        }
+        assert!(result.tmux.is_some());
+        assert_eq!(result.tmux.unwrap().cli_session_id, "cli-99");
+        assert!(result.sdk.is_none());
     }
 
     #[tokio::test]
-    async fn observed_fallback_when_no_control_and_no_cli_session() {
+    async fn neither_when_no_control_and_no_cli_session() {
         let session = test_live_session("sess-1");
         assert!(session.control.is_none());
 
         let store = CliSessionStore::new();
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match &result {
-            SessionOwnership::Observed { .. } => {}
-            other => panic!("expected Observed, got {:?}", other),
-        }
+        assert!(result.tmux.is_none());
+        assert!(result.sdk.is_none());
     }
 
     #[tokio::test]
-    async fn sdk_wins_over_tmux_when_both_present() {
+    async fn both_set_when_sdk_and_tmux_present() {
         let mut session = test_live_session("sess-1");
         session.control = Some(make_control_binding("ctl-77"));
 
         let store = CliSessionStore::new();
-        // Also insert a matching CLI session — SDK should still win
         store.insert(make_cli_session("cli-99", "sess-1")).await;
 
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match result {
-            SessionOwnership::Sdk { control_id, .. } => {
-                assert_eq!(control_id, "ctl-77");
-            }
-            other => panic!("expected Sdk (priority over Tmux), got {:?}", other),
-        }
+        // Both should be set — independent facts coexist
+        assert!(result.sdk.is_some());
+        assert_eq!(result.sdk.unwrap().control_id, "ctl-77");
+        assert!(result.tmux.is_some());
+        assert_eq!(result.tmux.unwrap().cli_session_id, "cli-99");
     }
 
     #[tokio::test]
@@ -154,17 +150,11 @@ mod tests {
         session.control = Some(make_control_binding("ctl-1"));
 
         let store = CliSessionStore::new();
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match result {
-            SessionOwnership::Sdk {
-                source, entrypoint, ..
-            } => {
-                assert_eq!(source.as_deref(), Some("ide"));
-                assert_eq!(entrypoint.as_deref(), Some("cli"));
-            }
-            other => panic!("expected Sdk, got {:?}", other),
-        }
+        assert_eq!(result.source.as_deref(), Some("ide"));
+        assert_eq!(result.entrypoint.as_deref(), Some("cli"));
+        assert!(result.sdk.is_some());
     }
 
     #[tokio::test]
@@ -179,21 +169,15 @@ mod tests {
         let store = CliSessionStore::new();
         store.insert(make_cli_session("cli-1", "sess-1")).await;
 
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match result {
-            SessionOwnership::Tmux {
-                source, entrypoint, ..
-            } => {
-                assert_eq!(source.as_deref(), Some("terminal"));
-                assert_eq!(entrypoint.as_deref(), Some("claude-vscode"));
-            }
-            other => panic!("expected Tmux, got {:?}", other),
-        }
+        assert_eq!(result.source.as_deref(), Some("terminal"));
+        assert_eq!(result.entrypoint.as_deref(), Some("claude-vscode"));
+        assert!(result.tmux.is_some());
     }
 
     #[tokio::test]
-    async fn source_and_entrypoint_carried_through_observed() {
+    async fn source_and_entrypoint_carried_through_no_bindings() {
         let mut session = test_live_session("sess-1");
         session.jsonl.source = Some(SessionSourceInfo {
             category: SessionSource::AgentSdk,
@@ -202,14 +186,26 @@ mod tests {
         session.entrypoint = None;
 
         let store = CliSessionStore::new();
-        let result = resolve_ownership(&session, &store).await;
+        let result = compute_ownership(&session, &store).await;
 
-        match result {
-            SessionOwnership::Observed { source, entrypoint } => {
-                assert_eq!(source.as_deref(), Some("agent_sdk"));
-                assert!(entrypoint.is_none());
-            }
-            other => panic!("expected Observed, got {:?}", other),
-        }
+        assert_eq!(result.source.as_deref(), Some("agent_sdk"));
+        assert!(result.entrypoint.is_none());
+        assert!(result.tmux.is_none());
+        assert!(result.sdk.is_none());
+    }
+
+    #[tokio::test]
+    async fn enrich_with_ownership_sets_ownership_field() {
+        let mut session = test_live_session("sess-1");
+        session.control = Some(make_control_binding("ctl-10"));
+        assert!(session.ownership.is_none());
+
+        let store = CliSessionStore::new();
+        let enriched = enrich_with_ownership(&session, &store).await;
+
+        assert!(enriched.ownership.is_some());
+        let ownership = enriched.ownership.unwrap();
+        assert!(ownership.sdk.is_some());
+        assert_eq!(ownership.sdk.unwrap().control_id, "ctl-10");
     }
 }

@@ -348,32 +348,34 @@ mod tests {
     }
 
     #[test]
-    fn ownership_some_observed_included_in_json() {
+    fn ownership_some_no_bindings_included_in_json() {
         let mut session = test_live_session("s2");
-        session.ownership = Some(SessionOwnership::Observed {
+        session.ownership = Some(SessionOwnership {
             source: Some("terminal".into()),
-            entrypoint: None,
+            ..Default::default()
         });
         let json = serde_json::to_value(&session).unwrap();
         let ownership = json
             .get("ownership")
             .expect("ownership=Some must be present");
-        assert_eq!(ownership["tier"], "observed");
+        assert!(ownership.get("tier").is_none());
         assert_eq!(ownership["source"], "terminal");
     }
 
     #[test]
     fn ownership_some_sdk_included_in_json() {
         let mut session = test_live_session("s3");
-        session.ownership = Some(SessionOwnership::Sdk {
-            control_id: "ctl-42".into(),
-            source: None,
+        session.ownership = Some(SessionOwnership {
+            sdk: Some(claude_view_types::SdkBinding {
+                control_id: "ctl-42".into(),
+            }),
             entrypoint: Some("cli".into()),
+            ..Default::default()
         });
         let json = serde_json::to_value(&session).unwrap();
         let ownership = json.get("ownership").expect("ownership must be present");
-        assert_eq!(ownership["tier"], "sdk");
-        assert_eq!(ownership["controlId"], "ctl-42");
+        assert!(ownership.get("tier").is_none());
+        assert_eq!(ownership["sdk"]["controlId"], "ctl-42");
         assert_eq!(ownership["entrypoint"], "cli");
     }
 

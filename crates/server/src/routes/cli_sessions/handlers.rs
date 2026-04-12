@@ -16,42 +16,6 @@ use tokio::time::Duration;
 
 use super::types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};
 
-/// After discovering a new CLI→Claude session binding, refresh ownership on the
-/// matching live session and broadcast so the frontend switches to xterm immediately.
-async fn refresh_live_ownership(state: &AppState, claude_session_id: &str, cli_session_id: &str) {
-    let ownership = claude_view_types::SessionOwnership::Tmux {
-        cli_session_id: cli_session_id.to_string(),
-        source: None,
-        entrypoint: None,
-    };
-    // Resolve source/entrypoint from the live session if available, then overwrite.
-    let ownership = {
-        let sessions = state.live_sessions.read().await;
-        if let Some(live) = sessions.get(claude_session_id) {
-            crate::live::ownership::resolve_ownership(live, &state.cli_sessions).await
-        } else {
-            ownership
-        }
-    };
-    // Write to live session map + broadcast.
-    {
-        let mut sessions = state.live_sessions.write().await;
-        if let Some(live) = sessions.get_mut(claude_session_id) {
-            live.ownership = Some(ownership.clone());
-            let snapshot = live.clone();
-            drop(sessions);
-            let _ = state
-                .live_tx
-                .send(SessionEvent::SessionUpdated { session: snapshot });
-            tracing::debug!(
-                claude = %claude_session_id,
-                cli = %cli_session_id,
-                "ownership refreshed to tmux"
-            );
-        }
-    }
-}
-
 /// Read the Claude session ID from ~/.claude/sessions/{pid}.json.
 pub(super) fn resolve_claude_session_id(pid: u32) -> Option<String> {
     let home = dirs::home_dir()?;
@@ -157,8 +121,8 @@ pub async fn create_session(
 
     // Eagerly resolve claude_session_id in background.
     // Claude Code writes ~/.claude/sessions/{pid}.json shortly after start.
-    // Poll until found so resolve_ownership() sees the tmux binding on the
-    // very first mutation pipeline tick — no stale Observed window.
+    // Poll until found so compute_ownership() sees the tmux binding
+    // at the next SSE/REST boundary — no stale window.
     {
         let state = state.clone();
         let id = session.id.clone();
@@ -171,7 +135,6 @@ pub async fn create_session(
                             .cli_sessions
                             .set_claude_session_id(&id, sid.clone())
                             .await;
-                        refresh_live_ownership(&state, &sid, &id).await;
                         return;
                     }
                 }
@@ -216,21 +179,8 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                             .cli_sessions
                             .set_claude_session_id(&session.id, sid.clone())
                             .await;
-                        refresh_live_ownership(&state, &sid, &session.id).await;
                         session.claude_session_id = Some(sid);
                     }
-                }
-            }
-            // Binding exists but live session ownership may be stale (e.g. after
-            // restart when reconciliation populates store before JSONL monitor
-            // resolves ownership). Refresh if needed.
-            if let Some(ref sid) = session.claude_session_id {
-                let needs_refresh = {
-                    let sessions = state.live_sessions.read().await;
-                    sessions.get(sid).is_some_and(|s| s.ownership.is_none())
-                };
-                if needs_refresh {
-                    refresh_live_ownership(&state, sid, &session.id).await;
                 }
             }
         }

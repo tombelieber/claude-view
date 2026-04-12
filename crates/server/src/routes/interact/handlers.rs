@@ -13,7 +13,7 @@ use axum::{
 use crate::error::{ApiError, ApiResult};
 use crate::live::mutation::types::{InteractionAction, SessionMutation};
 use crate::state::AppState;
-use claude_view_types::{InteractRequest, InteractionBlock, SessionOwnership};
+use claude_view_types::{InteractRequest, InteractionBlock};
 
 /// Extract request_id from any InteractRequest variant.
 fn extract_request_id(req: &InteractRequest) -> &str {
@@ -105,31 +105,21 @@ pub async fn interact_handler(
 ) -> ApiResult<Json<serde_json::Value>> {
     let request_id = extract_request_id(&req).to_string();
 
-    // Step 2: session exists? Resolve ownership.
+    // Step 2: session exists? Compute ownership on the fly.
     let ownership = {
         let sessions = state.live_sessions.read().await;
         let session = sessions
             .get(&session_id)
             .ok_or_else(|| ApiError::NotFound(format!("Session not found: {session_id}")))?;
 
-        session.ownership.clone()
+        crate::live::ownership::compute_ownership(session, &state.cli_sessions).await
     };
 
-    // Step 3: check ownership tier
-    let ownership = ownership.ok_or_else(|| {
-        ApiError::BadRequest("Session has no resolved ownership — cannot interact".to_string())
-    })?;
-
-    match &ownership {
-        SessionOwnership::Observed { .. } => {
-            return Err(ApiError::BadRequest(
-                "Cannot interact with an observed session — no control channel available"
-                    .to_string(),
-            ));
-        }
-        SessionOwnership::Sdk { .. } | SessionOwnership::Tmux { .. } => {
-            // Allowed — continue
-        }
+    // Step 3: check ownership — can interact if tmux or sdk binding exists
+    if ownership.tmux.is_none() && ownership.sdk.is_none() {
+        return Err(ApiError::BadRequest(
+            "Cannot interact with an observed session — no control channel available".to_string(),
+        ));
     }
 
     // Step 4: check side-map for request_id (stale check)
@@ -143,27 +133,24 @@ pub async fn interact_handler(
     }
 
     // Step 5: dispatch based on ownership
-    let sidecar_forwarded = match &ownership {
-        SessionOwnership::Sdk { control_id, .. } => {
-            match forward_to_sidecar(&state, control_id, &req).await {
-                Ok(()) => true,
-                Err(e) => {
-                    tracing::warn!(
-                        session_id,
-                        request_id = %request_id,
-                        error = %e,
-                        "Sidecar forward failed — state cleared but sidecar not notified"
-                    );
-                    false
-                }
+    let sidecar_forwarded = if let Some(ref sdk) = ownership.sdk {
+        match forward_to_sidecar(&state, &sdk.control_id, &req).await {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::warn!(
+                    session_id,
+                    request_id = %request_id,
+                    error = %e,
+                    "Sidecar forward failed — state cleared but sidecar not notified"
+                );
+                false
             }
         }
-        SessionOwnership::Tmux { .. } => {
-            // TODO(Task 10+): forward keystroke via tmux send-keys.
-            // For v1, we just clear the server-side state.
-            true
-        }
-        SessionOwnership::Observed { .. } => unreachable!("guarded above"),
+    } else if ownership.tmux.is_some() {
+        // TODO(Task 10+): forward keystroke via tmux send-keys.
+        true
+    } else {
+        unreachable!("guarded above")
     };
 
     // Step 6: clear pending interaction regardless of sidecar result.

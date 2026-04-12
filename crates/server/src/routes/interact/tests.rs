@@ -8,9 +8,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use claude_view_types::{
-    InteractionBlock, InteractionVariant, PendingInteractionMeta, SessionOwnership,
-};
+use claude_view_types::{InteractionBlock, InteractionVariant, PendingInteractionMeta};
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -41,13 +39,14 @@ async fn insert_live_session(state: &AppState, id: &str) {
         .insert(id.to_string(), session);
 }
 
-/// Helper: insert a live session with SDK ownership.
+/// Helper: insert a live session with SDK control binding.
+/// compute_ownership() reads session.control, not session.ownership.
 async fn insert_sdk_session(state: &AppState, id: &str, control_id: &str) {
     let mut session = claude_view_server_live_state::core::test_live_session(id);
-    session.ownership = Some(SessionOwnership::Sdk {
+    session.control = Some(claude_view_server_live_state::core::ControlBinding {
         control_id: control_id.to_string(),
-        source: None,
-        entrypoint: None,
+        bound_at: 1000,
+        cancel: tokio_util::sync::CancellationToken::new(),
     });
     state
         .live_sessions
@@ -56,13 +55,11 @@ async fn insert_sdk_session(state: &AppState, id: &str, control_id: &str) {
         .insert(id.to_string(), session);
 }
 
-/// Helper: insert a live session with Observed ownership.
+/// Helper: insert a live session with no control binding (observed).
+/// No control, no CLI session → compute_ownership returns empty ownership.
 async fn insert_observed_session(state: &AppState, id: &str) {
-    let mut session = claude_view_server_live_state::core::test_live_session(id);
-    session.ownership = Some(SessionOwnership::Observed {
-        source: None,
-        entrypoint: None,
-    });
+    let session = claude_view_server_live_state::core::test_live_session(id);
+    // No control, no CLI session → compute_ownership will return empty ownership
     state
         .live_sessions
         .write()
