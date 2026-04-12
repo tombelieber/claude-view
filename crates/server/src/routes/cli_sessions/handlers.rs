@@ -138,12 +138,8 @@ pub async fn create_session(
                         // Write ownership into the session record and broadcast.
                         // Guard: skip Done sessions — client already moved them
                         // to recentlyClosed; re-emitting would resurrect them.
-                        let is_done = state
-                            .live_sessions
-                            .read()
-                            .await
-                            .get(&sid)
-                            .map_or(true, |s| {
+                        let is_done =
+                            state.live_sessions.read().await.get(&sid).is_none_or(|s| {
                                 s.status == crate::live::state::SessionStatus::Done
                             });
                         if !is_done {
@@ -201,12 +197,8 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                             .await;
                         session.claude_session_id = Some(sid.clone());
                         // Write ownership into the session record and broadcast.
-                        let is_done = state
-                            .live_sessions
-                            .read()
-                            .await
-                            .get(&sid)
-                            .map_or(true, |s| {
+                        let is_done =
+                            state.live_sessions.read().await.get(&sid).is_none_or(|s| {
                                 s.status == crate::live::state::SessionStatus::Done
                             });
                         if !is_done {
