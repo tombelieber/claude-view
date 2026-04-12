@@ -1059,7 +1059,7 @@ mod tests {
         let event = rx.recv().await.unwrap();
         assert!(
             matches!(event, SessionEvent::SessionUpsert { .. }),
-            "Expected SessionUpdated broadcast"
+            "Expected SessionUpsert broadcast"
         );
 
         // Verify pending_interaction is set on the session
@@ -1133,7 +1133,7 @@ mod tests {
         let event = rx.recv().await.unwrap();
         assert!(
             matches!(event, SessionEvent::SessionUpsert { .. }),
-            "Expected SessionUpdated broadcast after Clear"
+            "Expected SessionUpsert broadcast after Clear"
         );
 
         // Verify pending_interaction is cleared

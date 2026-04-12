@@ -291,8 +291,8 @@ impl SessionCoordinator {
                 MutationResult::Closed(snapshot)
             }
             BroadcastAction::Removed => {
-                // Removed = dismissed from recently closed, no session data to carry.
-                // Use SessionRemove with the last snapshot.
+                // Removed = dismissed from recently closed.
+                // SessionRemove carries the last snapshot for the ring buffer.
                 let _ = ctx.live_tx.send(SessionEvent::SessionRemove {
                     session_id: session_id.to_string(),
                     session: snapshot.clone(),
