@@ -17,6 +17,33 @@ use super::accumulator::{build_recovered_session, derive_agent_state_from_jsonl}
 use super::helpers::{extract_session_id, load_session_snapshot, pid_snapshot_path};
 use super::LiveSessionManager;
 
+/// Parse a PID session file and check if the sessionId matches.
+/// Extracted for testability -- the I/O wrapper is `is_pid_still_claude`.
+fn pid_file_matches_session(file_content: &str, expected_session_id: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(file_content)
+        .ok()
+        .and_then(|v| v.get("sessionId")?.as_str().map(String::from))
+        .map(|sid| sid == expected_session_id)
+        .unwrap_or(false)
+}
+
+/// PID reuse guard: verify a PID still belongs to the expected Claude session.
+///
+/// Checks `~/.claude/sessions/{pid}.json` -- the canonical session lifecycle file.
+/// Returns `true` if the file exists and its `sessionId` matches. Returns `false`
+/// if the file is missing (session ended cleanly), unreadable, or has a different
+/// `sessionId` (PID was recycled for a different Claude session).
+fn is_pid_still_claude(pid: u32, expected_session_id: &str) -> bool {
+    let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() else {
+        return false;
+    };
+    let path = sessions_dir.join(format!("{pid}.json"));
+    match std::fs::read_to_string(&path) {
+        Ok(data) => pid_file_matches_session(&data, expected_session_id),
+        Err(_) => false, // PID file gone -> not Claude anymore
+    }
+}
+
 impl LiveSessionManager {
     /// Scan ~/.claude/sessions/ as the PRIMARY lifecycle source.
     ///
@@ -105,10 +132,18 @@ impl LiveSessionManager {
                 continue;
             }
 
-            // PID reuse guard placeholder: Task 4 will replace this with a
-            // PID file check (~/.claude/sessions/{pid}.json) to detect PID
-            // recycling. For now, liveness alone is sufficient since the
-            // reconciliation loop catches stale sessions within 30s.
+            // PID reuse guard: verify this PID still belongs to this session.
+            // After a crash, the OS may have recycled the PID for an unrelated process.
+            if !is_pid_still_claude(entry.pid, session_id) {
+                info!(
+                    session_id = %session_id,
+                    pid = entry.pid,
+                    "PID file mismatch or missing — PID may have been recycled, discarding"
+                );
+                dead += 1;
+                dead_ids.push(session_id.clone());
+                continue;
+            }
 
             if let Some(path) = initial_paths
                 .iter()
@@ -266,5 +301,49 @@ impl LiveSessionManager {
                 "Snapshot recovery PID dedup complete"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_pid_file_matches_session_exact_match() {
+        assert!(pid_file_matches_session(
+            r#"{"sessionId":"abc-123","pid":12345}"#,
+            "abc-123"
+        ));
+    }
+
+    #[test]
+    fn test_pid_file_matches_session_wrong_id() {
+        assert!(!pid_file_matches_session(
+            r#"{"sessionId":"different","pid":12345}"#,
+            "abc-123"
+        ));
+    }
+
+    #[test]
+    fn test_pid_file_matches_session_invalid_json() {
+        assert!(!pid_file_matches_session("not json", "abc-123"));
+    }
+
+    #[test]
+    fn test_pid_file_matches_session_missing_field() {
+        assert!(!pid_file_matches_session(r#"{"pid":12345}"#, "abc-123"));
+    }
+
+    #[test]
+    fn test_pid_file_matches_session_null_session_id() {
+        assert!(!pid_file_matches_session(
+            r#"{"sessionId":null}"#,
+            "abc-123"
+        ));
+    }
+
+    #[test]
+    fn test_pid_file_matches_session_numeric_session_id() {
+        assert!(!pid_file_matches_session(r#"{"sessionId":42}"#, "abc-123"));
     }
 }
