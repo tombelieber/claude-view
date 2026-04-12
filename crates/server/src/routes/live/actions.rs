@@ -105,6 +105,9 @@ pub async fn bind_control(
             category: crate::live::process::SessionSource::AgentSdk,
             label: None,
         });
+        // Compute and store ownership in the session record
+        session.ownership =
+            Some(crate::live::ownership::compute_ownership(session, &state.cli_sessions).await);
         // Notify SSE clients of the control binding change
         let _ = state.live_tx.send(SessionEvent::SessionUpsert {
             session: session.clone(),
@@ -144,6 +147,9 @@ pub async fn unbind_control(
             if let Some(binding) = session.control.take() {
                 binding.cancel.cancel();
             }
+            // Recompute ownership after clearing control binding
+            session.ownership =
+                Some(crate::live::ownership::compute_ownership(session, &state.cli_sessions).await);
             let _ = state.live_tx.send(SessionEvent::SessionUpsert {
                 session: session.clone(),
             });

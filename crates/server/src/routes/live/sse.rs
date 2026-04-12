@@ -20,7 +20,7 @@ use super::summary::build_summary;
 ///
 /// | Event name            | When emitted                           |
 /// |-----------------------|----------------------------------------|
-/// | `summary`             | On connect, and when a client lags     |
+/// | `snapshot`            | On connect and lag recovery (full state)|
 /// | `session_upsert`      | Session created or updated             |
 /// | `session_remove`      | Session removed from active map        |
 /// | `cli_session_created` | CLI session created                    |
@@ -28,9 +28,9 @@ use super::summary::build_summary;
 /// | `cli_session_removed` | CLI session killed                     |
 /// | `heartbeat`           | Every 15 seconds to keep connection    |
 ///
-/// On initial connection, the server sends the current summary followed by
-/// all active sessions so the client can hydrate immediately without a
-/// separate REST call.
+/// On initial connection the server sends a single `snapshot` event containing
+/// the summary, all active sessions, and recently closed sessions so the client
+/// can hydrate immediately without a separate REST call.
 #[utoipa::path(get, path = "/api/live/stream", tag = "live",
     responses(
         (status = 200, description = "SSE stream of live session events", content_type = "text/event-stream"),
@@ -42,28 +42,27 @@ pub async fn live_stream(
     let mut rx = state.live_tx.subscribe();
     let sessions = state.live_sessions.clone();
     let live_manager = state.live_manager.clone();
-    let cli_sessions = state.cli_sessions.clone();
     let mut shutdown = state.shutdown.clone();
 
     let stream = async_stream::stream! {
-        // 1. On connect: send current summary + all active sessions
+        // 1. On connect: send snapshot (summary + all active sessions + recently closed)
         {
             let map = sessions.read().await;
             let pc = live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
             let summary = build_summary(&map, pc);
-            match serde_json::to_string(&summary) {
-                Ok(data) => yield Ok(Event::default().event("summary").data(data)),
-                Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
-            }
-            for session in map.values() {
-                let enriched = crate::live::ownership::enrich_with_ownership(
-                    session, &cli_sessions,
-                ).await;
-                let upsert = SessionEvent::SessionUpsert { session: enriched };
-                match serde_json::to_string(&upsert) {
-                    Ok(data) => yield Ok(Event::default().event("session_upsert").data(data)),
-                    Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
-                }
+            let active: Vec<&crate::live::state::LiveSession> = map.values().collect();
+            let closed: Vec<crate::live::state::LiveSession> = {
+                let ring = state.closed_ring.read().await;
+                ring.iter().cloned().collect()
+            };
+            let snapshot = serde_json::json!({
+                "summary": summary,
+                "sessions": active,
+                "recentlyClosed": closed,
+            });
+            match serde_json::to_string(&snapshot) {
+                Ok(data) => yield Ok(Event::default().event("snapshot").data(data)),
+                Err(e) => tracing::error!("failed to serialize snapshot: {e}"),
             }
         }
 
@@ -90,27 +89,27 @@ pub async fn live_stream(
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!(
-                                "SSE client lagged by {} events, re-sending all sessions",
+                                "SSE client lagged by {} events, re-sending snapshot",
                                 n
                             );
-                            // Re-send full state (same as initial connect) so the
-                            // client recovers from any missed discover/complete events.
+                            // Re-send full snapshot (same as initial connect) so the
+                            // client recovers from any missed events.
                             let map = sessions.read().await;
                             let pc = live_manager.as_ref().map(|m| m.process_count()).unwrap_or(0);
                             let summary = build_summary(&map, pc);
-                            match serde_json::to_string(&summary) {
-                                Ok(data) => yield Ok(Event::default().event("summary").data(data)),
-                                Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
-                            }
-                            for session in map.values() {
-                                let enriched = crate::live::ownership::enrich_with_ownership(
-                                    session, &cli_sessions,
-                                ).await;
-                                let upsert = SessionEvent::SessionUpsert { session: enriched };
-                                match serde_json::to_string(&upsert) {
-                                    Ok(data) => yield Ok(Event::default().event("session_upsert").data(data)),
-                                    Err(e) => tracing::error!("failed to serialize SSE event: {e}"),
-                                }
+                            let active: Vec<&crate::live::state::LiveSession> = map.values().collect();
+                            let closed: Vec<crate::live::state::LiveSession> = {
+                                let ring = state.closed_ring.read().await;
+                                ring.iter().cloned().collect()
+                            };
+                            let snapshot = serde_json::json!({
+                                "summary": summary,
+                                "sessions": active,
+                                "recentlyClosed": closed,
+                            });
+                            match serde_json::to_string(&snapshot) {
+                                Ok(data) => yield Ok(Event::default().event("snapshot").data(data)),
+                                Err(e) => tracing::error!("failed to serialize snapshot: {e}"),
                             }
                         }
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,

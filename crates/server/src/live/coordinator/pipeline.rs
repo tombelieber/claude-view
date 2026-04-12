@@ -268,8 +268,9 @@ impl SessionCoordinator {
         }
 
         // -- Phase 4: Broadcast --
-        // Ownership is computed at SSE/REST boundary (enrich_with_ownership),
-        // not cached here. The snapshot goes out with ownership = None.
+        // Ownership is a stored field in the session record (written by
+        // write_ownership / bind_control / unbind_control). The snapshot
+        // goes out with whatever ownership is currently stored.
         let snapshot = snapshot;
 
         match broadcast_action {

@@ -121,8 +121,8 @@ pub async fn create_session(
 
     // Eagerly resolve claude_session_id in background.
     // Claude Code writes ~/.claude/sessions/{pid}.json shortly after start.
-    // Poll until found so compute_ownership() sees the tmux binding
-    // at the next SSE/REST boundary — no stale window.
+    // Poll until found so ownership.tmux binding is written into the session
+    // record immediately — no stale window.
     {
         let state = state.clone();
         let id = session.id.clone();
@@ -135,16 +135,25 @@ pub async fn create_session(
                             .cli_sessions
                             .set_claude_session_id(&id, sid.clone())
                             .await;
-                        // Emit SessionUpdated so SSE enriches with the
-                        // newly-resolved ownership.tmux binding.
+                        // Write ownership into the session record and broadcast.
                         // Guard: skip Done sessions — client already moved them
                         // to recentlyClosed; re-emitting would resurrect them.
-                        if let Some(session) = state.live_sessions.read().await.get(&sid) {
-                            if session.status != crate::live::state::SessionStatus::Done {
-                                let _ = state.live_tx.send(SessionEvent::SessionUpsert {
-                                    session: session.clone(),
-                                });
-                            }
+                        let is_done = state
+                            .live_sessions
+                            .read()
+                            .await
+                            .get(&sid)
+                            .map_or(true, |s| {
+                                s.status == crate::live::state::SessionStatus::Done
+                            });
+                        if !is_done {
+                            crate::live::ownership::write_ownership(
+                                &state.live_sessions,
+                                &sid,
+                                &state.cli_sessions,
+                                &state.live_tx,
+                            )
+                            .await;
                         }
                         return;
                     }
@@ -191,13 +200,23 @@ pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json
                             .set_claude_session_id(&session.id, sid.clone())
                             .await;
                         session.claude_session_id = Some(sid.clone());
-                        // Emit SessionUpdated so SSE enriches with ownership.tmux
-                        if let Some(live) = state.live_sessions.read().await.get(&sid) {
-                            if live.status != crate::live::state::SessionStatus::Done {
-                                let _ = state.live_tx.send(SessionEvent::SessionUpsert {
-                                    session: live.clone(),
-                                });
-                            }
+                        // Write ownership into the session record and broadcast.
+                        let is_done = state
+                            .live_sessions
+                            .read()
+                            .await
+                            .get(&sid)
+                            .map_or(true, |s| {
+                                s.status == crate::live::state::SessionStatus::Done
+                            });
+                        if !is_done {
+                            crate::live::ownership::write_ownership(
+                                &state.live_sessions,
+                                &sid,
+                                &state.cli_sessions,
+                                &state.live_tx,
+                            )
+                            .await;
                         }
                     }
                 }

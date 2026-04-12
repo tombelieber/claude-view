@@ -19,12 +19,7 @@ use super::types::MessagesQuery;
 )]
 pub async fn list_live_sessions(State(state): State<Arc<AppState>>) -> Json<serde_json::Value> {
     let map = state.live_sessions.read().await;
-    let mut sessions: Vec<_> = Vec::with_capacity(map.len());
-    for session in map.values() {
-        sessions.push(
-            crate::live::ownership::enrich_with_ownership(session, &state.cli_sessions).await,
-        );
-    }
+    let mut sessions: Vec<_> = map.values().cloned().collect();
     sessions.sort_by(|a, b| b.hook.last_activity_at.cmp(&a.hook.last_activity_at));
     let recently_closed: Vec<_> = {
         let ring = state.closed_ring.read().await;
@@ -57,11 +52,7 @@ pub async fn get_live_session(
 ) -> Response {
     let map = state.live_sessions.read().await;
     match map.get(&id) {
-        Some(session) => {
-            let enriched =
-                crate::live::ownership::enrich_with_ownership(session, &state.cli_sessions).await;
-            Json(serde_json::json!({ "session": enriched })).into_response()
-        }
+        Some(session) => Json(serde_json::json!({ "session": session })).into_response(),
         None => (
             axum::http::StatusCode::NOT_FOUND,
             Json(serde_json::json!({ "error": "Session not found" })),

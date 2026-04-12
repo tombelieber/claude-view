@@ -120,7 +120,8 @@ pub struct LiveSession {
 
     // -- Ownership + interaction fields --
     /// Session ownership as independent facts (tmux binding, SDK binding).
-    /// Computed at SSE/REST boundary by `enrich_with_ownership()`.
+    /// Stored directly in the session record by `write_ownership()`,
+    /// `bind_control`, and `unbind_control`. SSE/REST reads directly.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ownership: Option<SessionOwnership>,
     /// Lightweight pending interaction metadata for SessionCard display.

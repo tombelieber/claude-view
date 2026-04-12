@@ -55,6 +55,33 @@ pub async fn enrich_with_ownership(
     enriched
 }
 
+/// Write resolved ownership into the session record and broadcast update.
+///
+/// Computes ownership from the current session state and CLI session store,
+/// stores it directly in the `LiveSession.ownership` field, and broadcasts
+/// a `SessionUpsert` so SSE clients see the binding immediately.
+pub async fn write_ownership(
+    sessions: &crate::live::manager::LiveSessionMap,
+    session_id: &str,
+    cli_sessions: &CliSessionStore,
+    tx: &tokio::sync::broadcast::Sender<crate::live::state::SessionEvent>,
+) {
+    let ownership = {
+        let map = sessions.read().await;
+        let Some(session) = map.get(session_id) else {
+            return;
+        };
+        compute_ownership(session, cli_sessions).await
+    };
+    let mut map = sessions.write().await;
+    if let Some(session) = map.get_mut(session_id) {
+        session.ownership = Some(ownership);
+        let _ = tx.send(crate::live::state::SessionEvent::SessionUpsert {
+            session: session.clone(),
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
