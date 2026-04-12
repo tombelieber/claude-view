@@ -32,7 +32,8 @@ log() {
 
 # Ports we own — keep in sync with package.json scripts and vite.config.ts.
 # SHOULD be the single source of truth for dev ports.
-PORTS=(47892 5173 3001)
+# 47892=rust-server, 5173=vite-web, 3001=sidecar, 6006=storybook
+PORTS=(47892 5173 3001 6006)
 
 # Process name patterns that match our own stack only. We NEVER kill by
 # bare "node" — that would nuke every Node process on the machine.
@@ -47,6 +48,12 @@ PROCESS_PATTERNS=(
   'sidecar/dist/index.js'
   'claude-view-server'
   'cargo-watch.*claude-view-server'
+  # Agent-spawned orphans: storybook, esbuild, preview servers.
+  # Scoped to this repo's node_modules to avoid killing other projects.
+  'claude-view.*storybook dev'
+  'claude-view.*esbuild.*--ping'
+  'claude-view.*astro preview'
+  'claude-view.*turbo.*preview'
 )
 
 killed_any=0
