@@ -569,31 +569,37 @@ impl LiveSessionManager {
         let mut event_rx = self.tx.subscribe();
 
         tokio::spawn(async move {
+            // Helper: read current PIDs from the session map and publish.
+            let publish = |sessions: &LiveSessionMap, pids_tx: &watch::Sender<Vec<u32>>| {
+                let sessions = sessions.clone();
+                let pids_tx = pids_tx.clone();
+                async move {
+                    let pids: Vec<u32> = sessions
+                        .read()
+                        .await
+                        .values()
+                        .filter_map(|s| s.hook.pid)
+                        .collect();
+                    let _ = pids_tx.send(pids);
+                }
+            };
+
             // Initial publish: capture PIDs from any sessions already in the map
             // (e.g. from startup recovery that completed before this task spawned).
-            {
-                let pids: Vec<u32> = sessions
-                    .read()
-                    .await
-                    .values()
-                    .filter_map(|s| s.hook.pid)
-                    .collect();
-                let _ = pids_tx.send(pids);
-            }
+            publish(&sessions, &pids_tx).await;
 
             // React to all session map changes via the broadcast channel.
-            while let Ok(event) = event_rx.recv().await {
-                match event {
-                    SessionEvent::SessionUpsert { .. } | SessionEvent::SessionRemove { .. } => {
-                        let pids: Vec<u32> = sessions
-                            .read()
-                            .await
-                            .values()
-                            .filter_map(|s| s.hook.pid)
-                            .collect();
-                        let _ = pids_tx.send(pids);
+            loop {
+                match event_rx.recv().await {
+                    Ok(SessionEvent::SessionUpsert { .. } | SessionEvent::SessionRemove { .. }) => {
+                        publish(&sessions, &pids_tx).await;
                     }
-                    _ => {} // Ignore CLI session events, etc.
+                    Ok(_) => {} // Ignore CLI session events, etc.
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(skipped = n, "pid_publisher lagged, re-syncing");
+                        publish(&sessions, &pids_tx).await;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
         });
