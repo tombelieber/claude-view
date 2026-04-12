@@ -125,8 +125,7 @@ claude-view-server-types = { path = "crates/server-types" }
 # test     — light optimization for faster test execution
 #
 # Daily:   ./scripts/cq build --release
-# Ship:    ./scripts/build-dist.sh [--pgo]
-# CI:      cargo build --profile dist -p claude-view-server --no-default-features --features dist
+# Ship/CI: cargo build --profile dist -p claude-view-server --no-default-features --features dist
 
 [profile.dev]
 opt-level = 0          # Fastest compile (no optimization)
