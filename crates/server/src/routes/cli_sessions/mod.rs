@@ -16,6 +16,7 @@ pub mod store;
 pub mod terminal;
 pub mod terminal_ws;
 pub mod tmux;
+pub mod tmux_index;
 pub mod types;
 
 #[cfg(test)]
@@ -32,6 +33,7 @@ use crate::state::AppState;
 // Re-export key types.
 pub use store::CliSessionStore;
 pub use tmux::{RealTmux, TmuxCommand};
+pub use tmux_index::TmuxSessionIndex;
 pub use types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};
 
 // Re-export handlers for OpenAPI path reference.
