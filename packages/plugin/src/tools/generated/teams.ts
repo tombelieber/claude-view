@@ -19,11 +19,29 @@ export const teamsGeneratedTools: ToolDef[] = [
     name: 'teams_get_team',
     description: 'Get team detail.',
     inputSchema: z.object({
-    name: z.string(),
-  }),
+      name: z.string(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/teams/${encodeURIComponent(String(args.name))}`)
+      const result = await client.request(
+        'GET',
+        `/api/teams/${encodeURIComponent(String(args.name))}`,
+      )
+      return JSON.stringify(result, null, 2)
+    },
+  },
+  {
+    name: 'teams_get_team_cost',
+    description: 'Get team cost breakdown.',
+    inputSchema: z.object({
+      name: z.string(),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    handler: async (client, args) => {
+      const result = await client.request(
+        'GET',
+        `/api/teams/${encodeURIComponent(String(args.name))}/cost`,
+      )
       return JSON.stringify(result, null, 2)
     },
   },
@@ -31,12 +49,32 @@ export const teamsGeneratedTools: ToolDef[] = [
     name: 'teams_get_team_inbox',
     description: 'Get team inbox messages.',
     inputSchema: z.object({
-    name: z.string(),
-  }),
+      name: z.string(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/teams/${encodeURIComponent(String(args.name))}/inbox`)
+      const result = await client.request(
+        'GET',
+        `/api/teams/${encodeURIComponent(String(args.name))}/inbox`,
+      )
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
+  {
+    name: 'teams_get_team_sidechains',
+    description: 'Get team member sidechains.',
+    inputSchema: z.object({
+      name: z.string(),
+      session_id: z.string().optional(),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    handler: async (client, args) => {
+      const result = await client.request(
+        'GET',
+        `/api/teams/${encodeURIComponent(String(args.name))}/sidechains`,
+        { params: { session_id: args.session_id } },
+      )
+      return JSON.stringify(result, null, 2)
+    },
+  },
 ]

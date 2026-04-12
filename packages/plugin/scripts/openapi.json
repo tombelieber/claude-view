@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.33.2"
+    "version": "0.34.1"
   },
   "paths": {
     "/api/active-sessions": {
@@ -245,6 +245,25 @@
       }
     },
     "/api/cli-sessions": {
+      "get": {
+        "tags": [
+          "cli"
+        ],
+        "summary": "GET /api/cli-sessions -- List all CLI sessions, with health check.",
+        "operationId": "list_sessions",
+        "responses": {
+          "200": {
+            "description": "All CLI sessions with live health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "cli"
@@ -280,6 +299,34 @@
           },
           "503": {
             "description": "tmux unavailable"
+          }
+        }
+      }
+    },
+    "/api/cli-sessions/{id}": {
+      "delete": {
+        "tags": [
+          "cli"
+        ],
+        "summary": "DELETE /api/cli-sessions/{id} -- Kill a CLI session.",
+        "operationId": "kill_session",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "CLI session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session killed and removed"
+          },
+          "404": {
+            "description": "CLI session not found"
           }
         }
       }
@@ -6769,13 +6816,31 @@
           }
         }
       },
+      "ConfigFeatureFlags": {
+        "type": "object",
+        "required": [
+          "search",
+          "systemMonitor"
+        ],
+        "properties": {
+          "search": {
+            "type": "boolean",
+            "description": "Whether full-text search is enabled."
+          },
+          "systemMonitor": {
+            "type": "boolean",
+            "description": "Whether the system resource monitor is enabled."
+          }
+        }
+      },
       "ConfigResponse": {
         "type": "object",
         "required": [
           "auth",
           "sharing",
           "version",
-          "telemetry"
+          "telemetry",
+          "features"
         ],
         "properties": {
           "anonymousId": {
@@ -6788,6 +6853,10 @@
           "auth": {
             "type": "boolean",
             "description": "Whether Supabase auth is configured (JWKS loaded)."
+          },
+          "features": {
+            "$ref": "#/components/schemas/ConfigFeatureFlags",
+            "description": "Feature flags loaded from ~/.claude-view/config.toml."
           },
           "posthogKey": {
             "type": [
@@ -9716,6 +9785,21 @@
           }
         }
       },
+      "ListResponse": {
+        "type": "object",
+        "description": "Response for GET /api/cli-sessions.",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CliSession"
+            }
+          }
+        }
+      },
       "ListRulesResponse": {
         "type": "object",
         "description": "Response for GET /api/coaching/rules.",
@@ -10899,7 +10983,7 @@
           "memoryBytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Total resident memory in bytes.",
+            "description": "Total memory in bytes (physical footprint on macOS, RSS elsewhere).",
             "minimum": 0
           },
           "name": {
@@ -12245,7 +12329,7 @@
           "memoryBytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Resident memory in bytes.",
+            "description": "Memory in bytes (physical footprint on macOS, RSS elsewhere).",
             "minimum": 0
           },
           "pid": {

@@ -3,8 +3,10 @@
 
 import type { ToolDef } from '../types.js'
 import { classifyGeneratedTools } from './classify.js'
+import { cliGeneratedTools } from './cli.js'
 import { coachingGeneratedTools } from './coaching.js'
 import { contributionsGeneratedTools } from './contributions.js'
+import { crateroutesinteracthandlersGeneratedTools } from './crate::routes::interact::handlers.js'
 import { exportGeneratedTools } from './export.js'
 import { facetsGeneratedTools } from './facets.js'
 import { healthGeneratedTools } from './health.js'
@@ -12,6 +14,8 @@ import { ideGeneratedTools } from './ide.js'
 import { insightsGeneratedTools } from './insights.js'
 import { jobsGeneratedTools } from './jobs.js'
 import { liveGeneratedTools } from './live.js'
+import { mcpGeneratedTools } from './mcp.js'
+import { memoryGeneratedTools } from './memory.js'
 import { monitorGeneratedTools } from './monitor.js'
 import { oauthGeneratedTools } from './oauth.js'
 import { pairingGeneratedTools } from './pairing.js'
@@ -30,12 +34,15 @@ import { systemGeneratedTools } from './system.js'
 import { teamsGeneratedTools } from './teams.js'
 import { telemetryGeneratedTools } from './telemetry.js'
 import { turnsGeneratedTools } from './turns.js'
+import { webhooksGeneratedTools } from './webhooks.js'
 import { workflowsGeneratedTools } from './workflows.js'
 
 export const allGeneratedTools: ToolDef[] = [
   ...classifyGeneratedTools,
+  ...cliGeneratedTools,
   ...coachingGeneratedTools,
   ...contributionsGeneratedTools,
+  ...crateroutesinteracthandlersGeneratedTools,
   ...exportGeneratedTools,
   ...facetsGeneratedTools,
   ...healthGeneratedTools,
@@ -43,6 +50,8 @@ export const allGeneratedTools: ToolDef[] = [
   ...insightsGeneratedTools,
   ...jobsGeneratedTools,
   ...liveGeneratedTools,
+  ...mcpGeneratedTools,
+  ...memoryGeneratedTools,
   ...monitorGeneratedTools,
   ...oauthGeneratedTools,
   ...pairingGeneratedTools,
@@ -61,5 +70,6 @@ export const allGeneratedTools: ToolDef[] = [
   ...teamsGeneratedTools,
   ...telemetryGeneratedTools,
   ...turnsGeneratedTools,
+  ...webhooksGeneratedTools,
   ...workflowsGeneratedTools,
 ]
