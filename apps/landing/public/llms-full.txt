@@ -1865,6 +1865,48 @@ npx claude-view@latest
 Open the Live Monitor and watch a new Claude Code session boot — you'll see it appear as "Spawning" with a blue dot before any output arrives.
 
 
+--- blog/v0-37-0-archived-projects-and-born-waiter.mdx ---
+
+---
+title: "Smart Project Archiving and Instant Session Resolution"
+description: "v0.37.0 auto-detects archived projects, resolves CLI sessions without polling, and eliminates dual-path data flow bugs."
+date: 2026-04-14
+author: claude-view team
+---
+
+If you've used Claude Code across dozens of repositories, your Scope panel probably has ghosts — project entries for directories you deleted months ago. And if you've ever noticed a brief delay when launching a new CLI session from the dashboard, that was polling. Both problems are solved in v0.37.0.
+
+## Archived project detection
+
+claude-view now probes each project directory on startup. If the directory no longer exists on disk, the project is marked as archived and moves to a collapsed section at the bottom of the Scope panel. Your active projects stay front and center.
+
+This works through a new `project_dir_status` table that tracks directory existence. The startup backfill runs asynchronously — it doesn't block the server from serving requests. Projects are also rechecked when new sessions arrive, so if you delete a directory mid-session, the next scan catches it.
+
+For users with worktree-heavy workflows, we also fixed git root inference. Previously, sessions inside a worktree could fail to resolve back to the parent repository. The path resolution now walks up the directory tree to find the real `.git` root.
+
+## Zero-poll session resolution
+
+When you click "New Session" in the dashboard, claude-view creates a tmux session, waits for Claude to boot, then returns the session identity. Previously, this "wait" was a poll loop: check for a pid.json file every 50ms, up to 100 times.
+
+The new "born waiter" pattern replaces polling with event-driven resolution. An FSEvents watcher registers before the tmux session is created, then races against the fallback poll. In production on macOS, the watcher fires within a millisecond of Claude writing its pid.json. The poll path still exists for environments without filesystem events (CI, containers), but it almost never wins the race.
+
+We instrumented the entire create-session path with lifecycle debug logging to verify the timing. The waterfall shows: API handler starts at T+0ms, tmux spawns at T+2ms, pane PID resolves at T+3ms, and the born event fires at T+63ms (Claude's boot time). Zero wasted poll cycles.
+
+## Single-writer architecture
+
+A recurring bug pattern in real-time dashboards: a button triggers a fetch that creates an entity, while simultaneously an SSE stream delivers the same entity from the server. Two paths, same data, guaranteed desync.
+
+v0.37.0 enforces a single-writer rule: buttons own the fetch, parent components react to the callback, and SSE streams only sync existing state — they never create new entities. This eliminated a class of phantom duplicate entries that appeared briefly before reconciliation cleaned them up.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Try launching a new CLI session from the dashboard — the resolution is noticeably faster. And if you have deleted project directories, check your Scope panel for the new Archived section.
+
+
 --- blog/v0-4-0-dashboard-analytics.mdx ---
 
 ---
@@ -3496,6 +3538,37 @@ version: v0.36.1
 ## Fixes
 
 **macOS ARM startup crash** — fixed a panic during deep indexing caused by rustls 0.23+ failing to auto-detect the TLS crypto provider. Cargo feature unification compiled both `ring` and `aws-lc-rs` into the binary; the server now explicitly installs `aws-lc-rs` as the process-level CryptoProvider before any network I/O. Also applied to the relay binary for consistency.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.37.0.md ---
+
+---
+title: "v0.37.0 — Archived Projects & Zero-Poll Resolution"
+date: 2026-04-14
+version: v0.37.0
+---
+
+## New features
+
+**Archived project detection** — projects whose directories no longer exist on disk are automatically detected and rendered in a collapsed "Archived" section within the Scope panel. A new `project_dir_status` table tracks directory existence, with smart startup backfill that probes each project directory without blocking the server.
+
+**Zero-poll PID resolution** — the "born waiter" pattern replaces polling for CLI session identity resolution. An FSEvents watcher races against a 50ms fallback poll — in production, the watcher wins with sub-millisecond latency. New lifecycle debug instrumentation captures the full timing waterfall for the CLI session create path.
+
+## Improvements
+
+**Single-writer event-driven architecture** — eliminated dual-path data flow where both imperative fetch and reactive SSE could create the same entity. Buttons now own fetch; parents react to callbacks. SSE syncs existing state but never creates.
+
+**Double session spawn fix** — fixed a race where new CLI sessions could spawn two tmux processes instead of one.
+
+**Oracle stability** — fast ticks no longer blank the top processes and disk gauges in the system monitor. Resource snapshots use Option-based fields to distinguish "not yet collected" from "empty."
+
+**Git root inference** — worktree paths now correctly walk up the directory tree to find the real `.git` root, fixing project detection for repos using `git worktree`.
 
 ## Getting started
 
