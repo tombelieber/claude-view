@@ -17,12 +17,13 @@ pub fn log_lifecycle(
     {
         use std::io::Write;
 
-        let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let now = chrono::Utc::now();
+        let ts = now.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let record = serde_json::json!({
             "source": "rust-server",
             "event": event,
             "ts": ts,
-            "epochMs": chrono::Utc::now().timestamp_millis(),
+            "epochMs": now.timestamp_millis(),
             "pid": pid,
             "sessionId": session_id,
             "tmuxName": tmux_name,
