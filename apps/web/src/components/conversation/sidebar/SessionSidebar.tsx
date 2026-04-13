@@ -19,8 +19,8 @@ interface SessionSidebarProps {
   liveSessions: LiveSession[]
   /** Called when user clicks "New Chat" — opens a blank tab directly in the dock. */
   onNewChat?: () => void
-  /** Called when user creates a new CLI (tmux) session from the dropdown. */
-  onNewCliSession?: () => Promise<void>
+  /** Called with the new session UUID after CLI creation succeeds. */
+  onCliSessionCreated?: (sessionId: string) => void
 }
 
 function groupByTime(sessions: SessionInfo[], now: number) {
@@ -49,7 +49,11 @@ function groupByTime(sessions: SessionInfo[], now: number) {
   return groups.filter((g) => g.sessions.length > 0)
 }
 
-export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: SessionSidebarProps) {
+export function SessionSidebar({
+  liveSessions,
+  onNewChat,
+  onCliSessionCreated,
+}: SessionSidebarProps) {
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
   const { resumeSession, deleteSession, forkSession } = useSessionMutations()
@@ -214,10 +218,7 @@ export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: Ses
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3 border-b border-gray-200 dark:border-gray-800">
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Chats</span>
-        <NewSessionDropdown
-          onNewChat={handleNewChat}
-          onNewCliSession={onNewCliSession ?? (async () => handleNewChat())}
-        />
+        <NewSessionDropdown onNewChat={handleNewChat} onCliSessionCreated={onCliSessionCreated} />
       </div>
 
       {/* Search */}

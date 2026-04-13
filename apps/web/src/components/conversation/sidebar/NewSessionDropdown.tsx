@@ -22,43 +22,53 @@ function saveLastMode(mode: SessionMode) {
 
 interface NewSessionDropdownProps {
   onNewChat: () => void
-  onNewCliSession: () => Promise<void>
+  /** Called with the new session UUID after CLI creation succeeds. */
+  onCliSessionCreated?: (sessionId: string) => void
 }
 
-export function NewSessionDropdown({ onNewChat, onNewCliSession }: NewSessionDropdownProps) {
+export function NewSessionDropdown({ onNewChat, onCliSessionCreated }: NewSessionDropdownProps) {
   const [mode, setMode] = useState<SessionMode>(readLastMode)
   const [isCreating, setIsCreating] = useState(false)
 
-  const handlePrimaryClick = useCallback(async () => {
+  // Own the POST — same pattern as NewCliSessionButton in the monitor.
+  const createCliSession = useCallback(async () => {
     if (isCreating) return
+    setIsCreating(true)
+    try {
+      const resp = await fetch('/api/cli-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ args: ['--dangerously-skip-permissions'] }),
+      })
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      const { sessionId } = (await resp.json()) as { sessionId: string }
+      if (sessionId) onCliSessionCreated?.(sessionId)
+    } catch (err) {
+      console.error('Failed to create CLI session:', err)
+    } finally {
+      setIsCreating(false)
+    }
+  }, [isCreating, onCliSessionCreated])
+
+  const handlePrimaryClick = useCallback(async () => {
     if (mode === 'tmux') {
-      setIsCreating(true)
-      try {
-        await onNewCliSession()
-      } finally {
-        setIsCreating(false)
-      }
+      await createCliSession()
     } else {
       onNewChat()
     }
-  }, [mode, onNewChat, onNewCliSession, isCreating])
+  }, [mode, onNewChat, createCliSession])
 
   const handleSelect = useCallback(
     async (selected: SessionMode) => {
       setMode(selected)
       saveLastMode(selected)
       if (selected === 'tmux') {
-        setIsCreating(true)
-        try {
-          await onNewCliSession()
-        } finally {
-          setIsCreating(false)
-        }
+        await createCliSession()
       } else {
         onNewChat()
       }
     },
-    [onNewChat, onNewCliSession],
+    [onNewChat, createCliSession],
   )
 
   const Icon = isCreating ? Loader2 : mode === 'tmux' ? Terminal : MessageSquarePlus

@@ -1,32 +1,15 @@
 /**
- * Lightweight hook that polls GET /api/live/sessions to build:
- * - a Set<string> of currently-live session IDs
- * - a Map<sessionId, totalCostUsd> for live cost override on active history cards
+ * Selector that derives live session presence from the SSE-driven store.
  *
- * Polls every 10 seconds — much cheaper than opening a second SSE connection.
+ * Returns a narrow projection — just IDs and cost — so consumers (HistoryView)
+ * don't depend on the full LiveSession type. Same pattern as LiveMonitorPage:
+ * SSE drives the store, selectors project what each consumer needs.
+ *
+ * Previously this polled GET /api/live/sessions every 10s. Eliminated in favour
+ * of the single-writer event-driven architecture (SSE → store → selector).
  */
-import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-
-interface LiveSubAgentSnapshot {
-  costUsd?: number | null
-}
-
-interface LiveCostSnapshot {
-  totalUsd?: number
-}
-
-interface LiveSessionSnapshot {
-  id: string
-  cost?: LiveCostSnapshot | null
-  subAgents?: LiveSubAgentSnapshot[] | null
-}
-
-interface LiveSessionsResponse {
-  sessions: LiveSessionSnapshot[]
-  total: number
-  processCount: number
-}
+import { useLiveSessionStore } from '../store/live-session-store'
 
 export interface LiveSessionPresence {
   ids: Set<string>
@@ -34,36 +17,18 @@ export interface LiveSessionPresence {
 }
 
 export function useLiveSessionPresence(): LiveSessionPresence {
-  const { data } = useQuery<LiveSessionsResponse>({
-    queryKey: ['live-session-ids'],
-    queryFn: async () => {
-      const res = await fetch('/api/live/sessions')
-      if (!res.ok) return { sessions: [], total: 0, processCount: 0 }
-      return res.json()
-    },
-    refetchInterval: 10_000,
-    staleTime: 5_000,
-  })
-
+  const sessionsById = useLiveSessionStore((s) => s.sessionsById)
   return useMemo(() => {
-    const sessions = data?.sessions
-    if (!sessions || sessions.length === 0) {
-      return { ids: new Set<string>(), costById: new Map<string, number>() }
-    }
-
     const ids = new Set<string>()
     const costById = new Map<string, number>()
-    for (const s of sessions) {
-      ids.add(s.id)
+    for (const [id, s] of sessionsById) {
+      ids.add(id)
       const subAgentTotal = s.subAgents?.reduce((sum, a) => sum + (a.costUsd ?? 0), 0) ?? 0
-      const totalCost = (s.cost?.totalUsd ?? 0) + subAgentTotal
-      if (totalCost > 0) {
-        costById.set(s.id, totalCost)
-      }
+      const total = (s.cost?.totalUsd ?? 0) + subAgentTotal
+      if (total > 0) costById.set(id, total)
     }
-
     return { ids, costById }
-  }, [data])
+  }, [sessionsById])
 }
 
 export function useLiveSessionIds(): Set<string> {

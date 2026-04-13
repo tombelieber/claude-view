@@ -162,23 +162,6 @@ export function ChatPageV2() {
     if (added && !added.api.isActive) added.api.setActive()
   }, [])
 
-  // CLI (tmux) session creation — POST blocks until Claude writes pid.json,
-  // then returns the real UUID. We open the panel directly with that UUID.
-  const openNewCliSession = useCallback(async () => {
-    try {
-      const resp = await fetch('/api/cli-sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ args: ['--dangerously-skip-permissions'] }),
-      })
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      const { sessionId: uuid } = (await resp.json()) as { sessionId: string }
-      if (uuid) openSession(uuid)
-    } catch (err) {
-      console.error('Failed to create CLI session:', err)
-    }
-  }, [openSession])
-
   // Handle subsequent URL navigation (e.g. clicking sidebar → /chat/:sessionId).
   // Initial mount + layout restoration is handled by dockview's fromJSON + handleDockReady.
   const lastOpenedRef = useRef<string | null>(null)
@@ -188,19 +171,18 @@ export function ChatPageV2() {
     openSession(sessionId)
   }, [sessionId, openSession])
 
-  // Sync live data into existing tab params when SSE ticks, and reactively
-  // create panels for live sessions that don't have a panel yet (e.g. page
-  // refresh, second browser tab).
+  // Sync live data into existing tab params when SSE ticks.
+  // Panels are only created via explicit user action (sidebar click, CLI button).
+  // Same pattern as LiveMonitorPage: SSE drives data, user drives selection.
   useEffect(() => {
     const api = dockApiRef.current
     if (!api) return
     const cached = readSidebarCache(queryClient)
 
-    // Pass 1: iterate liveSessionsList — update existing panels OR create new ones.
+    // Update existing panels with fresh live data.
     for (const live of liveSessionsList) {
       const tmuxId = live.ownership?.tmux?.cliSessionId
 
-      // Find existing panel by sessionId or tmuxSessionId
       const existing = api.panels.find((p) => {
         const params = p.params as { sessionId?: string; tmuxSessionId?: string }
         return (
@@ -209,7 +191,6 @@ export function ChatPageV2() {
       })
 
       if (existing) {
-        // Update existing panel params
         const liveCtx: LiveContextData | undefined = {
           contextWindowTokens: live.contextWindowTokens,
           statuslineContextWindowSize: live.statuslineContextWindowSize ?? null,
@@ -230,22 +211,14 @@ export function ChatPageV2() {
         if (title && title !== existing.title) {
           existing.api.setTitle(title)
         }
-      } else if (live.id) {
-        // Reactive panel creation for tmux sessions that appeared via SSE
-        // (e.g. page refresh, second browser tab). Uses the real UUID.
-        const args = makeSessionPanelArgs(live.id, cached, liveSessionsList)
-        api.addPanel(args)
-        const added = api.panels.find((p) => p.id === args.id)
-        if (added && !added.api.isActive) added.api.setActive()
       }
     }
 
-    // Pass 2: update titles for panels with sessions not in liveSessionsList
+    // Update titles for panels with sessions not in liveSessionsList
     // (historical panels that need title refresh from sidebar cache).
     for (const panel of api.panels) {
       const sid = (panel.params as { sessionId?: string })?.sessionId
       if (!sid) continue
-      // Skip if already handled in pass 1
       const handledByLive = liveSessionsList.some(
         (s) =>
           s.id === sid ||
@@ -266,7 +239,7 @@ export function ChatPageV2() {
       <SessionSidebar
         liveSessions={liveSessionsList}
         onNewChat={openNewChat}
-        onNewCliSession={openNewCliSession}
+        onCliSessionCreated={openSession}
       />
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         <ChatDockLayout

@@ -110,6 +110,7 @@ export function LiveMonitorPage() {
         handleViewModeChange('monitor')
       }
       selectPane(focusSessionId)
+      setSelectedId(focusSessionId)
       const params = new URLSearchParams(searchParams)
       params.delete('focus')
       setSearchParams(params, { replace: true })
