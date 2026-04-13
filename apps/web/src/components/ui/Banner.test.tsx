@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Banner } from './Banner'
 
-// Mock localStorage using vi.spyOn (matches codebase convention in use-layout-mode.test.ts)
+// Mock localStorage using vi.spyOn
 const mockStorage = new Map<string, string>()
 
 beforeEach(() => {
