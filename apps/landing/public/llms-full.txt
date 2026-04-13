@@ -1769,54 +1769,6 @@ npx claude-view@latest
 Try opening a session that spawns a tmux process — you'll see the terminal tab appear automatically in the Chat page.
 
 
---- blog/v0-36-0-pid-lifecycle-and-terminal-panes.mdx ---
-
----
-title: "PID Files, One Store, and Terminal Panes That Stay Put"
-description: "v0.36.0 replaces process tree scanning with PID-based session detection, unifies the session store, and adds Zed-style terminal panes."
-date: 2026-04-13
-author: claude-view team
----
-
-If you've ever restarted the claude-view server and found ghost sessions lingering in your dashboard, or watched a session flicker between "active" and "unknown" because the process scanner missed a heartbeat — v0.36.0 fixes the root cause.
-
-## PID files as the single source of truth
-
-Previous versions detected Claude Code sessions by scanning the process tree — looking for specific process signatures, checking parent-child relationships, cross-referencing tmux session names. It worked, but it was fragile. Process tree scanning races with process startup and teardown, and different OS versions report process metadata inconsistently.
-
-v0.36.0 flips the model. Claude Code writes a PID file when it starts and removes it when it exits. The oracle now reads these files instead of scanning `/proc` or `ps`. This is the same pattern used by PostgreSQL, nginx, and most Unix daemons — because it works.
-
-The oracle runs on a two-tier refresh cycle: PID file checks every 2 seconds (cheap — just `stat` calls), full system reconciliation every 10 seconds (for cleanup and edge cases). The result is faster detection with lower CPU usage.
-
-## One store to rule them all
-
-The server previously maintained two separate session stores: `CliSessionStore` for CLI-discovered sessions and the main `LiveSessionStore` for everything else. This dual-store architecture meant ownership data, tmux bindings, and lifecycle events had to be synchronized between two maps — a constant source of subtle state bugs.
-
-v0.36.0 collapses both into a single unified store. Every session — whether discovered via CLI, spawned by the SDK, or posted by tmux — lives in one map with one lifecycle. The `SessionEvent` enum was simplified from multiple variants to just `SessionUpsert` and `SessionRemove`, making the event flow easier to reason about.
-
-A side effect: server restarts now properly reconcile tmux ownership. The startup path queries tmux for active sessions and reconciles against PID files, so ghost sessions from the previous server lifetime are cleaned up immediately rather than lingering until the next full scan.
-
-## Terminal panes, redesigned
-
-The Live Monitor's terminal panes got a Zed-inspired overhaul. Chrome has been stripped down to the minimum — no redundant borders, no wasted header space. Each session gets exactly one terminal panel (the duplicate CLI panel bug is gone), with keyboard shortcuts for zoom and layout management.
-
-Sessions also show their lifecycle state visually. A new "Spawning" status with a pulsing blue indicator appears the moment a session is detected via PID file, before the first JSONL output arrives. You see the session boot in real time instead of it appearing fully formed after a delay.
-
-## Under the hood
-
-The closed session ring switched from an unbounded `HashMap` to a bounded `VecDeque(100)`. Previously, every session that exited stayed in memory indefinitely for "recently closed" lookups. Now only the last 100 are kept, with constant-time insertion and bounded memory.
-
-The dockview layout persistence was also hardened — saves now flush on `unload`, `visibilitychange` (hidden), and React unmount, covering all the ways a browser tab can close without the layout being saved.
-
-## Update now
-
-```bash
-npx claude-view@latest
-```
-
-Open the Live Monitor and watch a new Claude Code session boot — you'll see it appear as "Spawning" with a blue dot before any output arrives.
-
-
 --- blog/v0-35-0-ownership-and-performance.mdx ---
 
 ---
@@ -1863,6 +1815,54 @@ npx claude-view@latest
 ```
 
 Open the Live Monitor and check the ownership badges on your running sessions — SDK-spawned agents, tmux groups, and standalone sessions are now labeled automatically.
+
+
+--- blog/v0-36-0-pid-lifecycle-and-terminal-panes.mdx ---
+
+---
+title: "PID Files, One Store, and Terminal Panes That Stay Put"
+description: "v0.36.0 replaces process tree scanning with PID-based session detection, unifies the session store, and adds Zed-style terminal panes."
+date: 2026-04-13
+author: claude-view team
+---
+
+If you've ever restarted the claude-view server and found ghost sessions lingering in your dashboard, or watched a session flicker between "active" and "unknown" because the process scanner missed a heartbeat — v0.36.0 fixes the root cause.
+
+## PID files as the single source of truth
+
+Previous versions detected Claude Code sessions by scanning the process tree — looking for specific process signatures, checking parent-child relationships, cross-referencing tmux session names. It worked, but it was fragile. Process tree scanning races with process startup and teardown, and different OS versions report process metadata inconsistently.
+
+v0.36.0 flips the model. Claude Code writes a PID file when it starts and removes it when it exits. The oracle now reads these files instead of scanning `/proc` or `ps`. This is the same pattern used by PostgreSQL, nginx, and most Unix daemons — because it works.
+
+The oracle runs on a two-tier refresh cycle: PID file checks every 2 seconds (cheap — just `stat` calls), full system reconciliation every 10 seconds (for cleanup and edge cases). The result is faster detection with lower CPU usage.
+
+## One store to rule them all
+
+The server previously maintained two separate session stores: `CliSessionStore` for CLI-discovered sessions and the main `LiveSessionStore` for everything else. This dual-store architecture meant ownership data, tmux bindings, and lifecycle events had to be synchronized between two maps — a constant source of subtle state bugs.
+
+v0.36.0 collapses both into a single unified store. Every session — whether discovered via CLI, spawned by the SDK, or posted by tmux — lives in one map with one lifecycle. The `SessionEvent` enum was simplified from multiple variants to just `SessionUpsert` and `SessionRemove`, making the event flow easier to reason about.
+
+A side effect: server restarts now properly reconcile tmux ownership. The startup path queries tmux for active sessions and reconciles against PID files, so ghost sessions from the previous server lifetime are cleaned up immediately rather than lingering until the next full scan.
+
+## Terminal panes, redesigned
+
+The Live Monitor's terminal panes got a Zed-inspired overhaul. Chrome has been stripped down to the minimum — no redundant borders, no wasted header space. Each session gets exactly one terminal panel (the duplicate CLI panel bug is gone), with keyboard shortcuts for zoom and layout management.
+
+Sessions also show their lifecycle state visually. A new "Spawning" status with a pulsing blue indicator appears the moment a session is detected via PID file, before the first JSONL output arrives. You see the session boot in real time instead of it appearing fully formed after a delay.
+
+## Under the hood
+
+The closed session ring switched from an unbounded `HashMap` to a bounded `VecDeque(100)`. Previously, every session that exited stayed in memory indefinitely for "recently closed" lookups. Now only the last 100 are kept, with constant-time insertion and bounded memory.
+
+The dockview layout persistence was also hardened — saves now flush on `unload`, `visibilitychange` (hidden), and React unmount, covering all the ways a browser tab can close without the layout being saved.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the Live Monitor and watch a new Claude Code session boot — you'll see it appear as "Spawning" with a blue dot before any output arrives.
 
 
 --- blog/v0-4-0-dashboard-analytics.mdx ---
@@ -3477,6 +3477,25 @@ version: v0.36.0
 **Dockview layout persistence** — layout saves now flush on unload, visibility-hidden, and unmount — no more lost layouts on browser close.
 
 **PID publisher resilience** — the oracle handles RecvError::Lagged by resyncing instead of dying, preventing silent monitoring gaps.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.36.1.md ---
+
+---
+title: "v0.36.1 — TLS Crash Fix"
+date: 2026-04-13
+version: v0.36.1
+---
+
+## Fixes
+
+**macOS ARM startup crash** — fixed a panic during deep indexing caused by rustls 0.23+ failing to auto-detect the TLS crypto provider. Cargo feature unification compiled both `ring` and `aws-lc-rs` into the binary; the server now explicitly installs `aws-lc-rs` as the process-level CryptoProvider before any network I/O. Also applied to the relay binary for consistency.
 
 ## Getting started
 
