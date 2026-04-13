@@ -749,6 +749,17 @@ COMMIT;"#,
     // Migration 59: entrypoint — how the session was launched (cli, claude-vscode, sdk-ts).
     // Extracted from the JSONL "entrypoint" field on the first line that has it.
     r#"ALTER TABLE sessions ADD COLUMN entrypoint TEXT;"#,
+    // Migration 60: project_dir_status — caches directory existence check per effective project path.
+    // Populated by backfill at startup. Used by list_project_summaries() to flag archived projects.
+    r#"CREATE TABLE IF NOT EXISTS project_dir_status (
+        effective_path TEXT PRIMARY KEY,
+        dir_exists INTEGER NOT NULL DEFAULT 1,
+        checked_at INTEGER NOT NULL
+    );"#,
+    // Migration 61: Clear incorrect git_root for sessions where infer_git_root_from_worktree_path
+    // returned a subdirectory instead of the real git root. Backfill will re-resolve with fixed logic.
+    // Matches any git_root ending in /private/config (the submodule subdirectory pattern).
+    r#"UPDATE sessions SET git_root = NULL WHERE git_root LIKE '%/private/config';"#,
 ];
 
 // ============================================================================
