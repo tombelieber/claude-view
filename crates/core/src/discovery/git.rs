@@ -46,10 +46,26 @@ pub async fn resolve_git_root(cwd: &str) -> Option<String> {
 pub fn infer_git_root_from_worktree_path(cwd: &str) -> Option<String> {
     for marker in &["/.worktrees/", "/.claude/worktrees/"] {
         if let Some(idx) = cwd.find(marker) {
-            let root = &cwd[..idx];
-            if !root.is_empty() {
-                return Some(root.to_string());
+            let candidate = &cwd[..idx];
+            if candidate.is_empty() {
+                continue;
             }
+            // If candidate dir exists, verify it's a git root by walking up
+            let candidate_path = std::path::Path::new(candidate);
+            if candidate_path.exists() {
+                let mut check = candidate_path;
+                loop {
+                    if check.join(".git").exists() {
+                        return check.to_str().map(|s| s.to_string());
+                    }
+                    match check.parent() {
+                        Some(parent) if parent != check => check = parent,
+                        _ => break,
+                    }
+                }
+            }
+            // Candidate dir doesn't exist or no .git found — return candidate as-is
+            return Some(candidate.to_string());
         }
     }
     None
@@ -172,6 +188,38 @@ mod tests {
             None
         );
         assert_eq!(infer_git_root_from_worktree_path(""), None);
+    }
+
+    #[test]
+    fn test_infer_worktree_inside_subdir_walks_up() {
+        // When the .claude/worktrees/ dir is inside a subdirectory of the actual git root,
+        // the function should walk up to find the real .git
+        let tmp = tempfile::tempdir().unwrap();
+        let submodule_root = tmp.path().join("repo").join("private");
+        let config_dir = submodule_root.join("config");
+        let worktree_dir = config_dir
+            .join(".claude")
+            .join("worktrees")
+            .join("phase-classifier");
+        std::fs::create_dir_all(&worktree_dir).unwrap();
+        // Place .git at submodule_root (private/), not config/
+        std::fs::write(
+            submodule_root.join(".git"),
+            "gitdir: ../../../.git/modules/private",
+        )
+        .unwrap();
+
+        let cwd = worktree_dir.to_str().unwrap();
+        let result = infer_git_root_from_worktree_path(cwd);
+        assert_eq!(result, Some(submodule_root.to_str().unwrap().to_string()));
+    }
+
+    #[test]
+    fn test_infer_worktree_candidate_dir_missing_returns_candidate() {
+        // When the candidate directory doesn't exist (deleted), return it as-is
+        let result =
+            infer_git_root_from_worktree_path("/nonexistent/path/.claude/worktrees/branch-name");
+        assert_eq!(result, Some("/nonexistent/path".to_string()));
     }
 
     // ========================================================================
