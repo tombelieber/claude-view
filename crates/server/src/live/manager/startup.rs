@@ -111,6 +111,98 @@ impl LiveSessionManager {
         }
     }
 
+    /// Reconcile tmux ownership at startup.
+    ///
+    /// After `scan_sessions_dir_at_startup` creates live sessions (via
+    /// `handle_session_birth` → coordinator), those sessions lack tmux
+    /// ownership because the coordinator's `compute_ownership` only carries
+    /// forward existing bindings — and there are none on freshly-created
+    /// sessions.
+    ///
+    /// This method discovers existing tmux panes (via `list_sessions` +
+    /// `pane_pid`), matches them to live sessions by PID, sets
+    /// `ownership.tmux`, populates the tmux index, and populates the
+    /// secondary index (Claude UUID → map key).
+    pub(super) async fn reconcile_tmux_ownership(self: &Arc<Self>) {
+        let tmux_names = self.tmux.list_sessions();
+        let cv_names: Vec<String> = tmux_names
+            .into_iter()
+            .filter(|n| n.starts_with("cv-"))
+            .collect();
+
+        if cv_names.is_empty() {
+            return;
+        }
+
+        // Build PID → tmux name mapping
+        let mut pid_to_tmux: Vec<(u32, String)> = Vec::new();
+        for name in &cv_names {
+            if let Some(pane_pid) = self.tmux.pane_pid(name) {
+                pid_to_tmux.push((pane_pid, name.clone()));
+            }
+        }
+
+        if pid_to_tmux.is_empty() {
+            return;
+        }
+
+        // Populate tmux index with discovered sessions
+        for name in &cv_names {
+            self.tmux_index.insert(name.clone()).await;
+        }
+
+        // Match live sessions by PID and set ownership
+        let mut enriched = 0u32;
+        {
+            let mut sessions = self.sessions.write().await;
+            for (session_id, session) in sessions.iter_mut() {
+                let Some(pid) = session.hook.pid else {
+                    continue;
+                };
+                // Check if this session's PID matches a tmux pane
+                let tmux_name = pid_to_tmux
+                    .iter()
+                    .find(|(p, _)| *p == pid)
+                    .map(|(_, name)| name.clone());
+
+                if let Some(ref name) = tmux_name {
+                    // Set tmux ownership
+                    let mut ownership = session.ownership.clone().unwrap_or_default();
+                    ownership.tmux = Some(claude_view_types::TmuxBinding {
+                        cli_session_id: name.clone(),
+                    });
+                    session.ownership = Some(ownership);
+
+                    // Populate secondary index: Claude UUID → map key
+                    self.claude_session_id_index
+                        .write()
+                        .await
+                        .insert(session_id.clone(), session_id.clone());
+
+                    let _ = self.tx.send(SessionEvent::SessionUpsert {
+                        session: session.clone(),
+                    });
+
+                    enriched += 1;
+                    info!(
+                        session_id = %session_id,
+                        tmux = %name,
+                        pid = pid,
+                        "Reconciled tmux ownership at startup"
+                    );
+                }
+            }
+        }
+
+        if enriched > 0 {
+            info!(
+                enriched,
+                total_tmux = cv_names.len(),
+                "Tmux ownership reconciliation complete"
+            );
+        }
+    }
+
     /// Promote sessions from crash-recovery snapshot.
     pub(super) async fn promote_from_snapshot(
         self: &Arc<Self>,

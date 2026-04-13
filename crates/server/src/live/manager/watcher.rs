@@ -59,6 +59,13 @@ impl LiveSessionManager {
             // This gives us immediate knowledge of who is alive + kind/entrypoint.
             manager.scan_sessions_dir_at_startup().await;
 
+            // 1c. Tmux ownership reconciliation — match existing tmux panes
+            // to live sessions by PID and set ownership.tmux. Required because
+            // scan_sessions_dir creates sessions via handle_session_birth which
+            // bypasses the Born handler's tmux matching. Without this, all tmux
+            // sessions lose ownership after server restart.
+            manager.reconcile_tmux_ownership().await;
+
             // 2. Initial JSONL scan
             let projects_dir = match dirs::home_dir() {
                 Some(home) => home.join(".claude").join("projects"),
