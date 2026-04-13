@@ -10,6 +10,7 @@ export interface ProjectTreeNode {
   sessionCount: number
   children?: ProjectTreeNode[]
   depth: number
+  isArchived?: boolean
 }
 
 /**
@@ -29,6 +30,7 @@ export function buildFlatList(projects: ProjectSummary[]): ProjectTreeNode[] {
       path: project.path,
       sessionCount: project.sessionCount,
       depth: 0,
+      isArchived: project.isArchived,
     }))
     .sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
@@ -105,6 +107,7 @@ function toProjectNode(project: ProjectSummary, depth: number): ProjectTreeNode 
     path: project.path,
     sessionCount: project.sessionCount,
     depth,
+    isArchived: project.isArchived,
   }
 }
 

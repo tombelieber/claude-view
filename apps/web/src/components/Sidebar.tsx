@@ -41,6 +41,7 @@ import {
   collectGroupNames,
 } from '../utils/build-project-tree'
 import { getSessionTitle } from '../utils/get-session-title'
+import { ArchivedProjectsSection } from './sidebar/ArchivedProjectsSection'
 import { SectionHeader } from './sidebar/SectionHeader'
 
 interface SidebarProps {
@@ -96,10 +97,14 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
   const [focusedIndex, setFocusedIndex] = useState<number>(-1)
   const itemRefs = useRef<(HTMLDivElement | null)[]>([])
 
-  // Build tree structure based on view mode
+  // Split active vs archived projects
+  const activeProjects = useMemo(() => projects.filter((p) => !p.isArchived), [projects])
+  const archivedProjects = useMemo(() => projects.filter((p) => p.isArchived), [projects])
+
+  // Build tree structure based on view mode (active projects only)
   const treeNodes = useMemo(() => {
-    return viewMode === 'tree' ? buildProjectTree(projects) : buildFlatList(projects)
-  }, [projects, viewMode])
+    return viewMode === 'tree' ? buildProjectTree(activeProjects) : buildFlatList(activeProjects)
+  }, [activeProjects, viewMode])
 
   // Auto-expand all groups when switching to tree mode
   const prevViewModeRef = useRef(viewMode)
@@ -973,6 +978,13 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                 onKeyDown={handleKeyDown}
               >
                 {flattenedNodes.map((node, i) => renderTreeNode(node, i))}
+                {archivedProjects.length > 0 && (
+                  <ArchivedProjectsSection
+                    projects={archivedProjects}
+                    onProjectClick={handleProjectClick}
+                    selectedProjectId={selectedProjectId}
+                  />
+                )}
               </div>
             </div>
           </div>
