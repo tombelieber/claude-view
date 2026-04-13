@@ -193,6 +193,7 @@ mod tests {
             claude_session_id_index: Arc::new(RwLock::new(HashMap::new())),
             tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::mock::MockTmux::new()),
+            born_waiters: Arc::new(std::sync::Mutex::new(HashMap::new())),
         });
 
         (manager, rx, snapshot_rx)

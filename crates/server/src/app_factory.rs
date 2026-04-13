@@ -156,6 +156,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
+        born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     });
     routes::api_routes(state)
 }
@@ -274,6 +275,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
+        born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
     });
     routes::api_routes(state)
 }
@@ -353,6 +355,10 @@ pub fn create_app_full(
     let tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static> =
         Arc::new(tmux_impl);
 
+    // Born waiters: create_session registers, Born handler resolves (zero-poll).
+    let born_waiters: crate::routes::cli_sessions::BornWaiters =
+        Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
     // Create interaction data side-map early so it can be shared with the live
     // manager (for coordinator side effects) and AppState (for HTTP endpoints).
     let interaction_data: Arc<
@@ -385,6 +391,7 @@ pub fn create_app_full(
         session_pids_tx,
         tmux_index.clone(),
         tmux.clone(),
+        born_waiters.clone(),
     );
 
     // Hook registration deferred — caller must invoke register_hooks()
@@ -487,6 +494,7 @@ pub fn create_app_full(
         interaction_data,
         tmux,
         tmux_index,
+        born_waiters,
     });
 
     // Spawn webhook notification engine.

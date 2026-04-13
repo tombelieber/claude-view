@@ -220,6 +220,9 @@ pub struct AppState {
     /// Thin index of alive tmux session names (e.g. "cv-abc123").
     /// Used for count checks and ownership resolution. NOT an entity store.
     pub tmux_index: Arc<crate::routes::cli_sessions::TmuxSessionIndex>,
+    /// Oneshot waiters for pid.json Born events (pid → sessionId sender).
+    /// Create handler inserts; Born handler resolves. Avoids 200ms polling.
+    pub born_waiters: crate::routes::cli_sessions::BornWaiters,
 }
 
 /// Builder for constructing `AppState` with optional overrides.
@@ -338,6 +341,7 @@ impl AppStateBuilder {
             interaction_data: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
             tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
+            born_waiters: Arc::new(std::sync::Mutex::new(HashMap::new())),
         })
     }
 }

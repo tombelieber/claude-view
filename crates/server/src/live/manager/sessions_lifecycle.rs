@@ -38,6 +38,14 @@ impl LiveSessionManager {
                             "sessions_watcher: new session born"
                         );
 
+                        // Resolve Born waiter if create_session() is waiting for this PID.
+                        {
+                            let mut waiters = manager.born_waiters.lock().unwrap();
+                            if let Some(tx) = waiters.remove(&pid) {
+                                let _ = tx.send(session.session_id.clone());
+                            }
+                        }
+
                         let session_id = session.session_id.clone();
 
                         // Check if UUID already exists as a primary key.

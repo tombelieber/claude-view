@@ -166,6 +166,7 @@ mod tests {
             interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
             tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
+            born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         });
 
         let app = Router::new()

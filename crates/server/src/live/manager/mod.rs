@@ -125,6 +125,8 @@ pub struct LiveSessionManager {
     /// Tmux command abstraction (shared with AppState).
     /// Used by Born handler to look up pane PIDs.
     tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
+    /// Born waiters — create_session() registers, Born handler resolves.
+    born_waiters: crate::routes::cli_sessions::BornWaiters,
 }
 
 impl LiveSessionManager {
@@ -155,6 +157,7 @@ impl LiveSessionManager {
         session_pids_tx: watch::Sender<Vec<u32>>,
         tmux_index: Arc<crate::routes::cli_sessions::TmuxSessionIndex>,
         tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
+        born_waiters: crate::routes::cli_sessions::BornWaiters,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -223,6 +226,7 @@ impl LiveSessionManager {
             claude_session_id_index: claude_session_id_index.clone(),
             tmux_index,
             tmux,
+            born_waiters,
         });
 
         // Spawn background tasks

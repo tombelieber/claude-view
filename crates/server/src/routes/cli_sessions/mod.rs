@@ -9,6 +9,7 @@
 
 pub mod handlers;
 pub mod health;
+pub mod lifecycle_debug;
 pub mod reconcile;
 pub mod ring_buffer;
 pub mod terminal;
@@ -24,9 +25,15 @@ use axum::{
     routing::{delete, post},
     Router,
 };
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 use crate::state::AppState;
+
+/// Oneshot waiters for pid.json Born events.
+/// Create handler registers a sender keyed by pane PID.
+/// Born handler (sessions_lifecycle) resolves it with the sessionId.
+pub type BornWaiters = Arc<Mutex<HashMap<u32, tokio::sync::oneshot::Sender<String>>>>;
 
 // Re-export key types.
 pub use tmux::{RealTmux, TmuxCommand};
