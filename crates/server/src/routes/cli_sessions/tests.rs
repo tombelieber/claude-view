@@ -121,7 +121,7 @@ async fn test_create_session_success() {
 
 #[tokio::test]
 async fn test_create_session_minimal_request() {
-    let mock = MockTmux::new();
+    let mock = MockTmux::with_starting_pid(901_000);
     let db = test_db().await;
     let mut state = crate::state::AppState::new(db);
     {
@@ -130,7 +130,7 @@ async fn test_create_session_minimal_request() {
     }
 
     let fake_uuid = "test-uuid-minimal";
-    let _cleanup = write_fake_pid_json(900_000, fake_uuid);
+    let _cleanup = write_fake_pid_json(901_000, fake_uuid);
 
     let app = Router::new().nest("/api", router()).with_state(state);
 

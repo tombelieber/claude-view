@@ -188,6 +188,18 @@ pub mod mock {
             }
         }
 
+        /// Create an available mock with a custom starting PID.
+        /// Use different starting PIDs across tests to avoid filesystem
+        /// races on `~/.claude/sessions/{pid}.json` under nextest parallelism.
+        pub fn with_starting_pid(pid: u32) -> Self {
+            Self {
+                sessions: Mutex::new(HashSet::new()),
+                pane_pids: Mutex::new(HashMap::new()),
+                available: true,
+                next_pid: Mutex::new(pid),
+            }
+        }
+
         /// Create a mock tmux that reports as unavailable.
         pub fn unavailable() -> Self {
             Self {
