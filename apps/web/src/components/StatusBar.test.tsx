@@ -67,6 +67,7 @@ const mockProjects: ProjectSummary[] = [
     sessionCount: 10,
     activeCount: 0,
     lastActivityAt: Math.floor(Date.now() / 1000),
+    isArchived: false,
   },
   {
     name: 'project2',
@@ -75,6 +76,7 @@ const mockProjects: ProjectSummary[] = [
     sessionCount: 5,
     activeCount: 0,
     lastActivityAt: Math.floor(Date.now() / 1000),
+    isArchived: false,
   },
 ]
 

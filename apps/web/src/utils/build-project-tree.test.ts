@@ -10,7 +10,15 @@ function makeProject(
   path: string,
   sessionCount: number,
 ): ProjectSummary {
-  return { name, displayName, path, sessionCount, activeCount: 0, lastActivityAt: 0 }
+  return {
+    name,
+    displayName,
+    path,
+    sessionCount,
+    activeCount: 0,
+    lastActivityAt: 0,
+    isArchived: false,
+  }
 }
 
 describe('buildFlatList', () => {
@@ -198,6 +206,7 @@ describe('buildProjectTree', () => {
         sessionCount: 5,
         activeCount: 0,
         lastActivityAt: 0,
+        isArchived: false,
       },
       makeProject('other', 'other', '/home/user/proj', 10),
     ]

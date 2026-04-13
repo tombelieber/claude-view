@@ -12,8 +12,16 @@ const mockProjects: ProjectSummary[] = [
     sessionCount: 10,
     path: '/path/a',
     activeCount: 2,
+    isArchived: false,
   },
-  { name: 'project-b', displayName: 'Project B', sessionCount: 5, path: '/path/b', activeCount: 1 },
+  {
+    name: 'project-b',
+    displayName: 'Project B',
+    sessionCount: 5,
+    path: '/path/b',
+    activeCount: 1,
+    isArchived: false,
+  },
 ]
 
 function createWrapper(initialUrl = '/') {

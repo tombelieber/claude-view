@@ -10,4 +10,8 @@ export type ProjectSummary = {
   sessionCount: number
   activeCount: number
   lastActivityAt?: number | null
+  /**
+   * Whether the project directory no longer exists on disk.
+   */
+  isArchived: boolean
 }
