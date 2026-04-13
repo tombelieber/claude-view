@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{Duration, UNIX_EPOCH};
 
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{broadcast, mpsc, watch, RwLock};
 use tracing::info;
 
 use crate::local_llm::client::LlmClient;
@@ -108,6 +108,8 @@ pub struct LiveSessionManager {
     /// Side-map for full interaction data, keyed by request_id.
     interaction_data:
         Arc<tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
+    /// Watch sender for session PIDs — oracle reads this for targeted refresh.
+    session_pids_tx: watch::Sender<Vec<u32>>,
     /// Count of sessions discovered by reconciler backfill (Born event missed).
     /// If >0 in production, the notify watcher has a reliability problem.
     pub(crate) backfill_miss_count: AtomicU64,
@@ -139,6 +141,7 @@ impl LiveSessionManager {
         interaction_data: Arc<
             tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>,
         >,
+        session_pids_tx: watch::Sender<Vec<u32>>,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -200,6 +203,7 @@ impl LiveSessionManager {
             closed_ring: closed_ring.clone(),
             cli_sessions,
             interaction_data,
+            session_pids_tx,
             backfill_miss_count: AtomicU64::new(0),
         });
 
@@ -208,6 +212,7 @@ impl LiveSessionManager {
         manager.spawn_file_watcher();
         manager.spawn_reconciliation_loop();
         manager.spawn_death_consumer(death_rx);
+        manager.spawn_pid_publisher();
         if let Some(lifecycle_rx) = sessions_lifecycle_rx {
             manager.spawn_sessions_lifecycle_consumer(lifecycle_rx);
         }
@@ -552,6 +557,44 @@ impl LiveSessionManager {
                 manager.save_session_snapshot_from_state().await;
                 tokio::time::sleep(Duration::from_secs(1)).await;
                 while rx.try_recv().is_ok() {}
+            }
+        });
+    }
+
+    /// Spawn a background task that publishes session PIDs to the oracle
+    /// whenever the session map changes (SessionUpsert or SessionRemove).
+    fn spawn_pid_publisher(self: &Arc<Self>) {
+        let sessions = self.sessions.clone();
+        let pids_tx = self.session_pids_tx.clone();
+        let mut event_rx = self.tx.subscribe();
+
+        tokio::spawn(async move {
+            // Initial publish: capture PIDs from any sessions already in the map
+            // (e.g. from startup recovery that completed before this task spawned).
+            {
+                let pids: Vec<u32> = sessions
+                    .read()
+                    .await
+                    .values()
+                    .filter_map(|s| s.hook.pid)
+                    .collect();
+                let _ = pids_tx.send(pids);
+            }
+
+            // React to all session map changes via the broadcast channel.
+            while let Ok(event) = event_rx.recv().await {
+                match event {
+                    SessionEvent::SessionUpsert { .. } | SessionEvent::SessionRemove { .. } => {
+                        let pids: Vec<u32> = sessions
+                            .read()
+                            .await
+                            .values()
+                            .filter_map(|s| s.hook.pid)
+                            .collect();
+                        let _ = pids_tx.send(pids);
+                    }
+                    _ => {} // Ignore CLI session events, etc.
+                }
             }
         });
     }

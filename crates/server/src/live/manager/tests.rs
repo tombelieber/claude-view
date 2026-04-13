@@ -1409,3 +1409,52 @@ fn test_team_members_and_inbox_count_default_to_empty_for_non_team_session() {
         "team_inbox_count must be 0 for non-team sessions"
     );
 }
+
+// =============================================================================
+// PID publisher tests
+// =============================================================================
+
+#[test]
+fn test_session_pids_watch_channel_delivers_latest_value() {
+    let (tx, rx) = tokio::sync::watch::channel(vec![1u32, 2, 3]);
+    assert_eq!(*rx.borrow(), vec![1, 2, 3]);
+    let _ = tx.send(vec![4, 5]);
+    assert_eq!(*rx.borrow(), vec![4, 5]);
+    let _ = tx.send(Vec::new());
+    assert!(rx.borrow().is_empty());
+}
+
+#[test]
+fn test_session_pids_watch_channel_overwrites_on_rapid_sends() {
+    let (tx, rx) = tokio::sync::watch::channel(Vec::<u32>::new());
+    // Rapid sends — only latest value should be visible.
+    for i in 0..100 {
+        let _ = tx.send(vec![i]);
+    }
+    assert_eq!(*rx.borrow(), vec![99]);
+}
+
+#[test]
+fn test_collect_session_pids_from_map() {
+    // Simulates what spawn_pid_publisher does: extract PIDs from session map.
+    use crate::live::state::test_live_session;
+
+    let mut sessions: HashMap<String, LiveSession> = HashMap::new();
+
+    let mut a = test_live_session("session-a");
+    a.hook.pid = Some(1234);
+    sessions.insert("session-a".into(), a);
+
+    let mut b = test_live_session("session-b");
+    b.hook.pid = None; // No PID — should be filtered out.
+    sessions.insert("session-b".into(), b);
+
+    let mut c = test_live_session("session-c");
+    c.hook.pid = Some(5678);
+    sessions.insert("session-c".into(), c);
+
+    let mut pids: Vec<u32> = sessions.values().filter_map(|s| s.hook.pid).collect();
+    pids.sort();
+
+    assert_eq!(pids, vec![1234, 5678]);
+}
