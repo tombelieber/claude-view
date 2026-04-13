@@ -16,18 +16,23 @@ fn disk_total_bytes_not_inflated() {
     let sessions: HashMap<String, LiveSession> = HashMap::new();
     let snap = collect_snapshot(&mut sys, &sessions);
 
+    // collect_snapshot always does a full refresh → disk fields are Some
+    let disk_total = snap
+        .disk_total_bytes
+        .expect("full snapshot must have disk_total_bytes");
+    let disk_used = snap
+        .disk_used_bytes
+        .expect("full snapshot must have disk_used_bytes");
+
     // Sanity: total must be > 0
-    assert!(
-        snap.disk_total_bytes > 0,
-        "disk_total_bytes must be non-zero"
-    );
+    assert!(disk_total > 0, "disk_total_bytes must be non-zero");
 
     // used ≤ total (basic invariant)
     assert!(
-        snap.disk_used_bytes <= snap.disk_total_bytes,
+        disk_used <= disk_total,
         "disk_used_bytes ({}) must not exceed disk_total_bytes ({})",
-        snap.disk_used_bytes,
-        snap.disk_total_bytes,
+        disk_used,
+        disk_total,
     );
 
     // Regression guard: on a typical machine, total should be < 20 TB.
@@ -35,9 +40,9 @@ fn disk_total_bytes_not_inflated() {
     // 20 TB is generous enough for any real workstation.
     let twenty_tb = 20_u64 * 1024 * 1024 * 1024 * 1024;
     assert!(
-        snap.disk_total_bytes < twenty_tb,
+        disk_total < twenty_tb,
         "disk_total_bytes ({} bytes = {} TB) looks inflated — dedup may be broken",
-        snap.disk_total_bytes,
-        snap.disk_total_bytes / (1024 * 1024 * 1024 * 1024),
+        disk_total,
+        disk_total / (1024 * 1024 * 1024 * 1024),
     );
 }

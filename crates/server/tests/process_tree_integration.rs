@@ -36,9 +36,9 @@ fn minimal_snapshot() -> ResourceSnapshot {
         cpu_percent: 10.0,
         memory_used_bytes: 4_000_000_000,
         memory_total_bytes: 16_000_000_000,
-        disk_used_bytes: 50_000_000_000,
-        disk_total_bytes: 500_000_000_000,
-        top_processes: vec![],
+        disk_used_bytes: Some(50_000_000_000),
+        disk_total_bytes: Some(500_000_000_000),
+        top_processes: Some(vec![]),
         session_resources: vec![],
     }
 }
