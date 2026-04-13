@@ -1155,11 +1155,13 @@ async fn main() -> Result<()> {
         });
     }
 
-    // Step 10: Backfill git_root for sessions indexed before this field existed.
+    // Step 10: Backfill git_root for sessions indexed before this field existed,
+    // then check project directory existence for archived detection.
     {
         let db = Arc::new(db.clone());
         tokio::spawn(async move {
-            claude_view_server::backfill::backfill_git_roots(db).await;
+            claude_view_server::backfill::backfill_git_roots(Arc::clone(&db)).await;
+            claude_view_server::backfill_project_dirs::backfill_project_dir_status(db).await;
         });
     }
 
