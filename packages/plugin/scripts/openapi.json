@@ -11127,6 +11127,10 @@
           "displayName": {
             "type": "string"
           },
+          "isArchived": {
+            "type": "boolean",
+            "description": "Whether the project directory no longer exists on disk."
+          },
           "lastActivityAt": {
             "type": [
               "integer",
