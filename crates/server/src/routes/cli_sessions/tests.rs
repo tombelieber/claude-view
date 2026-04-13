@@ -1,6 +1,8 @@
 //! Tests for CLI sessions API.
 //!
 //! Uses MockTmux for all handler tests -- no real tmux needed.
+//! Create-success tests write a temporary pid.json so the handler's
+//! poll loop finds the Claude session UUID.
 
 use super::*;
 use axum::{
@@ -11,7 +13,7 @@ use axum::{
 use claude_view_db::Database;
 use tmux::mock::MockTmux;
 use tower::ServiceExt;
-use types::{CliSessionStatus, CreateResponse};
+use types::CreateResponse;
 
 // ============================================================================
 // Helpers
@@ -51,6 +53,31 @@ async fn do_request(
     (status, String::from_utf8(bytes.to_vec()).unwrap())
 }
 
+/// Write a fake pid.json so the handler's poll loop resolves.
+/// Returns a guard that removes the file on drop.
+fn write_fake_pid_json(pid: u32, session_id: &str) -> PidJsonGuard {
+    let dir = dirs::home_dir().unwrap().join(".claude/sessions");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{pid}.json"));
+    let json = serde_json::json!({
+        "pid": pid,
+        "sessionId": session_id,
+        "cwd": "/tmp",
+        "startedAt": 1700000000000_u64,
+        "kind": "interactive",
+        "entrypoint": "cli"
+    });
+    std::fs::write(&path, json.to_string()).unwrap();
+    PidJsonGuard(path)
+}
+
+struct PidJsonGuard(std::path::PathBuf);
+impl Drop for PidJsonGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 // ============================================================================
 // Handler tests -- create
 // ============================================================================
@@ -58,7 +85,19 @@ async fn do_request(
 #[tokio::test]
 async fn test_create_session_success() {
     let mock = MockTmux::new();
-    let app = build_app(test_db().await, mock);
+    let db = test_db().await;
+    let mut state = crate::state::AppState::new(db);
+    {
+        let s = std::sync::Arc::get_mut(&mut state).unwrap();
+        s.tmux = std::sync::Arc::new(mock);
+    }
+
+    // Pre-write the pid.json that the poll loop will find.
+    // MockTmux auto-assigns PIDs starting at 900_000.
+    let fake_uuid = "test-uuid-create-success";
+    let _cleanup = write_fake_pid_json(900_000, fake_uuid);
+
+    let app = Router::new().nest("/api", router()).with_state(state);
 
     let payload = serde_json::json!({
         "projectDir": "/tmp",
@@ -76,27 +115,32 @@ async fn test_create_session_success() {
     assert_eq!(status, StatusCode::OK);
 
     let resp: CreateResponse = serde_json::from_str(&body).unwrap();
-    assert!(resp.session.id.starts_with("cv-"));
-    assert_eq!(resp.session.status, CliSessionStatus::Running);
-    assert_eq!(resp.session.project_dir, Some("/tmp".to_string()));
-    assert_eq!(resp.session.args, vec!["--verbose"]);
-    assert!(resp.session.created_at > 0);
+    assert_eq!(resp.session_id, fake_uuid);
+    assert!(resp.tmux_session_name.starts_with("cv-"));
 }
 
 #[tokio::test]
 async fn test_create_session_minimal_request() {
     let mock = MockTmux::new();
-    let app = build_app(test_db().await, mock);
+    let db = test_db().await;
+    let mut state = crate::state::AppState::new(db);
+    {
+        let s = std::sync::Arc::get_mut(&mut state).unwrap();
+        s.tmux = std::sync::Arc::new(mock);
+    }
 
-    // Empty body -- project_dir and args should default.
+    let fake_uuid = "test-uuid-minimal";
+    let _cleanup = write_fake_pid_json(900_000, fake_uuid);
+
+    let app = Router::new().nest("/api", router()).with_state(state);
+
     let (status, body) = do_request(app, Method::POST, "/api/cli-sessions", Some("{}")).await;
 
     assert_eq!(status, StatusCode::OK);
 
     let resp: CreateResponse = serde_json::from_str(&body).unwrap();
-    assert!(resp.session.id.starts_with("cv-"));
-    assert!(resp.session.project_dir.is_none());
-    assert!(resp.session.args.is_empty());
+    assert_eq!(resp.session_id, fake_uuid);
+    assert!(resp.tmux_session_name.starts_with("cv-"));
 }
 
 #[tokio::test]

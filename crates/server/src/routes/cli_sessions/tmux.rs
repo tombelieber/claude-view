@@ -165,13 +165,16 @@ fn shell_escape(s: &str) -> String {
 #[cfg(test)]
 pub mod mock {
     use super::TmuxCommand;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
     use std::sync::Mutex;
 
     /// Mock tmux that tracks sessions in memory.
     pub struct MockTmux {
         sessions: Mutex<HashSet<String>>,
+        pane_pids: Mutex<HashMap<String, u32>>,
         available: bool,
+        /// Auto-assigned PID counter for new sessions.
+        next_pid: Mutex<u32>,
     }
 
     impl MockTmux {
@@ -179,7 +182,9 @@ pub mod mock {
         pub fn new() -> Self {
             Self {
                 sessions: Mutex::new(HashSet::new()),
+                pane_pids: Mutex::new(HashMap::new()),
                 available: true,
+                next_pid: Mutex::new(900_000),
             }
         }
 
@@ -187,7 +192,9 @@ pub mod mock {
         pub fn unavailable() -> Self {
             Self {
                 sessions: Mutex::new(HashSet::new()),
+                pane_pids: Mutex::new(HashMap::new()),
                 available: false,
+                next_pid: Mutex::new(900_000),
             }
         }
 
@@ -212,12 +219,20 @@ pub mod mock {
                 return Err(format!("duplicate session: {name}"));
             }
             sessions.insert(name.to_string());
+
+            // Auto-assign a pane PID.
+            let mut next = self.next_pid.lock().unwrap();
+            let pid = *next;
+            *next += 1;
+            self.pane_pids.lock().unwrap().insert(name.to_string(), pid);
+
             Ok(())
         }
 
         fn kill_session(&self, name: &str) -> Result<(), String> {
             let mut sessions = self.sessions.lock().unwrap();
             if sessions.remove(name) {
+                self.pane_pids.lock().unwrap().remove(name);
                 Ok(())
             } else {
                 Err(format!("session not found: {name}"))
@@ -228,8 +243,8 @@ pub mod mock {
             self.sessions.lock().unwrap().contains(name)
         }
 
-        fn pane_pid(&self, _name: &str) -> Option<u32> {
-            None
+        fn pane_pid(&self, name: &str) -> Option<u32> {
+            self.pane_pids.lock().unwrap().get(name).copied()
         }
 
         fn is_available(&self) -> bool {

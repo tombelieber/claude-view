@@ -20,7 +20,7 @@ interface SessionSidebarProps {
   /** Called when user clicks "New Chat" — opens a blank tab directly in the dock. */
   onNewChat?: () => void
   /** Called when user creates a new CLI (tmux) session from the dropdown. */
-  onNewCliSession?: () => void
+  onNewCliSession?: () => Promise<void>
 }
 
 function groupByTime(sessions: SessionInfo[], now: number) {
@@ -216,7 +216,7 @@ export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: Ses
         <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Chats</span>
         <NewSessionDropdown
           onNewChat={handleNewChat}
-          onNewCliSession={onNewCliSession ?? handleNewChat}
+          onNewCliSession={onNewCliSession ?? (async () => handleNewChat())}
         />
       </div>
 

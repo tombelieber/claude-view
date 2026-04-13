@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// A tmux-managed CLI session running Claude Code.
+/// Used by reconciliation at startup.
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
@@ -44,9 +45,15 @@ pub struct CreateRequest {
 }
 
 /// Response for POST /api/cli-sessions.
+///
+/// Returns the real Claude session UUID (resolved by polling pid.json)
+/// and the tmux session name (needed for DELETE and terminal attachment).
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(Deserialize))]
 pub struct CreateResponse {
-    pub session: CliSession,
+    /// The Claude session UUID (e.g. "aaf31eee-77d5-...").
+    pub session_id: String,
+    /// The tmux session name (e.g. "cv-abc123").
+    pub tmux_session_name: String,
 }

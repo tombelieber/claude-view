@@ -1,5 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { ChevronDown, MessageSquarePlus, Terminal } from 'lucide-react'
+import { ChevronDown, Loader2, MessageSquarePlus, Terminal } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
 export type SessionMode = 'sdk' | 'tmux'
@@ -22,26 +22,38 @@ function saveLastMode(mode: SessionMode) {
 
 interface NewSessionDropdownProps {
   onNewChat: () => void
-  onNewCliSession: () => void
+  onNewCliSession: () => Promise<void>
 }
 
 export function NewSessionDropdown({ onNewChat, onNewCliSession }: NewSessionDropdownProps) {
   const [mode, setMode] = useState<SessionMode>(readLastMode)
+  const [isCreating, setIsCreating] = useState(false)
 
-  const handlePrimaryClick = useCallback(() => {
+  const handlePrimaryClick = useCallback(async () => {
+    if (isCreating) return
     if (mode === 'tmux') {
-      onNewCliSession()
+      setIsCreating(true)
+      try {
+        await onNewCliSession()
+      } finally {
+        setIsCreating(false)
+      }
     } else {
       onNewChat()
     }
-  }, [mode, onNewChat, onNewCliSession])
+  }, [mode, onNewChat, onNewCliSession, isCreating])
 
   const handleSelect = useCallback(
-    (selected: SessionMode) => {
+    async (selected: SessionMode) => {
       setMode(selected)
       saveLastMode(selected)
       if (selected === 'tmux') {
-        onNewCliSession()
+        setIsCreating(true)
+        try {
+          await onNewCliSession()
+        } finally {
+          setIsCreating(false)
+        }
       } else {
         onNewChat()
       }
@@ -49,7 +61,7 @@ export function NewSessionDropdown({ onNewChat, onNewCliSession }: NewSessionDro
     [onNewChat, onNewCliSession],
   )
 
-  const Icon = mode === 'tmux' ? Terminal : MessageSquarePlus
+  const Icon = isCreating ? Loader2 : mode === 'tmux' ? Terminal : MessageSquarePlus
   const label = mode === 'tmux' ? 'New CLI Session' : 'New Chat'
 
   return (
@@ -58,11 +70,12 @@ export function NewSessionDropdown({ onNewChat, onNewCliSession }: NewSessionDro
       <button
         type="button"
         onClick={handlePrimaryClick}
-        className="flex items-center gap-1.5 pl-2 pr-1 py-1.5 text-xs text-gray-600 dark:text-gray-300"
+        disabled={isCreating}
+        className="flex items-center gap-1.5 pl-2 pr-1 py-1.5 text-xs text-gray-600 dark:text-gray-300 disabled:text-gray-400 dark:disabled:text-gray-500"
         title={label}
       >
-        <Icon size={13} className="shrink-0" />
-        <span className="whitespace-nowrap">{label}</span>
+        <Icon size={13} className={`shrink-0 ${isCreating ? 'animate-spin' : ''}`} />
+        <span className="whitespace-nowrap">{isCreating ? 'Starting...' : label}</span>
       </button>
 
       {/* Dropdown chevron */}
@@ -70,7 +83,8 @@ export function NewSessionDropdown({ onNewChat, onNewCliSession }: NewSessionDro
         <DropdownMenu.Trigger asChild>
           <button
             type="button"
-            className="flex items-center px-1 py-1.5 text-gray-400 dark:text-gray-500 border-l border-gray-300 dark:border-gray-700"
+            disabled={isCreating}
+            className="flex items-center px-1 py-1.5 text-gray-400 dark:text-gray-500 border-l border-gray-300 dark:border-gray-700 disabled:opacity-50"
             title="Choose session type"
           >
             <ChevronDown size={12} />

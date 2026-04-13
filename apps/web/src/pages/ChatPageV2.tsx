@@ -9,7 +9,6 @@ import { useActiveSessions } from '../store/live-session-store'
 import type { LiveSession } from '@claude-view/shared/types/generated'
 import { useChatKeyboardShortcuts } from '../hooks/use-chat-keyboard-shortcuts'
 import type { LiveContextData } from '../hooks/use-context-percent'
-import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import type { SessionInfo } from '../types/generated/SessionInfo'
 
 /** Derive tab title using the same logic as the sidebar's SessionListItem. */
@@ -60,22 +59,6 @@ function makeSessionPanelArgs(sid: string, cachedSessions: SessionInfo[], live: 
       liveProjectPath: liveSession?.projectPath,
       liveContextData,
       agentStateGroup: liveSession?.agentState?.group ?? null,
-      tmuxSessionId,
-    },
-  }
-}
-
-/** Build addPanel args for a tmux terminal tab (no Claude session yet). */
-function makeTmuxPanelArgs(tmuxSessionId: string) {
-  const ownership: SessionOwnership = { tmux: { cliSessionId: tmuxSessionId } }
-  return {
-    id: `chat-cli-${tmuxSessionId}`,
-    component: 'chat' as const,
-    title: `CLI: ${tmuxSessionId.slice(0, 11)}`,
-    params: {
-      sessionId: '',
-      ownership,
-      status: 'working' as const,
       tmuxSessionId,
     },
   }
@@ -179,8 +162,8 @@ export function ChatPageV2() {
     if (added && !added.api.isActive) added.api.setActive()
   }, [])
 
-  // CLI (tmux) session creation — POST only; panel appears reactively via
-  // useActiveSessions() → useEffect when the Spawning LiveSession arrives via SSE.
+  // CLI (tmux) session creation — POST blocks until Claude writes pid.json,
+  // then returns the real UUID. We open the panel directly with that UUID.
   const openNewCliSession = useCallback(async () => {
     try {
       const resp = await fetch('/api/cli-sessions', {
@@ -189,12 +172,12 @@ export function ChatPageV2() {
         body: JSON.stringify({ args: ['--dangerously-skip-permissions'] }),
       })
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-      // Panel appears reactively via useActiveSessions() → useEffect
-      // when the Spawning LiveSession arrives via SSE.
+      const { sessionId: uuid } = (await resp.json()) as { sessionId: string }
+      if (uuid) openSession(uuid)
     } catch (err) {
       console.error('Failed to create CLI session:', err)
     }
-  }, [])
+  }, [openSession])
 
   // Handle subsequent URL navigation (e.g. clicking sidebar → /chat/:sessionId).
   // Initial mount + layout restoration is handled by dockview's fromJSON + handleDockReady.
@@ -206,8 +189,8 @@ export function ChatPageV2() {
   }, [sessionId, openSession])
 
   // Sync live data into existing tab params when SSE ticks, and reactively
-  // create panels for new Spawning tmux sessions (replaces imperative addPanel
-  // in openNewCliSession).
+  // create panels for live sessions that don't have a panel yet (e.g. page
+  // refresh, second browser tab).
   useEffect(() => {
     const api = dockApiRef.current
     if (!api) return
@@ -242,24 +225,15 @@ export function ChatPageV2() {
           tmuxSessionId: ownership?.tmux?.cliSessionId,
         })
 
-        // When tmux session's Claude resolves, update sessionId
-        // so the panel can load conversation blocks.
-        if (live.status !== 'spawning' && live.id && tmuxId) {
-          const curSid = (existing.params as { sessionId?: string })?.sessionId
-          if (!curSid || curSid === '') {
-            existing.api.updateParameters({ sessionId: live.id })
-          }
-        }
-
         const sid = live.id || tmuxId || ''
         const title = deriveTabTitle(sid, cached, liveSessionsList)
         if (title && title !== existing.title) {
           existing.api.setTitle(title)
         }
-      } else if (tmuxId) {
-        // Reactive panel creation: auto-create panel for any tmux session without a panel.
-        // Covers Spawning (just POST'd) and Working (Born already fired, or page refreshed).
-        const args = makeTmuxPanelArgs(tmuxId)
+      } else if (live.id) {
+        // Reactive panel creation for tmux sessions that appeared via SSE
+        // (e.g. page refresh, second browser tab). Uses the real UUID.
+        const args = makeSessionPanelArgs(live.id, cached, liveSessionsList)
         api.addPanel(args)
         const added = api.panels.find((p) => p.id === args.id)
         if (added && !added.api.isActive) added.api.setActive()

@@ -26,8 +26,8 @@ export function NewCliSessionButton({ onSessionCreated, projectDir }: NewCliSess
         const data = await resp.json().catch(() => ({ error: 'Unknown error' }))
         throw new Error(data.details ?? data.error ?? `HTTP ${resp.status}`)
       }
-      const { session } = await resp.json()
-      onSessionCreated?.(session.id)
+      const { sessionId } = await resp.json()
+      onSessionCreated?.(sessionId)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session')
     } finally {
