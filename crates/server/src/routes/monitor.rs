@@ -139,9 +139,9 @@ pub async fn monitor_stream(
                 cpu_percent: 0.0,
                 memory_used_bytes: 0,
                 memory_total_bytes: 0,
-                disk_used_bytes: 0,
-                disk_total_bytes: 0,
-                top_processes: Vec::new(),
+                disk_used_bytes: None,
+                disk_total_bytes: None,
+                top_processes: None,
                 session_resources: Vec::new(),
             })
         };
@@ -232,9 +232,9 @@ pub async fn monitor_snapshot(State(state): State<Arc<AppState>>) -> Json<Resour
         cpu_percent: 0.0,
         memory_used_bytes: 0,
         memory_total_bytes: 0,
-        disk_used_bytes: 0,
-        disk_total_bytes: 0,
-        top_processes: Vec::new(),
+        disk_used_bytes: None,
+        disk_total_bytes: None,
+        top_processes: None,
         session_resources: Vec::new(),
     });
     Json(snapshot)

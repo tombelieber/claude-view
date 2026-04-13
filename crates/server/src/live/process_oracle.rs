@@ -68,15 +68,23 @@ impl OracleSnapshot {
 }
 
 /// Raw resource data computed from the System object.
+///
+/// Two-tier cadence: fast-tick fields (CPU, memory, session PIDs) are always
+/// present. Slow-tick fields (top_processes, disk) are `None` on fast ticks —
+/// only computed every 10s. Consumers must carry forward last known values
+/// on their side, not treat `None` as empty/zero.
 #[derive(Debug, Clone)]
 pub struct ResourceData {
     pub timestamp: i64,
     pub cpu_percent: f32,
     pub memory_used_bytes: u64,
     pub memory_total_bytes: u64,
-    pub disk_used_bytes: u64,
-    pub disk_total_bytes: u64,
-    pub top_processes: Vec<ProcessGroup>,
+    /// Disk usage. `None` on fast ticks (not computed, not zero).
+    pub disk_used_bytes: Option<u64>,
+    /// Disk total. `None` on fast ticks (not computed, not zero).
+    pub disk_total_bytes: Option<u64>,
+    /// Top processes grouped by name. `None` on fast ticks (not computed, not empty).
+    pub top_processes: Option<Vec<ProcessGroup>>,
     /// Per-PID CPU/memory for known session PIDs only (targeted refresh).
     pub process_resources: HashMap<u32, ProcessResourceEntry>,
 }
@@ -103,9 +111,9 @@ pub fn stub() -> OracleReceiver {
             cpu_percent: 0.0,
             memory_used_bytes: 0,
             memory_total_bytes: 0,
-            disk_used_bytes: 0,
-            disk_total_bytes: 0,
-            top_processes: Vec::new(),
+            disk_used_bytes: None,
+            disk_total_bytes: None,
+            top_processes: None,
             process_resources: HashMap::new(),
         },
         process_tree: None,
@@ -135,9 +143,9 @@ pub fn start_oracle(
             cpu_percent: 0.0,
             memory_used_bytes: 0,
             memory_total_bytes: 0,
-            disk_used_bytes: 0,
-            disk_total_bytes: 0,
-            top_processes: Vec::new(),
+            disk_used_bytes: None,
+            disk_total_bytes: None,
+            top_processes: None,
             process_resources: HashMap::new(),
         },
         process_tree: None,
@@ -317,9 +325,9 @@ fn collect_oracle_snapshot(
         top.truncate(10);
 
         let tree = super::process_tree::classify_processes_cached(sys, tree_cache);
-        (top, Some(tree), du, dt)
+        (Some(top), Some(tree), Some(du), Some(dt))
     } else {
-        (Vec::new(), None, 0, 0)
+        (None, None, None, None)
     };
 
     OracleSnapshot {
@@ -388,9 +396,9 @@ mod tests {
                 cpu_percent: 0.0,
                 memory_used_bytes: 0,
                 memory_total_bytes: 0,
-                disk_used_bytes: 0,
-                disk_total_bytes: 0,
-                top_processes: Vec::new(),
+                disk_used_bytes: None,
+                disk_total_bytes: None,
+                top_processes: None,
                 process_resources: HashMap::new(),
             },
             process_tree: None,
@@ -413,9 +421,9 @@ mod tests {
                 cpu_percent: 10.0,
                 memory_used_bytes: 1024,
                 memory_total_bytes: 8192,
-                disk_used_bytes: 0,
-                disk_total_bytes: 0,
-                top_processes: Vec::new(),
+                disk_used_bytes: None,
+                disk_total_bytes: None,
+                top_processes: None,
                 process_resources: HashMap::new(),
             },
             process_tree: None,
@@ -439,15 +447,15 @@ mod tests {
             "fast tick with no PIDs should have empty process_resources"
         );
         assert!(
-            snap.resource.top_processes.is_empty(),
+            snap.resource.top_processes.is_none(),
             "fast tick should not compute top_processes"
         );
         assert!(
             snap.process_tree.is_none(),
             "fast tick should not compute process tree"
         );
-        assert_eq!(
-            snap.resource.disk_used_bytes, 0,
+        assert!(
+            snap.resource.disk_used_bytes.is_none(),
             "fast tick should not compute disk"
         );
     }
@@ -459,7 +467,7 @@ mod tests {
         let mut cache = super::super::process_tree::ProcessTreeCache::new();
         let snap = collect_oracle_snapshot(&mut sys, 1, true, &[], &mut cache);
         assert!(
-            !snap.resource.top_processes.is_empty(),
+            snap.resource.top_processes.is_some(),
             "full tick should have top_processes"
         );
         assert!(
@@ -513,9 +521,9 @@ mod tests {
             cpu_percent: 55.0,
             memory_used_bytes: 4 * 1024 * 1024 * 1024,
             memory_total_bytes: 16 * 1024 * 1024 * 1024,
-            disk_used_bytes: 0,
-            disk_total_bytes: 0,
-            top_processes: Vec::new(),
+            disk_used_bytes: None,
+            disk_total_bytes: None,
+            top_processes: None,
             process_resources,
         };
 

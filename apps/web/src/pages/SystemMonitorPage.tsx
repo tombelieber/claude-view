@@ -104,7 +104,7 @@ export function SystemMonitorPage() {
               shouldAnimate ? { animation: 'monitor-reveal 300ms ease-out 200ms both' } : undefined
             }
           >
-            <TopProcessesPanel processes={snapshot.topProcesses} systemInfo={systemInfo} />
+            <TopProcessesPanel processes={snapshot.topProcesses ?? []} systemInfo={systemInfo} />
           </div>
         </div>
       )}

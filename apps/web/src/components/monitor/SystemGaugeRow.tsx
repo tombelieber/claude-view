@@ -33,8 +33,9 @@ interface SystemGaugeRowProps {
 export function SystemGaugeRow({ snapshot, systemInfo, activeSessionCount }: SystemGaugeRowProps) {
   const memPct =
     snapshot.memoryTotalBytes > 0 ? (snapshot.memoryUsedBytes / snapshot.memoryTotalBytes) * 100 : 0
-  const diskPct =
-    snapshot.diskTotalBytes > 0 ? (snapshot.diskUsedBytes / snapshot.diskTotalBytes) * 100 : 0
+  const diskUsed = snapshot.diskUsedBytes ?? 0
+  const diskTotal = snapshot.diskTotalBytes ?? 0
+  const diskPct = diskTotal > 0 ? (diskUsed / diskTotal) * 100 : 0
 
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -58,7 +59,7 @@ export function SystemGaugeRow({ snapshot, systemInfo, activeSessionCount }: Sys
         value={diskPct}
         max={100}
         unit="%"
-        detail={`${formatDisk(snapshot.diskUsedBytes)} / ${formatDisk(snapshot.diskTotalBytes)}`}
+        detail={`${formatDisk(diskUsed)} / ${formatDisk(diskTotal)}`}
         formatValue={(v) => v.toFixed(1)}
       />
       <GaugeCard

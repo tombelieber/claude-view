@@ -98,14 +98,19 @@ pub struct ResourceSnapshot {
     /// Total memory in bytes.
     #[ts(type = "number")]
     pub memory_total_bytes: u64,
-    /// Used disk space in bytes (sum of all mounted volumes).
-    #[ts(type = "number")]
-    pub disk_used_bytes: u64,
-    /// Total disk space in bytes.
-    #[ts(type = "number")]
-    pub disk_total_bytes: u64,
-    /// Top processes by CPU+memory, grouped by normalized name.
-    pub top_processes: Vec<ProcessGroup>,
+    /// Used disk space in bytes. Absent on fast ticks (2s cadence) — only
+    /// computed on full ticks (10s). Consumer must carry forward last known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | undefined")]
+    pub disk_used_bytes: Option<u64>,
+    /// Total disk space in bytes. Absent on fast ticks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(type = "number | undefined")]
+    pub disk_total_bytes: Option<u64>,
+    /// Top processes by CPU+memory, grouped by normalized name. Absent on fast
+    /// ticks — only computed on full ticks (10s). Consumer must carry forward.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_processes: Option<Vec<ProcessGroup>>,
     /// Per-session resource usage for active Claude sessions.
     pub session_resources: Vec<SessionResource>,
 }
@@ -269,9 +274,9 @@ pub fn collect_snapshot(
         cpu_percent,
         memory_used_bytes,
         memory_total_bytes,
-        disk_used_bytes,
-        disk_total_bytes,
-        top_processes,
+        disk_used_bytes: Some(disk_used_bytes),
+        disk_total_bytes: Some(disk_total_bytes),
+        top_processes: Some(top_processes),
         session_resources,
     }
 }
@@ -346,12 +351,11 @@ pub fn start_polling_task(
 
             let _ = tx.send(MonitorEvent::Snapshot(resource_snap));
 
-            // Forward process tree if available on this tick
+            // Forward process tree + components only when the oracle computed
+            // them (full ticks). On fast ticks these are None — no event sent.
             if let Some(ref tree) = oracle_snap.process_tree {
                 let _ = tx.send(MonitorEvent::ProcessTree(tree.clone()));
             }
-
-            // Forward component snapshot if available on this tick
             if let Some(ref comp) = oracle_snap.component_snapshot {
                 let _ = tx.send(MonitorEvent::Components(comp.clone()));
             }
@@ -432,7 +436,7 @@ mod tests {
         assert!(snap.memory_total_bytes > 0);
         assert!(snap.memory_used_bytes > 0);
         assert!(snap.memory_used_bytes <= snap.memory_total_bytes);
-        assert!(snap.disk_total_bytes > 0);
+        assert!(snap.disk_total_bytes.unwrap() > 0);
     }
 
     #[test]
@@ -441,7 +445,7 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(200));
         let sessions = HashMap::new();
         let snap = collect_snapshot(&mut sys, &sessions);
-        assert!(snap.top_processes.len() <= 10);
+        assert!(snap.top_processes.unwrap().len() <= 10);
     }
 
     #[test]
@@ -451,15 +455,40 @@ mod tests {
             cpu_percent: 42.5,
             memory_used_bytes: 8_000_000_000,
             memory_total_bytes: 16_000_000_000,
-            disk_used_bytes: 100_000_000_000,
-            disk_total_bytes: 500_000_000_000,
-            top_processes: vec![],
+            disk_used_bytes: Some(100_000_000_000),
+            disk_total_bytes: Some(500_000_000_000),
+            top_processes: Some(vec![]),
             session_resources: vec![],
         };
         let json = serde_json::to_value(&snap).unwrap();
         assert_eq!(json["cpuPercent"], 42.5);
         assert_eq!(json["memoryUsedBytes"], 8_000_000_000u64);
         assert!(json.get("cpu_percent").is_none(), "should use camelCase");
+    }
+
+    #[test]
+    fn resource_snapshot_omits_none_slow_fields() {
+        let snap = ResourceSnapshot {
+            timestamp: 1,
+            cpu_percent: 10.0,
+            memory_used_bytes: 100,
+            memory_total_bytes: 200,
+            disk_used_bytes: None,
+            disk_total_bytes: None,
+            top_processes: None,
+            session_resources: vec![],
+        };
+        let json = serde_json::to_value(&snap).unwrap();
+        assert!(
+            json.get("diskUsedBytes").is_none(),
+            "None disk should be absent from JSON, not null"
+        );
+        assert!(
+            json.get("topProcesses").is_none(),
+            "None top_processes should be absent from JSON, not null"
+        );
+        // Fast-tick fields always present
+        assert_eq!(json["cpuPercent"], 10.0);
     }
 
     #[test]
@@ -510,9 +539,9 @@ mod tests {
             cpu_percent: 0.0,
             memory_used_bytes: 0,
             memory_total_bytes: 0,
-            disk_used_bytes: 0,
-            disk_total_bytes: 0,
-            top_processes: vec![],
+            disk_used_bytes: None,
+            disk_total_bytes: None,
+            top_processes: None,
             session_resources: vec![],
         };
         let event = MonitorEvent::Snapshot(snap.clone());

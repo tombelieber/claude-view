@@ -79,10 +79,14 @@ export function useSystemMonitor(): SystemMonitorState {
         if (unmounted || esRef.current !== es) return
         try {
           const snap: ResourceSnapshot = JSON.parse(e.data)
+          // Merge, not replace: fast ticks omit slow-tick fields (topProcesses,
+          // disk). Spreading prev first preserves last known values; spreading
+          // snap second overwrites only the keys present in this tick's JSON.
+          // Absent keys (skip_serializing_if on the Rust side) stay untouched.
           setState((prev) => ({
             ...prev,
             status: 'connected',
-            snapshot: snap,
+            snapshot: prev.snapshot ? { ...prev.snapshot, ...snap } : snap,
           }))
         } catch {
           // ignore malformed data
