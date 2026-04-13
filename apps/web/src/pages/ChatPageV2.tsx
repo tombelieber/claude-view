@@ -256,8 +256,9 @@ export function ChatPageV2() {
         if (title && title !== existing.title) {
           existing.api.setTitle(title)
         }
-      } else if (tmuxId && live.status === 'spawning') {
-        // Reactive panel creation: auto-create panel for Spawning tmux session
+      } else if (tmuxId) {
+        // Reactive panel creation: auto-create panel for any tmux session without a panel.
+        // Covers Spawning (just POST'd) and Working (Born already fired, or page refreshed).
         const args = makeTmuxPanelArgs(tmuxId)
         api.addPanel(args)
         const added = api.panels.find((p) => p.id === args.id)

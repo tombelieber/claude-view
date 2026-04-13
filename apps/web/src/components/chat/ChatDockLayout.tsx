@@ -58,11 +58,6 @@ export function ChatDockLayout({ initialLayout, onReady, onLayoutChange }: ChatD
       if (initialLayout) {
         try {
           event.api.fromJSON(initialLayout)
-          // Defense-in-depth: strip stale CLI panels from pre-migration
-          // localStorage data. Save path already strips via stripCliPanels(),
-          // but old data may still contain them.
-          const staleCliPanels = event.api.panels.filter((p) => p.id.startsWith('chat-cli-'))
-          for (const p of staleCliPanels) event.api.removePanel(p)
         } catch {
           // Corrupt or incompatible layout — start fresh
           event.api.clear()

@@ -125,8 +125,18 @@ impl LiveSessionManager {
                         let session_id = extract_session_id(&path);
                         manager.process_jsonl_update(&path).await;
 
+                        // Resolve map key via secondary index: tmux sessions
+                        // are keyed by tmux name, not Claude UUID.
+                        let map_key = manager
+                            .claude_session_id_index
+                            .read()
+                            .await
+                            .get(&session_id)
+                            .cloned()
+                            .unwrap_or_else(|| session_id.clone());
+
                         let sessions = manager.sessions.read().await;
-                        if let Some(session) = sessions.get(&session_id) {
+                        if let Some(session) = sessions.get(&map_key) {
                             let _ = manager.tx.send(SessionEvent::SessionUpsert {
                                 session: session.clone(),
                             });
@@ -146,10 +156,18 @@ impl LiveSessionManager {
     /// Handle a JSONL file removal event.
     async fn handle_file_removed(self: &Arc<Self>, path: &Path) {
         let session_id = extract_session_id(path);
+        // Resolve map key via secondary index (tmux sessions keyed by tmux name).
+        let map_key = self
+            .claude_session_id_index
+            .read()
+            .await
+            .get(&session_id)
+            .cloned()
+            .unwrap_or_else(|| session_id.clone());
         let should_close = {
             let sessions = self.sessions.read().await;
             matches!(
-                sessions.get(&session_id),
+                sessions.get(&map_key),
                 Some(session) if session.status != SessionStatus::Done
             )
         };
@@ -163,7 +181,7 @@ impl LiveSessionManager {
             self.coordinator
                 .handle(
                     &ctx,
-                    &session_id,
+                    &map_key,
                     SessionMutation::Lifecycle(LifecycleEvent::End {
                         reason: Some("File removed".into()),
                     }),
@@ -411,9 +429,20 @@ impl LiveSessionManager {
             });
         }
 
+        // Resolve map key via secondary index: tmux sessions are keyed by
+        // tmux name (e.g. "cv-abc"), not Claude UUID. The secondary index
+        // maps UUID → map key, populated by the Born handler.
+        let map_key = self
+            .claude_session_id_index
+            .read()
+            .await
+            .get(&session_id)
+            .cloned()
+            .unwrap_or_else(|| session_id.clone());
+
         // Update the shared session map
         let mut sessions = self.sessions.write().await;
-        if let Some(session) = sessions.get_mut(&session_id) {
+        if let Some(session) = sessions.get_mut(&map_key) {
             if session.status == SessionStatus::Done {
                 return;
             }
