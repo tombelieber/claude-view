@@ -23,19 +23,19 @@ export type ResourceSnapshot = {
    */
   memoryTotalBytes: number
   /**
-   * Used disk space in bytes. Absent on fast ticks (2s) — only computed
-   * every 10s. Consumer carries forward last known value.
+   * Used disk space in bytes. Absent on fast ticks (2s cadence) — only
+   * computed on full ticks (10s). Consumer must carry forward last known.
    */
-  diskUsedBytes?: number | undefined
+  diskUsedBytes: number | undefined
   /**
    * Total disk space in bytes. Absent on fast ticks.
    */
-  diskTotalBytes?: number | undefined
+  diskTotalBytes: number | undefined
   /**
-   * Top processes by CPU+memory, grouped by normalized name. Absent on
-   * fast ticks — only computed every 10s. Consumer carries forward.
+   * Top processes by CPU+memory, grouped by normalized name. Absent on fast
+   * ticks — only computed on full ticks (10s). Consumer must carry forward.
    */
-  topProcesses?: Array<ProcessGroup>
+  topProcesses: Array<ProcessGroup> | null
   /**
    * Per-session resource usage for active Claude sessions.
    */

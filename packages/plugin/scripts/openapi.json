@@ -250,6 +250,7 @@
           "cli"
         ],
         "summary": "POST /api/cli-sessions -- Create a new tmux-backed CLI session.",
+        "description": "Blocks until the Claude process inside tmux writes its pid.json, then\nreturns the real Claude session UUID. The Born handler (sessions_lifecycle)\ncreates the LiveSession and sets tmux ownership naturally — no intermediate\n\"Spawning\" entry needed.",
         "operationId": "create_session",
         "requestBody": {
           "content": {
@@ -279,7 +280,7 @@
             "description": "Maximum concurrent sessions reached"
           },
           "503": {
-            "description": "tmux unavailable"
+            "description": "tmux unavailable or Claude failed to start"
           }
         }
       }
@@ -290,12 +291,13 @@
           "cli"
         ],
         "summary": "DELETE /api/cli-sessions/{id} -- Kill a CLI session.",
+        "description": "`id` is the tmux session name (e.g. \"cv-abc123\"). Finds the corresponding\nLiveSession by tmux ownership and reaps it.",
         "operationId": "kill_session",
         "parameters": [
           {
             "name": "id",
             "in": "path",
-            "description": "CLI session ID",
+            "description": "Tmux session name",
             "required": true,
             "schema": {
               "type": "string"
@@ -6669,7 +6671,7 @@
       },
       "CliSession": {
         "type": "object",
-        "description": "A tmux-managed CLI session running Claude Code.",
+        "description": "A tmux-managed CLI session running Claude Code.\nUsed by reconciliation at startup.",
         "required": [
           "id",
           "createdAt",
@@ -7162,13 +7164,19 @@
       },
       "CreateResponse": {
         "type": "object",
-        "description": "Response for POST /api/cli-sessions.",
+        "description": "Response for POST /api/cli-sessions.\n\nReturns the real Claude session UUID (resolved by polling pid.json)\nand the tmux session name (needed for DELETE and terminal attachment).",
         "required": [
-          "session"
+          "sessionId",
+          "tmuxSessionName"
         ],
         "properties": {
-          "session": {
-            "$ref": "#/components/schemas/CliSession"
+          "sessionId": {
+            "type": "string",
+            "description": "The Claude session UUID (e.g. \"aaf31eee-77d5-...\")."
+          },
+          "tmuxSessionName": {
+            "type": "string",
+            "description": "The tmux session name (e.g. \"cv-abc123\")."
           }
         }
       },
@@ -11596,9 +11604,6 @@
           "cpuPercent",
           "memoryUsedBytes",
           "memoryTotalBytes",
-          "diskUsedBytes",
-          "diskTotalBytes",
-          "topProcesses",
           "sessionResources"
         ],
         "properties": {
@@ -11608,15 +11613,21 @@
             "description": "Overall CPU usage (0.0–100.0)."
           },
           "diskTotalBytes": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "Total disk space in bytes.",
+            "description": "Total disk space in bytes. Absent on fast ticks.",
             "minimum": 0
           },
           "diskUsedBytes": {
-            "type": "integer",
+            "type": [
+              "integer",
+              "null"
+            ],
             "format": "int64",
-            "description": "Used disk space in bytes (sum of all mounted volumes).",
+            "description": "Used disk space in bytes. Absent on fast ticks (2s cadence) — only\ncomputed on full ticks (10s). Consumer must carry forward last known.",
             "minimum": 0
           },
           "memoryTotalBytes": {
@@ -11644,11 +11655,14 @@
             "description": "Unix timestamp (seconds) when this snapshot was taken."
           },
           "topProcesses": {
-            "type": "array",
+            "type": [
+              "array",
+              "null"
+            ],
             "items": {
               "$ref": "#/components/schemas/ProcessGroup"
             },
-            "description": "Top processes by CPU+memory, grouped by normalized name."
+            "description": "Top processes by CPU+memory, grouped by normalized name. Absent on fast\nticks — only computed on full ticks (10s). Consumer must carry forward."
           }
         }
       },
