@@ -50,11 +50,3 @@ pub struct CreateRequest {
 pub struct CreateResponse {
     pub session: CliSession,
 }
-
-/// Response for GET /api/cli-sessions.
-#[derive(Debug, Serialize, utoipa::ToSchema)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(Deserialize))]
-pub struct ListResponse {
-    pub sessions: Vec<CliSession>,
-}

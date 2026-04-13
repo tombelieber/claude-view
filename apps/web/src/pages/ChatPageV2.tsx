@@ -2,7 +2,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { DockviewApi } from 'dockview-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { useCreateCliSession } from '../hooks/use-cli-sessions'
 import { ChatDockLayout } from '../components/chat/ChatDockLayout'
 import { useDockLayoutStore } from '../store/dock-layout-store'
 import { SessionSidebar } from '../components/conversation/sidebar/SessionSidebar'
@@ -93,7 +92,11 @@ function makeNewChatPanelArgs() {
 }
 
 export function ChatPageV2() {
-  const savedLayout = useDockLayoutStore((s) => s.chatLayout)
+  // Read layout ONCE on mount from the store snapshot — not as a reactive
+  // selector. Reactive would re-render on every save, which risks dockview
+  // re-initialization (handleReady dep on initialLayout). On remount
+  // (navigate away + back), useState re-runs and reads the latest value.
+  const [savedLayout] = useState(() => useDockLayoutStore.getState().chatLayout)
   const saveChatLayout = useDockLayoutStore((s) => s.saveChatLayout)
   const { sessionId } = useParams<{ sessionId?: string }>()
   const liveSessionsList = useActiveSessions()
@@ -176,24 +179,22 @@ export function ChatPageV2() {
     if (added && !added.api.isActive) added.api.setActive()
   }, [])
 
-  // CLI (tmux) session creation — uses the same chat component as everything else.
-  // ChatPanel renders xterm when tmuxSessionId is in params.
-  const createCliSession = useCreateCliSession()
+  // CLI (tmux) session creation — POST only; panel appears reactively via
+  // useActiveSessions() → useEffect when the Spawning LiveSession arrives via SSE.
   const openNewCliSession = useCallback(async () => {
-    const api = dockApiRef.current
-    if (!api) return
     try {
-      const { session } = await createCliSession.mutateAsync({
-        args: ['--dangerously-skip-permissions'],
+      const resp = await fetch('/api/cli-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ args: ['--dangerously-skip-permissions'] }),
       })
-      const args = makeTmuxPanelArgs(session.id)
-      api.addPanel(args)
-      const added = api.panels.find((p) => p.id === args.id)
-      if (added && !added.api.isActive) added.api.setActive()
-    } catch {
-      // useCreateCliSession already handles error via mutation state
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+      // Panel appears reactively via useActiveSessions() → useEffect
+      // when the Spawning LiveSession arrives via SSE.
+    } catch (err) {
+      console.error('Failed to create CLI session:', err)
     }
-  }, [createCliSession])
+  }, [])
 
   // Handle subsequent URL navigation (e.g. clicking sidebar → /chat/:sessionId).
   // Initial mount + layout restoration is handled by dockview's fromJSON + handleDockReady.
@@ -204,34 +205,80 @@ export function ChatPageV2() {
     openSession(sessionId)
   }, [sessionId, openSession])
 
-  // Sync live data into existing tab params when SSE ticks.
-  // When ownership resolves as 'tmux', tmuxSessionId flows through params →
-  // ChatPanel re-renders as xterm terminal (no panel swap needed).
+  // Sync live data into existing tab params when SSE ticks, and reactively
+  // create panels for new Spawning tmux sessions (replaces imperative addPanel
+  // in openNewCliSession).
   useEffect(() => {
     const api = dockApiRef.current
     if (!api) return
     const cached = readSidebarCache(queryClient)
 
+    // Pass 1: iterate liveSessionsList — update existing panels OR create new ones.
+    for (const live of liveSessionsList) {
+      const tmuxId = live.ownership?.tmux?.cliSessionId
+
+      // Find existing panel by sessionId or tmuxSessionId
+      const existing = api.panels.find((p) => {
+        const params = p.params as { sessionId?: string; tmuxSessionId?: string }
+        return (
+          (live.id && params.sessionId === live.id) || (tmuxId && params.tmuxSessionId === tmuxId)
+        )
+      })
+
+      if (existing) {
+        // Update existing panel params
+        const liveCtx: LiveContextData | undefined = {
+          contextWindowTokens: live.contextWindowTokens,
+          statuslineContextWindowSize: live.statuslineContextWindowSize ?? null,
+          statuslineUsedPct: live.statuslineUsedPct ?? null,
+        }
+        const ownership = live.ownership ?? null
+        existing.api.updateParameters({
+          ownership,
+          status: live.status ?? 'done',
+          liveProjectPath: live.projectPath,
+          liveContextData: liveCtx,
+          agentStateGroup: live.agentState?.group ?? null,
+          tmuxSessionId: ownership?.tmux?.cliSessionId,
+        })
+
+        // When tmux session's Claude resolves, update sessionId
+        // so the panel can load conversation blocks.
+        if (live.status !== 'spawning' && live.id && tmuxId) {
+          const curSid = (existing.params as { sessionId?: string })?.sessionId
+          if (!curSid || curSid === '') {
+            existing.api.updateParameters({ sessionId: live.id })
+          }
+        }
+
+        const sid = live.id || tmuxId || ''
+        const title = deriveTabTitle(sid, cached, liveSessionsList)
+        if (title && title !== existing.title) {
+          existing.api.setTitle(title)
+        }
+      } else if (tmuxId && live.status === 'spawning') {
+        // Reactive panel creation: auto-create panel for Spawning tmux session
+        const args = makeTmuxPanelArgs(tmuxId)
+        api.addPanel(args)
+        const added = api.panels.find((p) => p.id === args.id)
+        if (added && !added.api.isActive) added.api.setActive()
+      }
+    }
+
+    // Pass 2: update titles for panels with sessions not in liveSessionsList
+    // (historical panels that need title refresh from sidebar cache).
     for (const panel of api.panels) {
       const sid = (panel.params as { sessionId?: string })?.sessionId
       if (!sid) continue
-      const live = liveSessionsList.find((s) => s.id === sid)
-      const liveCtx: LiveContextData | undefined = live
-        ? {
-            contextWindowTokens: live.contextWindowTokens,
-            statuslineContextWindowSize: live.statuslineContextWindowSize ?? null,
-            statuslineUsedPct: live.statuslineUsedPct ?? null,
-          }
-        : undefined
-      const ownership = live?.ownership ?? null
-      panel.api.updateParameters({
-        ownership,
-        status: live?.status ?? 'done',
-        liveProjectPath: live?.projectPath,
-        liveContextData: liveCtx,
-        agentStateGroup: live?.agentState?.group ?? null,
-        tmuxSessionId: ownership?.tmux?.cliSessionId,
-      })
+      // Skip if already handled in pass 1
+      const handledByLive = liveSessionsList.some(
+        (s) =>
+          s.id === sid ||
+          s.ownership?.tmux?.cliSessionId ===
+            (panel.params as { tmuxSessionId?: string })?.tmuxSessionId,
+      )
+      if (handledByLive) continue
+
       const title = deriveTabTitle(sid, cached, liveSessionsList)
       if (title !== sid.slice(0, 8) && panel.title === sid.slice(0, 8)) {
         panel.api.setTitle(title)

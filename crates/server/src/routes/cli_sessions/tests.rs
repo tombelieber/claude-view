@@ -9,10 +9,9 @@ use axum::{
     Router,
 };
 use claude_view_db::Database;
-use store::CliSessionStore;
 use tmux::mock::MockTmux;
 use tower::ServiceExt;
-use types::{CliSessionStatus, CreateResponse, ListResponse};
+use types::{CliSessionStatus, CreateResponse};
 
 // ============================================================================
 // Helpers
@@ -50,119 +49,6 @@ async fn do_request(
         .await
         .unwrap();
     (status, String::from_utf8(bytes.to_vec()).unwrap())
-}
-
-// ============================================================================
-// Store tests
-// ============================================================================
-
-#[tokio::test]
-async fn test_store_insert_and_get() {
-    let store = CliSessionStore::new();
-    store
-        .insert(types::CliSession {
-            id: "cv-aaa".to_string(),
-            created_at: 1000,
-            status: CliSessionStatus::Running,
-            project_dir: Some("/tmp/proj".to_string()),
-            args: vec!["--flag".to_string()],
-            claude_session_id: None,
-        })
-        .await;
-
-    let session = store.get("cv-aaa").await.unwrap();
-    assert_eq!(session.id, "cv-aaa");
-    assert_eq!(session.created_at, 1000);
-    assert_eq!(session.status, CliSessionStatus::Running);
-    assert_eq!(session.project_dir, Some("/tmp/proj".to_string()));
-    assert_eq!(session.args, vec!["--flag"]);
-}
-
-#[tokio::test]
-async fn test_store_get_missing_returns_none() {
-    let store = CliSessionStore::new();
-    assert!(store.get("nonexistent").await.is_none());
-}
-
-#[tokio::test]
-async fn test_store_remove() {
-    let store = CliSessionStore::new();
-    store
-        .insert(types::CliSession {
-            id: "cv-bbb".to_string(),
-            created_at: 2000,
-            status: CliSessionStatus::Running,
-            project_dir: None,
-            args: vec![],
-            claude_session_id: None,
-        })
-        .await;
-
-    let removed = store.remove("cv-bbb").await;
-    assert!(removed.is_some());
-    assert_eq!(removed.unwrap().id, "cv-bbb");
-
-    // Should be gone now.
-    assert!(store.get("cv-bbb").await.is_none());
-}
-
-#[tokio::test]
-async fn test_store_remove_missing_returns_none() {
-    let store = CliSessionStore::new();
-    assert!(store.remove("nope").await.is_none());
-}
-
-#[tokio::test]
-async fn test_store_list_sorted_newest_first() {
-    let store = CliSessionStore::new();
-    for (id, ts) in [("cv-old", 100u64), ("cv-mid", 500), ("cv-new", 900)] {
-        store
-            .insert(types::CliSession {
-                id: id.to_string(),
-                created_at: ts,
-                status: CliSessionStatus::Running,
-                project_dir: None,
-                args: vec![],
-                claude_session_id: None,
-            })
-            .await;
-    }
-
-    let list = store.list().await;
-    assert_eq!(list.len(), 3);
-    assert_eq!(list[0].id, "cv-new");
-    assert_eq!(list[1].id, "cv-mid");
-    assert_eq!(list[2].id, "cv-old");
-}
-
-#[tokio::test]
-async fn test_store_update_status() {
-    let store = CliSessionStore::new();
-    store
-        .insert(types::CliSession {
-            id: "cv-ccc".to_string(),
-            created_at: 3000,
-            status: CliSessionStatus::Running,
-            project_dir: None,
-            args: vec![],
-            claude_session_id: None,
-        })
-        .await;
-
-    let updated = store
-        .update_status("cv-ccc", CliSessionStatus::Exited)
-        .await;
-    assert!(updated);
-
-    let session = store.get("cv-ccc").await.unwrap();
-    assert_eq!(session.status, CliSessionStatus::Exited);
-}
-
-#[tokio::test]
-async fn test_store_update_status_missing_returns_false() {
-    let store = CliSessionStore::new();
-    let updated = store.update_status("nope", CliSessionStatus::Exited).await;
-    assert!(!updated);
 }
 
 // ============================================================================
@@ -224,59 +110,6 @@ async fn test_create_session_tmux_unavailable() {
 }
 
 // ============================================================================
-// Handler tests -- list
-// ============================================================================
-
-#[tokio::test]
-async fn test_list_sessions_empty() {
-    let mock = MockTmux::new();
-    let app = build_app(test_db().await, mock);
-
-    let (status, body) = do_request(app, Method::GET, "/api/cli-sessions", None).await;
-
-    assert_eq!(status, StatusCode::OK);
-
-    let resp: ListResponse = serde_json::from_str(&body).unwrap();
-    assert!(resp.sessions.is_empty());
-}
-
-#[tokio::test]
-async fn test_list_sessions_marks_dead_as_exited() {
-    let mock = MockTmux::new();
-    let db = test_db().await;
-    let mut state = crate::state::AppState::new(db);
-    {
-        let s = std::sync::Arc::get_mut(&mut state).unwrap();
-        s.tmux = std::sync::Arc::new(mock);
-    }
-
-    // Insert a session that is NOT in mock tmux's tracking.
-    // This simulates a tmux session that died externally.
-    state
-        .cli_sessions
-        .insert(types::CliSession {
-            id: "cv-ghost".to_string(),
-            created_at: 1000,
-            status: CliSessionStatus::Running,
-            project_dir: None,
-            args: vec![],
-            claude_session_id: None,
-        })
-        .await;
-
-    let app = Router::new().nest("/api", router()).with_state(state);
-
-    let (status, body) = do_request(app, Method::GET, "/api/cli-sessions", None).await;
-
-    assert_eq!(status, StatusCode::OK);
-
-    let resp: ListResponse = serde_json::from_str(&body).unwrap();
-    assert_eq!(resp.sessions.len(), 1);
-    assert_eq!(resp.sessions[0].id, "cv-ghost");
-    assert_eq!(resp.sessions[0].status, CliSessionStatus::Exited);
-}
-
-// ============================================================================
 // Handler tests -- kill
 // ============================================================================
 
@@ -292,18 +125,8 @@ async fn test_kill_session_success() {
         s.tmux = std::sync::Arc::new(mock_tmux);
     }
 
-    // Also insert into the store.
-    state
-        .cli_sessions
-        .insert(types::CliSession {
-            id: "cv-kill-me".to_string(),
-            created_at: 1000,
-            status: CliSessionStatus::Running,
-            project_dir: None,
-            args: vec![],
-            claude_session_id: None,
-        })
-        .await;
+    // Register in tmux index.
+    state.tmux_index.insert("cv-kill-me".to_string()).await;
 
     let app = Router::new()
         .nest("/api", router())
@@ -318,8 +141,8 @@ async fn test_kill_session_success() {
     assert_eq!(resp["removed"], true);
     assert_eq!(resp["id"], "cv-kill-me");
 
-    // Verify removed from store.
-    assert!(state.cli_sessions.get("cv-kill-me").await.is_none());
+    // Verify removed from tmux index.
+    assert!(!state.tmux_index.contains("cv-kill-me").await);
 }
 
 #[tokio::test]

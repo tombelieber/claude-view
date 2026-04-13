@@ -9,12 +9,21 @@ import { describe, expect, it, vi } from 'vitest'
 let capturedOnReady: ((api: unknown) => void) | undefined
 
 vi.mock('../../components/chat/ChatDockLayout', () => ({
-  readSavedChatLayout: () => null,
   ChatDockLayout: ({ onReady }: { onReady?: (api: unknown) => void }) => {
     capturedOnReady = onReady
     return <div data-testid="chat-dock-layout" />
   },
 }))
+
+// Mock dock layout store — ChatPageV2 reads layout via getState() + selector
+vi.mock('../../store/dock-layout-store', () => {
+  const state = { chatLayout: null, saveChatLayout: () => {} }
+  return {
+    useDockLayoutStore: Object.assign((selector: (s: typeof state) => unknown) => selector(state), {
+      getState: () => state,
+    }),
+  }
+})
 
 // Mock SessionSidebar (heavy component with many deps)
 vi.mock('../../components/conversation/sidebar/SessionSidebar', () => ({

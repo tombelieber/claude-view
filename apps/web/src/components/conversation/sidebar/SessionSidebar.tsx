@@ -4,7 +4,6 @@ import { Search } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { useKillCliSession } from '../../../hooks/use-cli-sessions'
 import { useSessionMutations } from '../../../hooks/use-session-mutations'
 import { TOAST_DURATION } from '../../../lib/notify'
 import { toSidebarItems } from '../../../lib/sidebar-mapper'
@@ -54,7 +53,6 @@ export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: Ses
   const navigate = useNavigate()
   const { sessionId: currentSessionId } = useParams<{ sessionId?: string }>()
   const { resumeSession, deleteSession, forkSession } = useSessionMutations()
-  const killCliSession = useKillCliSession()
 
   const chatNeedsYouCollapsed = useAppStore((s) => s.chatNeedsYouCollapsed)
   const chatWorkingCollapsed = useAppStore((s) => s.chatWorkingCollapsed)
@@ -168,12 +166,14 @@ export function SessionSidebar({ liveSessions, onNewChat, onNewCliSession }: Ses
       const session = enrichedHistory.find((s) => s.id === sessionId)
       const ownership = session?.liveData?.ownership
       if (ownership?.tmux) {
-        killCliSession.mutate(ownership.tmux.cliSessionId)
+        fetch(`/api/cli-sessions/${ownership.tmux.cliSessionId}`, { method: 'DELETE' }).catch(
+          () => {},
+        )
       } else {
         deleteSession.mutate(sessionId)
       }
     },
-    [enrichedHistory, deleteSession, killCliSession],
+    [enrichedHistory, deleteSession],
   )
 
   const handleOpenInMonitor = useCallback(

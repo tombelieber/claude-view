@@ -112,7 +112,6 @@ use utoipa::OpenApi;
         crate::routes::plugins::list_marketplaces,
         crate::routes::plugins::marketplace_action,
         crate::routes::cli_sessions::create_session,
-        crate::routes::cli_sessions::list_sessions,
         crate::routes::cli_sessions::kill_session,
         crate::routes::plugin_ops::enqueue_op,
         crate::routes::plugin_ops::list_ops_handler,

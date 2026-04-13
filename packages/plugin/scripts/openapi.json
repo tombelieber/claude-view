@@ -245,25 +245,6 @@
       }
     },
     "/api/cli-sessions": {
-      "get": {
-        "tags": [
-          "cli"
-        ],
-        "summary": "GET /api/cli-sessions -- List all CLI sessions, with health check.",
-        "operationId": "list_sessions",
-        "responses": {
-          "200": {
-            "description": "All CLI sessions with live health status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ListResponse"
-                }
-              }
-            }
-          }
-        }
-      },
       "post": {
         "tags": [
           "cli"
@@ -1693,7 +1674,7 @@
           "live"
         ],
         "summary": "GET /api/live/stream -- SSE stream of real-time session events.",
-        "description": "# Events\n\n| Event name            | When emitted                           |\n|-----------------------|----------------------------------------|\n| `snapshot`            | On connect and lag recovery (full state)|\n| `session_upsert`      | Session created or updated             |\n| `session_remove`      | Session removed from active map        |\n| `cli_session_created` | CLI session created                    |\n| `cli_session_updated` | CLI session status changed             |\n| `cli_session_removed` | CLI session killed                     |\n| `heartbeat`           | Every 15 seconds to keep connection    |\n\nOn initial connection the server sends a single `snapshot` event containing\nthe summary, all active sessions, and recently closed sessions so the client\ncan hydrate immediately without a separate REST call.",
+        "description": "# Events\n\n| Event name            | When emitted                           |\n|-----------------------|----------------------------------------|\n| `snapshot`            | On connect and lag recovery (full state)|\n| `session_upsert`      | Session created or updated             |\n| `session_remove`      | Session removed from active map        |\n| `heartbeat`           | Every 15 seconds to keep connection    |\n\nOn initial connection the server sends a single `snapshot` event containing\nthe summary, all active sessions, and recently closed sessions so the client\ncan hydrate immediately without a separate REST call.",
         "operationId": "live_stream",
         "responses": {
           "200": {
@@ -9782,21 +9763,6 @@
           "tier": {
             "type": "integer",
             "format": "int64"
-          }
-        }
-      },
-      "ListResponse": {
-        "type": "object",
-        "description": "Response for GET /api/cli-sessions.",
-        "required": [
-          "sessions"
-        ],
-        "properties": {
-          "sessions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CliSession"
-            }
           }
         }
       },

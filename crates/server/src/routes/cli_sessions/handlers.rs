@@ -7,34 +7,24 @@ use axum::{
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use super::types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse};
 use crate::{
     error::{ApiError, ApiResult},
-    live::state::{CliSessionInfo, SessionEvent},
+    live::state::{
+        AgentState, AgentStateGroup, HookFields, JsonlFields, LiveSession, SessionEvent,
+        SessionStatus, StatuslineFields,
+    },
     state::AppState,
 };
-use tokio::time::Duration;
-
-use super::types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};
 
 /// Read the Claude session ID from ~/.claude/sessions/{pid}.json.
+/// Retained for startup reconciliation (reconcile.rs).
 pub(super) fn resolve_claude_session_id(pid: u32) -> Option<String> {
     let home = dirs::home_dir()?;
     let path = home.join(format!(".claude/sessions/{pid}.json"));
     let data = std::fs::read_to_string(path).ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&data).ok()?;
     parsed.get("sessionId")?.as_str().map(String::from)
-}
-
-fn to_cli_info(s: &CliSession) -> CliSessionInfo {
-    CliSessionInfo {
-        id: s.id.clone(),
-        created_at: s.created_at,
-        status: match s.status {
-            CliSessionStatus::Running => "running".to_string(),
-            CliSessionStatus::Exited => "exited".to_string(),
-        },
-        project_dir: s.project_dir.clone(),
-    }
 }
 
 // ============================================================================
@@ -57,7 +47,7 @@ pub async fn create_session(
 ) -> ApiResult<Json<CreateResponse>> {
     // Limit concurrent sessions to prevent resource exhaustion.
     const MAX_CLI_SESSIONS: usize = 10;
-    if state.cli_sessions.list().await.len() >= MAX_CLI_SESSIONS {
+    if state.tmux_index.len().await >= MAX_CLI_SESSIONS {
         return Err(ApiError::Conflict(format!(
             "Maximum {MAX_CLI_SESSIONS} concurrent CLI sessions reached"
         )));
@@ -95,129 +85,116 @@ pub async fn create_session(
         .new_session(&session_id, req.project_dir.as_deref(), &req.args)
         .map_err(|e| ApiError::Internal(format!("Failed to create tmux session: {e}")))?;
 
+    // Register in tmux index.
+    state.tmux_index.insert(session_id.clone()).await;
+
+    // Insert minimal LiveSession into the unified store.
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
-        .as_millis() as u64;
+        .as_millis() as i64;
 
+    let live_session = LiveSession {
+        id: session_id.clone(),
+        status: SessionStatus::Spawning,
+        started_at: Some(now_ms),
+        closed_at: None,
+        control: None,
+        model: None,
+        model_display_name: None,
+        model_set_at: 0,
+        context_window_tokens: 0,
+        statusline: StatuslineFields::default(),
+        hook: HookFields {
+            agent_state: AgentState {
+                group: AgentStateGroup::Autonomous,
+                state: "spawning".into(),
+                label: "Starting...".into(),
+                context: None,
+            },
+            pid: None,
+            title: String::new(),
+            last_user_message: String::new(),
+            current_activity: "Starting...".into(),
+            turn_count: 0,
+            last_activity_at: now_ms,
+            current_turn_started_at: None,
+            sub_agents: Vec::new(),
+            progress_items: Vec::new(),
+            compact_count: 0,
+            agent_state_set_at: 0,
+            last_assistant_preview: None,
+            last_error: None,
+            last_error_details: None,
+            hook_events: Vec::new(),
+        },
+        jsonl: JsonlFields {
+            project: String::new(),
+            project_display_name: req
+                .project_dir
+                .as_deref()
+                .and_then(|d| {
+                    std::path::Path::new(d)
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .map(String::from)
+                })
+                .unwrap_or_default(),
+            project_path: req.project_dir.clone().unwrap_or_default(),
+            file_path: String::new(),
+            git_branch: None,
+            worktree_branch: None,
+            is_worktree: false,
+            effective_branch: None,
+            tokens: Default::default(),
+            cost: Default::default(),
+            cache_status: claude_view_core::pricing::CacheStatus::Unknown,
+            last_turn_task_seconds: None,
+            last_cache_hit_at: None,
+            team_name: None,
+            team_members: Vec::new(),
+            team_inbox_count: 0,
+            edit_count: 0,
+            tools_used: Vec::new(),
+            slug: None,
+            user_files: None,
+            source: None,
+            phase: Default::default(),
+            ai_title: None,
+        },
+        session_kind: None,
+        entrypoint: None,
+        ownership: Some(claude_view_types::SessionOwnership {
+            tmux: Some(claude_view_types::TmuxBinding {
+                cli_session_id: session_id.clone(),
+            }),
+            ..Default::default()
+        }),
+        pending_interaction: None,
+    };
+
+    // Insert into LiveSessionMap and broadcast.
+    {
+        let mut map = state.live_sessions.write().await;
+        map.insert(session_id.clone(), live_session.clone());
+    }
+    let _ = state.live_tx.send(SessionEvent::SessionUpsert {
+        session: live_session,
+    });
+
+    tracing::info!(id = %session_id, "CLI session created (Spawning)");
+
+    // Return CliSession shape for backward compat (frontend still expects this during migration).
     let session = CliSession {
         id: session_id,
-        created_at: now_ms,
+        created_at: now_ms as u64,
         status: CliSessionStatus::Running,
         project_dir: req.project_dir,
         args: req.args,
-        claude_session_id: None, // Resolved lazily on list/health-check
+        claude_session_id: None,
     };
 
-    // Store the session.
-    state.cli_sessions.insert(session.clone()).await;
-
-    // Broadcast SSE event so connected frontends update immediately.
-    let _ = state.live_tx.send(SessionEvent::CliSessionCreated {
-        cli_session: to_cli_info(&session),
-    });
-
-    tracing::info!(id = %session.id, "CLI session created");
-
-    // Eagerly resolve claude_session_id in background.
-    // Claude Code writes ~/.claude/sessions/{pid}.json shortly after start.
-    // Poll until found so ownership.tmux binding is written into the session
-    // record immediately — no stale window.
-    {
-        let state = state.clone();
-        let id = session.id.clone();
-        tokio::spawn(async move {
-            for _ in 0..30 {
-                tokio::time::sleep(Duration::from_millis(200)).await;
-                if let Some(pid) = state.tmux.pane_pid(&id) {
-                    if let Some(sid) = resolve_claude_session_id(pid) {
-                        state
-                            .cli_sessions
-                            .set_claude_session_id(&id, sid.clone())
-                            .await;
-                        // Write ownership into the session record and broadcast.
-                        // Guard: skip Done sessions — client already moved them
-                        // to recentlyClosed; re-emitting would resurrect them.
-                        let is_done =
-                            state.live_sessions.read().await.get(&sid).is_none_or(|s| {
-                                s.status == crate::live::state::SessionStatus::Done
-                            });
-                        if !is_done {
-                            crate::live::ownership::write_ownership(
-                                &state.live_sessions,
-                                &sid,
-                                &state.cli_sessions,
-                                &state.live_tx,
-                            )
-                            .await;
-                        }
-                        return;
-                    }
-                }
-            }
-            tracing::debug!(cli = %id, "claude_session_id not resolved after 6s");
-        });
-    }
-
     Ok(Json(CreateResponse { session }))
-}
-
-/// GET /api/cli-sessions -- List all CLI sessions, with health check.
-#[utoipa::path(get, path = "/api/cli-sessions", tag = "cli",
-    responses(
-        (status = 200, description = "All CLI sessions with live health status", body = ListResponse),
-    )
-)]
-pub async fn list_sessions(State(state): State<Arc<AppState>>) -> ApiResult<Json<ListResponse>> {
-    let sessions = state.cli_sessions.list().await;
-
-    // Run a quick health check: mark sessions that no longer exist in tmux,
-    // and resolve Claude session IDs from tmux pane PIDs.
-    let mut result = Vec::with_capacity(sessions.len());
-    for mut session in sessions {
-        if session.status != CliSessionStatus::Exited && !state.tmux.has_session(&session.id) {
-            session.status = CliSessionStatus::Exited;
-            state
-                .cli_sessions
-                .update_status(&session.id, CliSessionStatus::Exited)
-                .await;
-            // Broadcast status change so frontends update immediately.
-            let _ = state.live_tx.send(SessionEvent::CliSessionUpdated {
-                cli_session: to_cli_info(&session),
-            });
-        }
-        if session.status == CliSessionStatus::Running {
-            // Lazily resolve Claude session ID if not yet known.
-            if session.claude_session_id.is_none() {
-                if let Some(pid) = state.tmux.pane_pid(&session.id) {
-                    if let Some(sid) = resolve_claude_session_id(pid) {
-                        state
-                            .cli_sessions
-                            .set_claude_session_id(&session.id, sid.clone())
-                            .await;
-                        session.claude_session_id = Some(sid.clone());
-                        // Write ownership into the session record and broadcast.
-                        let is_done =
-                            state.live_sessions.read().await.get(&sid).is_none_or(|s| {
-                                s.status == crate::live::state::SessionStatus::Done
-                            });
-                        if !is_done {
-                            crate::live::ownership::write_ownership(
-                                &state.live_sessions,
-                                &sid,
-                                &state.cli_sessions,
-                                &state.live_tx,
-                            )
-                            .await;
-                        }
-                    }
-                }
-            }
-        }
-        result.push(session);
-    }
-
-    Ok(Json(ListResponse { sessions: result }))
 }
 
 /// DELETE /api/cli-sessions/{id} -- Kill a CLI session.
@@ -232,25 +209,36 @@ pub async fn kill_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    // Check if the session exists in our store.
-    let session = state
-        .cli_sessions
-        .get(&id)
-        .await
-        .ok_or_else(|| ApiError::NotFound(format!("CLI session not found: {id}")))?;
-
-    // Kill the tmux session (ignore errors if already dead).
-    if state.tmux.has_session(&session.id) {
-        let _ = state.tmux.kill_session(&session.id);
+    // Check tmux index.
+    if !state.tmux_index.contains(&id).await {
+        return Err(ApiError::NotFound(format!("CLI session not found: {id}")));
     }
 
-    // Remove from store.
-    state.cli_sessions.remove(&id).await;
+    // Kill the tmux session (ignore errors if already dead).
+    if state.tmux.has_session(&id) {
+        let _ = state.tmux.kill_session(&id);
+    }
 
-    // Broadcast removal so frontends update immediately.
-    let _ = state.live_tx.send(SessionEvent::CliSessionRemoved {
-        cli_session_id: id.clone(),
-    });
+    // Remove from tmux index.
+    state.tmux_index.remove(&id).await;
+
+    // If session is still Spawning (no PID yet), remove from LiveSessionMap directly.
+    // For Born+ sessions, death detection (kqueue/reconciler) handles cleanup naturally.
+    {
+        let mut map = state.live_sessions.write().await;
+        if let Some(session) = map.get(&id) {
+            if session.status == SessionStatus::Spawning {
+                let removed = map.remove(&id);
+                drop(map); // Release write lock before sending event.
+                if let Some(session) = removed {
+                    let _ = state.live_tx.send(SessionEvent::SessionRemove {
+                        session_id: id.clone(),
+                        session,
+                    });
+                }
+            }
+        }
+    }
 
     tracing::info!(id = %id, "CLI session killed");
 

@@ -214,7 +214,11 @@ pub(crate) fn enrich_from_session_file(session: &mut super::super::state::LiveSe
     let session_path = sessions_dir.join(format!("{pid}.json"));
     if let Some(active) = claude_view_core::session_files::parse_session_file(&session_path) {
         session.session_kind = Some(active.kind);
-        session.entrypoint = Some(active.entrypoint);
+        session.entrypoint = Some(active.entrypoint.clone());
+        // Derive source immediately from PID file entrypoint.
+        session.jsonl.source = Some(crate::live::process::entrypoint_to_source(
+            &active.entrypoint,
+        ));
     }
 }
 
