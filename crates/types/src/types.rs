@@ -524,6 +524,9 @@ pub struct ProjectSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
     pub last_activity_at: Option<i64>,
+    /// Whether the project directory no longer exists on disk.
+    #[serde(default)]
+    pub is_archived: bool,
 }
 
 /// Paginated sessions response.

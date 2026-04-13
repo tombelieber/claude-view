@@ -18,8 +18,9 @@ impl Database {
         // Group by real decoded path, falling through: git_root → project_path → project_id.
         // This prevents duplicates when some sessions have git_root resolved and
         // others only have the encoded project_id (both decode to the same path).
-        let rows: Vec<(String, String, String, i64, i64, Option<i64>)> = sqlx::query_as(
-            r#"
+        let rows: Vec<(String, String, String, i64, i64, Option<i64>, Option<i32>)> =
+            sqlx::query_as(
+                r#"
             SELECT
                 COALESCE(NULLIF(git_root, ''), NULLIF(project_path, ''), project_id) as effective_id,
                 COALESCE(
@@ -32,20 +33,31 @@ impl Database {
                 COALESCE(NULLIF(git_root, ''), NULLIF(project_path, ''), '') as effective_path,
                 COUNT(*) as session_count,
                 SUM(CASE WHEN last_message_at > ?1 THEN 1 ELSE 0 END) as active_count,
-                MAX(last_message_at) as last_activity_at
+                MAX(last_message_at) as last_activity_at,
+                MIN(pds.dir_exists) as dir_exists
             FROM valid_sessions
+            LEFT JOIN project_dir_status pds
+                ON pds.effective_path = COALESCE(NULLIF(git_root, ''), NULLIF(project_path, ''), project_id)
             GROUP BY effective_id
             ORDER BY last_activity_at DESC
             "#,
-        )
-        .bind(active_threshold)
-        .fetch_all(self.pool())
-        .await?;
+            )
+            .bind(active_threshold)
+            .fetch_all(self.pool())
+            .await?;
 
         let mut summaries: Vec<ProjectSummary> = rows
             .into_iter()
             .map(
-                |(name, display_name, path, session_count, active_count, last_activity_at)| {
+                |(
+                    name,
+                    display_name,
+                    path,
+                    session_count,
+                    active_count,
+                    last_activity_at,
+                    dir_exists,
+                )| {
                     ProjectSummary {
                         name,
                         display_name,
@@ -53,6 +65,7 @@ impl Database {
                         session_count: session_count as usize,
                         active_count: active_count as usize,
                         last_activity_at,
+                        is_archived: dir_exists == Some(0),
                     }
                 },
             )
@@ -274,7 +287,61 @@ mod disambiguate_tests {
             session_count: 1,
             active_count: 0,
             last_activity_at: None,
+            is_archived: false,
         }
+    }
+
+    // --- list_project_summaries archived flag ---
+
+    #[tokio::test]
+    async fn list_project_summaries_includes_archived_flag() {
+        let db = crate::Database::new_in_memory().await.unwrap();
+
+        // Insert a session
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, project_display_name, file_path, preview, last_message_at, message_count, size_bytes, is_sidechain)
+             VALUES ('s1', 'proj1', '/deleted/project', 'project', '/path/s1.jsonl', 'test', 1000, 1, 100, 0)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Insert dir_status marking it as missing
+        sqlx::query(
+            "INSERT INTO project_dir_status (effective_path, dir_exists, checked_at) VALUES ('/deleted/project', 0, 1000)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let summaries = db.list_project_summaries().await.unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert!(summaries[0].is_archived);
+    }
+
+    #[tokio::test]
+    async fn list_project_summaries_active_when_dir_exists() {
+        let db = crate::Database::new_in_memory().await.unwrap();
+
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, project_path, project_display_name, file_path, preview, last_message_at, message_count, size_bytes, is_sidechain)
+             VALUES ('s1', 'proj1', '/existing/project', 'project', '/path/s1.jsonl', 'test', 1000, 1, 100, 0)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        // Insert dir_status marking it as existing
+        sqlx::query(
+            "INSERT INTO project_dir_status (effective_path, dir_exists, checked_at) VALUES ('/existing/project', 1, 1000)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+
+        let summaries = db.list_project_summaries().await.unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert!(!summaries[0].is_archived);
     }
 
     // --- parent_qualified_name ---
