@@ -22,8 +22,11 @@ use super::LiveSessionManager;
 fn pid_file_matches_session(file_content: &str, expected_session_id: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(file_content)
         .ok()
-        .and_then(|v| v.get("sessionId")?.as_str().map(String::from))
-        .map(|sid| sid == expected_session_id)
+        .and_then(|v| {
+            v.get("sessionId")?
+                .as_str()
+                .map(|s| s == expected_session_id)
+        })
         .unwrap_or(false)
 }
 
@@ -40,7 +43,11 @@ fn is_pid_still_claude(pid: u32, expected_session_id: &str) -> bool {
     let path = sessions_dir.join(format!("{pid}.json"));
     match std::fs::read_to_string(&path) {
         Ok(data) => pid_file_matches_session(&data, expected_session_id),
-        Err(_) => false, // PID file gone -> not Claude anymore
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => {
+            tracing::warn!(pid, path = %path.display(), error = %e, "PID file unreadable — treating as gone");
+            false
+        }
     }
 }
 
