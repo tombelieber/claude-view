@@ -115,9 +115,6 @@ async fn handle_event(
             error_tracker.remove(&session.id);
             (vec![WebhookEventType::SessionEnded], session)
         }
-        SessionEvent::CliSessionCreated { .. }
-        | SessionEvent::CliSessionUpdated { .. }
-        | SessionEvent::CliSessionRemoved { .. } => return,
     };
 
     // Load config (file-backed, re-read each time for hot reload).
@@ -250,43 +247,6 @@ mod tests {
         // Give it a moment to process.
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        shutdown_tx.send(true).unwrap();
-        tokio::time::timeout(Duration::from_secs(2), handle)
-            .await
-            .unwrap()
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn engine_skips_cli_events() {
-        let (tx, _) = broadcast::channel(16);
-        let (shutdown_tx, shutdown_rx) = watch::channel(false);
-        let tmp = TempDir::new().unwrap();
-
-        let handle = spawn_engine(
-            &tx,
-            shutdown_rx,
-            tmp.path().join("notifications.json"),
-            tmp.path().join("secrets.json"),
-            None,
-        );
-
-        // CLI events should be skipped without error.
-        tx.send(SessionEvent::CliSessionCreated {
-            cli_session: claude_view_server_live_state::event::CliSessionInfo {
-                id: "cv-test".into(),
-                created_at: 0,
-                status: "running".into(),
-                project_dir: None,
-            },
-        })
-        .unwrap();
-        tx.send(SessionEvent::CliSessionRemoved {
-            cli_session_id: "cv-test".into(),
-        })
-        .unwrap();
-
-        tokio::time::sleep(Duration::from_millis(50)).await;
         shutdown_tx.send(true).unwrap();
         tokio::time::timeout(Duration::from_secs(2), handle)
             .await

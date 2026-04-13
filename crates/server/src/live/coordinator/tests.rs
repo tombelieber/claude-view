@@ -216,7 +216,6 @@ mod tests {
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
         let hook_event_channels: Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>> =
             Arc::new(RwLock::new(HashMap::new()));
-        let cli_sessions = Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new());
         let interaction_data: Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>> =
             Arc::new(RwLock::new(HashMap::new()));
 
@@ -227,7 +226,6 @@ mod tests {
             db: &db,
             transcript_to_session: &transcript_to_session,
             hook_event_channels: &hook_event_channels,
-            cli_sessions: &cli_sessions,
             interaction_data: &interaction_data,
         };
 
@@ -321,7 +319,6 @@ mod tests {
         claude_view_db::Database,
         TranscriptMap,
         Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>>,
-        Arc<crate::routes::cli_sessions::store::CliSessionStore>,
         Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
     ) {
         let coordinator = SessionCoordinator::new();
@@ -333,7 +330,6 @@ mod tests {
         let transcript_to_session: TranscriptMap = Arc::new(RwLock::new(HashMap::new()));
         let hook_event_channels: Arc<RwLock<HashMap<String, broadcast::Sender<HookEvent>>>> =
             Arc::new(RwLock::new(HashMap::new()));
-        let cli_sessions = Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new());
         let interaction_data: Arc<RwLock<HashMap<String, claude_view_types::InteractionBlock>>> =
             Arc::new(RwLock::new(HashMap::new()));
         (
@@ -343,7 +339,6 @@ mod tests {
             db,
             transcript_to_session,
             hook_event_channels,
-            cli_sessions,
             interaction_data,
         )
     }
@@ -352,8 +347,7 @@ mod tests {
     async fn hook_with_cwd_buffers_without_birth() {
         // After pid.json change: hooks with cwd are BUFFERED, not upserted.
         // Only Birth and Reconcile can create sessions.
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -361,7 +355,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -397,8 +390,7 @@ mod tests {
     #[tokio::test]
     async fn observability_with_cwd_buffers_without_birth() {
         // After pid.json change: observability hooks with cwd are BUFFERED.
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -406,7 +398,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -435,8 +426,7 @@ mod tests {
 
     #[tokio::test]
     async fn no_cwd_still_buffers() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -444,7 +434,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -480,8 +469,7 @@ mod tests {
 
     #[tokio::test]
     async fn birth_drains_previously_buffered_events() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -489,7 +477,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -546,8 +533,7 @@ mod tests {
 
     #[tokio::test]
     async fn birth_then_stop_sets_needs_you_state() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -555,7 +541,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -672,8 +657,7 @@ mod tests {
 
     #[tokio::test]
     async fn birth_mutation_creates_session_through_pipeline() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -681,7 +665,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -1015,8 +998,7 @@ mod tests {
 
     #[tokio::test]
     async fn interaction_set_broadcasts_updated() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let mut rx = live_tx.subscribe();
         let ctx = MutationContext {
             sessions: &sessions,
@@ -1025,7 +1007,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -1074,8 +1055,7 @@ mod tests {
 
     #[tokio::test]
     async fn interaction_clear_broadcasts_updated() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let mut rx = live_tx.subscribe();
         let ctx = MutationContext {
             sessions: &sessions,
@@ -1084,7 +1064,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -1144,8 +1123,7 @@ mod tests {
 
     #[tokio::test]
     async fn interaction_set_stores_full_data_in_side_map() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -1153,7 +1131,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 
@@ -1190,8 +1167,7 @@ mod tests {
 
     #[tokio::test]
     async fn interaction_clear_removes_from_side_map() {
-        let (coordinator, sessions, live_tx, db, tmap, hec, cli_sessions, idata) =
-            make_upsert_ctx().await;
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
         let ctx = MutationContext {
             sessions: &sessions,
             live_tx: &live_tx,
@@ -1199,7 +1175,6 @@ mod tests {
             db: &db,
             transcript_to_session: &tmap,
             hook_event_channels: &hec,
-            cli_sessions: &cli_sessions,
             interaction_data: &idata,
         };
 

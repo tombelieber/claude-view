@@ -54,6 +54,11 @@ impl TmuxSessionIndex {
     pub async fn len(&self) -> usize {
         self.active.read().await.len()
     }
+
+    /// Returns `true` if there are no active tmux sessions.
+    pub async fn is_empty(&self) -> bool {
+        self.active.read().await.is_empty()
+    }
 }
 
 #[cfg(test)]

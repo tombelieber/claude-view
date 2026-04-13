@@ -176,9 +176,8 @@ impl SessionCoordinator {
                 // carries tmux/SDK bindings. Without this, sessions discovered
                 // after server restart (reconcile) or sessions whose 6s polling
                 // window expired would have ownership=null permanently.
-                new_session.ownership = Some(
-                    crate::live::ownership::compute_ownership(&new_session, ctx.cli_sessions).await,
-                );
+                new_session.ownership =
+                    Some(crate::live::ownership::compute_ownership(&new_session));
 
                 sessions.insert(session_id.to_string(), new_session);
 

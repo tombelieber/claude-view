@@ -31,7 +31,6 @@ use std::sync::Arc;
 use crate::state::AppState;
 
 // Re-export key types.
-pub use store::CliSessionStore;
 pub use tmux::{RealTmux, TmuxCommand};
 pub use tmux_index::TmuxSessionIndex;
 pub use types::{CliSession, CliSessionStatus, CreateRequest, CreateResponse, ListResponse};

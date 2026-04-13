@@ -208,8 +208,6 @@ pub struct AppState {
     pub webhook_secrets_path: std::path::PathBuf,
     /// Runtime feature flags loaded from `~/.claude-view/config.toml`.
     pub app_config: claude_view_core::app_config::AppConfig,
-    /// In-memory store for tmux-backed CLI sessions.
-    pub cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
     /// Secondary index: Claude session UUID → LiveSessionMap key.
     /// Enables JSONL watcher to find tmux-keyed entries by UUID.
     pub claude_session_id_index: Arc<tokio::sync::RwLock<HashMap<String, String>>>,
@@ -219,6 +217,9 @@ pub struct AppState {
         Arc<tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
     /// Tmux command abstraction (real in prod, mock in tests).
     pub tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
+    /// Thin index of alive tmux session names (e.g. "cv-abc123").
+    /// Used for count checks and ownership resolution. NOT an entity store.
+    pub tmux_index: Arc<crate::routes::cli_sessions::TmuxSessionIndex>,
 }
 
 /// Builder for constructing `AppState` with optional overrides.
@@ -333,10 +334,10 @@ impl AppStateBuilder {
             webhook_secrets_path: claude_view_core::paths::config_dir()
                 .join("webhook-secrets.json"),
             app_config: claude_view_core::app_config::AppConfig::default(),
-            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
             claude_session_id_index: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             interaction_data: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
+            tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         })
     }
 }
@@ -390,7 +391,6 @@ impl AppState {
             db: &self.db,
             transcript_to_session: &self.transcript_to_session,
             hook_event_channels: &self.hook_event_channels,
-            cli_sessions: &self.cli_sessions,
             interaction_data: &self.interaction_data,
         }
     }

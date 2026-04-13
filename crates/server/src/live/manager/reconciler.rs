@@ -179,13 +179,7 @@ impl LiveSessionManager {
             "Reconciling ownership for unresolved sessions"
         );
         for session_id in &unresolved {
-            crate::live::ownership::write_ownership(
-                &self.sessions,
-                session_id,
-                &self.cli_sessions,
-                &self.tx,
-            )
-            .await;
+            crate::live::ownership::write_ownership(&self.sessions, session_id, &self.tx).await;
         }
     }
 

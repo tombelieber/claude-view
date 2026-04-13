@@ -187,10 +187,10 @@ mod tests {
             closed_ring: Arc::new(RwLock::new(std::collections::VecDeque::with_capacity(
                 crate::live::state::CLOSED_RING_CAPACITY,
             ))),
-            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
             interaction_data: Arc::new(RwLock::new(HashMap::new())),
             session_pids_tx: tokio::sync::watch::channel(Vec::<u32>::new()).0,
             backfill_miss_count: std::sync::atomic::AtomicU64::new(0),
+            claude_session_id_index: Arc::new(RwLock::new(HashMap::new())),
         });
 
         (manager, rx, snapshot_rx)

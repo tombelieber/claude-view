@@ -160,9 +160,12 @@ mod tests {
             webhook_config_path: std::env::temp_dir().join("notifications.json"),
             webhook_secrets_path: std::env::temp_dir().join("webhook-secrets.json"),
             app_config: claude_view_core::app_config::AppConfig::default(),
-            cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
+            claude_session_id_index: Arc::new(tokio::sync::RwLock::new(
+                std::collections::HashMap::new(),
+            )),
             interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
+            tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         });
 
         let app = Router::new()

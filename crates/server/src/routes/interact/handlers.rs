@@ -113,8 +113,7 @@ pub async fn interact_handler(
             .ok_or_else(|| ApiError::NotFound(format!("Session not found: {session_id}")))?
             .clone()
     };
-    let ownership =
-        crate::live::ownership::compute_ownership(&session_clone, &state.cli_sessions).await;
+    let ownership = crate::live::ownership::compute_ownership(&session_clone);
 
     // Step 3: check ownership — can interact if tmux or sdk binding exists
     if ownership.tmux.is_none() && ownership.sdk.is_none() {

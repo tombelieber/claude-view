@@ -1,34 +1,29 @@
-//! Background health check for CLI sessions.
+//! Background health check for tmux CLI sessions.
 //!
-//! Periodically verifies that tmux sessions are still alive and marks
-//! dead ones as `Exited`.
+//! Periodically verifies that tmux sessions are still alive and removes
+//! dead ones from the `TmuxSessionIndex`.
 
 use std::sync::Arc;
-use tokio::sync::broadcast;
 
-use crate::live::state::{CliSessionInfo, SessionEvent};
-
-use super::store::CliSessionStore;
 use super::tmux::TmuxCommand;
-use super::types::CliSessionStatus;
+use super::tmux_index::TmuxSessionIndex;
 
 /// Interval between health checks.
 const HEALTH_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Spawn a background task that periodically checks session health.
+/// Spawn a background task that periodically checks tmux session health.
 ///
 /// Runs every 30 seconds until the shutdown signal fires.
 pub fn spawn_health_check(
-    store: Arc<CliSessionStore>,
+    tmux_index: Arc<TmuxSessionIndex>,
     tmux: Arc<dyn TmuxCommand>,
-    live_tx: broadcast::Sender<SessionEvent>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
             tokio::select! {
                 _ = tokio::time::sleep(HEALTH_CHECK_INTERVAL) => {
-                    check_sessions(&store, &*tmux, &live_tx).await;
+                    check_sessions(&tmux_index, &*tmux).await;
                 }
                 _ = shutdown.changed() => {
                     if *shutdown.borrow() {
@@ -41,30 +36,13 @@ pub fn spawn_health_check(
     })
 }
 
-/// Check all sessions against tmux and mark dead ones as Exited.
-async fn check_sessions(
-    store: &CliSessionStore,
-    tmux: &dyn TmuxCommand,
-    live_tx: &broadcast::Sender<SessionEvent>,
-) {
-    let sessions = store.list().await;
-    for session in sessions {
-        if session.status == CliSessionStatus::Exited {
-            continue;
-        }
-        if !tmux.has_session(&session.id) {
-            tracing::debug!(id = %session.id, "CLI session no longer alive in tmux, marking Exited");
-            store
-                .update_status(&session.id, CliSessionStatus::Exited)
-                .await;
-            let _ = live_tx.send(SessionEvent::CliSessionUpdated {
-                cli_session: CliSessionInfo {
-                    id: session.id.clone(),
-                    created_at: session.created_at,
-                    status: "exited".to_string(),
-                    project_dir: session.project_dir.clone(),
-                },
-            });
+/// Check all tracked tmux session names and remove dead ones.
+async fn check_sessions(tmux_index: &TmuxSessionIndex, tmux: &dyn TmuxCommand) {
+    let names = tmux_index.list().await;
+    for name in names {
+        if !tmux.has_session(&name) {
+            tracing::debug!(name = %name, "Tmux session no longer alive, removing from index");
+            tmux_index.remove(&name).await;
         }
     }
 }
@@ -73,85 +51,37 @@ async fn check_sessions(
 mod tests {
     use super::*;
     use crate::routes::cli_sessions::tmux::mock::MockTmux;
-    use crate::routes::cli_sessions::types::CliSession;
-
-    fn test_tx() -> broadcast::Sender<SessionEvent> {
-        broadcast::channel(16).0
-    }
 
     #[tokio::test]
-    async fn test_health_check_marks_dead_sessions() {
-        let store = Arc::new(CliSessionStore::new());
+    async fn test_health_check_removes_dead_sessions() {
+        let tmux_index = Arc::new(TmuxSessionIndex::new());
         let tmux = Arc::new(MockTmux::new());
 
-        // Insert a session into the store but NOT into tmux's tracking.
+        // Insert a session into the index but NOT into tmux's tracking.
         // This simulates a tmux session that died externally.
-        store
-            .insert(CliSession {
-                id: "cv-dead".to_string(),
-                created_at: 1000,
-                status: CliSessionStatus::Running,
-                project_dir: None,
-                args: vec![],
-                claude_session_id: None,
-            })
-            .await;
+        tmux_index.insert("cv-dead".to_string()).await;
 
         // Also insert a "live" one that IS in tmux.
         tmux.new_session("cv-alive", None, &[]).unwrap();
-        store
-            .insert(CliSession {
-                id: "cv-alive".to_string(),
-                created_at: 2000,
-                status: CliSessionStatus::Running,
-                project_dir: None,
-                args: vec![],
-                claude_session_id: None,
-            })
-            .await;
+        tmux_index.insert("cv-alive".to_string()).await;
 
         // Run the health check.
-        check_sessions(&store, &*tmux, &test_tx()).await;
+        check_sessions(&tmux_index, &*tmux).await;
 
-        // Dead session should be Exited.
-        let dead = store.get("cv-dead").await.unwrap();
-        assert_eq!(dead.status, CliSessionStatus::Exited);
+        // Dead session should be removed from index.
+        assert!(!tmux_index.contains("cv-dead").await);
 
-        // Alive session should still be Running.
-        let alive = store.get("cv-alive").await.unwrap();
-        assert_eq!(alive.status, CliSessionStatus::Running);
-    }
-
-    #[tokio::test]
-    async fn test_health_check_skips_already_exited() {
-        let store = Arc::new(CliSessionStore::new());
-        let tmux = Arc::new(MockTmux::new());
-
-        store
-            .insert(CliSession {
-                id: "cv-old".to_string(),
-                created_at: 500,
-                status: CliSessionStatus::Exited,
-                project_dir: None,
-                args: vec![],
-                claude_session_id: None,
-            })
-            .await;
-
-        // Should not panic or change anything.
-        check_sessions(&store, &*tmux, &test_tx()).await;
-
-        let s = store.get("cv-old").await.unwrap();
-        assert_eq!(s.status, CliSessionStatus::Exited);
+        // Alive session should still be in index.
+        assert!(tmux_index.contains("cv-alive").await);
     }
 
     #[tokio::test]
     async fn test_spawn_health_check_shutdown() {
-        let store = Arc::new(CliSessionStore::new());
+        let tmux_index = Arc::new(TmuxSessionIndex::new());
         let tmux: Arc<dyn TmuxCommand> = Arc::new(MockTmux::new());
         let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-        let handle = spawn_health_check(store, tmux, test_tx(), shutdown_rx);
+        let handle = spawn_health_check(tmux_index, tmux, shutdown_rx);
 
         // Signal shutdown immediately.
         shutdown_tx.send(true).unwrap();

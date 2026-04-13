@@ -150,12 +150,12 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
         app_config: claude_view_core::app_config::AppConfig::default(),
-        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
         claude_session_id_index: Arc::new(tokio::sync::RwLock::new(
             std::collections::HashMap::new(),
         )),
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
+        tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
     });
     routes::api_routes(state)
 }
@@ -268,12 +268,12 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         webhook_config_path: claude_view_core::paths::config_dir().join("notifications.json"),
         webhook_secrets_path: claude_view_core::paths::config_dir().join("webhook-secrets.json"),
         app_config: claude_view_core::app_config::AppConfig::default(),
-        cli_sessions: Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new()),
         claude_session_id_index: Arc::new(tokio::sync::RwLock::new(
             std::collections::HashMap::new(),
         )),
         interaction_data: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
+        tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
     });
     routes::api_routes(state)
 }
@@ -344,17 +344,12 @@ pub fn create_app_full(
     };
     let llm_client = Arc::new(local_llm_service.client(debug_llm_tx));
 
-    // Create CLI session store early so it can be shared with the live manager
-    // (for ownership resolution) and AppState.
-    let cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore> = {
-        let tmux_impl = crate::routes::cli_sessions::tmux::RealTmux;
-        let existing = crate::routes::cli_sessions::reconcile::reconcile_tmux_sessions(&tmux_impl);
-        if existing.is_empty() {
-            Arc::new(crate::routes::cli_sessions::store::CliSessionStore::new())
-        } else {
-            Arc::new(crate::routes::cli_sessions::store::CliSessionStore::from_sessions(existing))
-        }
-    };
+    // Reconcile existing tmux sessions and populate the thin index.
+    let tmux_impl = crate::routes::cli_sessions::tmux::RealTmux;
+    let existing = crate::routes::cli_sessions::reconcile::reconcile_tmux_sessions(&tmux_impl);
+    let tmux_index = Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::from_names(
+        existing.iter().map(|s| s.id.clone()).collect(),
+    ));
 
     // Create interaction data side-map early so it can be shared with the live
     // manager (for coordinator side effects) and AppState (for HTTP endpoints).
@@ -384,7 +379,6 @@ pub fn create_app_full(
         llm_client,
         oracle_rx.clone(),
         hook_event_channels.clone(),
-        cli_sessions.clone(),
         interaction_data.clone(),
         session_pids_tx,
     );
@@ -485,10 +479,10 @@ pub fn create_app_full(
         webhook_config_path,
         webhook_secrets_path,
         app_config,
-        cli_sessions,
         claude_session_id_index,
         interaction_data,
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
+        tmux_index,
     });
 
     // Spawn webhook notification engine.
@@ -511,11 +505,10 @@ pub fn create_app_full(
         });
     }
 
-    // Spawn CLI session health check (marks dead tmux sessions as Exited every 30s).
+    // Spawn CLI session health check (removes dead tmux sessions from index every 30s).
     crate::routes::cli_sessions::health::spawn_health_check(
-        state.cli_sessions.clone(),
+        state.tmux_index.clone(),
         state.tmux.clone(),
-        state.live_tx.clone(),
         state.shutdown.clone(),
     );
 

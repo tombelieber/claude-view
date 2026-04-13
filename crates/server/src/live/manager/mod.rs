@@ -106,8 +106,6 @@ pub struct LiveSessionManager {
     /// Bounded ring buffer of recently-closed sessions (max 100, FIFO eviction).
     /// Pure display buffer, not persisted anywhere. Newest at back.
     closed_ring: Arc<RwLock<std::collections::VecDeque<super::state::LiveSession>>>,
-    /// CLI session store for ownership resolution during broadcast.
-    cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
     /// Side-map for full interaction data, keyed by request_id.
     interaction_data:
         Arc<tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>>,
@@ -146,7 +144,6 @@ impl LiveSessionManager {
         hook_event_channels: Arc<
             tokio::sync::RwLock<HashMap<String, broadcast::Sender<HookEvent>>>,
         >,
-        cli_sessions: Arc<crate::routes::cli_sessions::store::CliSessionStore>,
         interaction_data: Arc<
             tokio::sync::RwLock<HashMap<String, claude_view_types::InteractionBlock>>,
         >,
@@ -213,7 +210,6 @@ impl LiveSessionManager {
             hook_event_channels,
             coordinator: coordinator.clone(),
             closed_ring: closed_ring.clone(),
-            cli_sessions,
             interaction_data,
             session_pids_tx,
             backfill_miss_count: AtomicU64::new(0),
@@ -337,7 +333,6 @@ impl LiveSessionManager {
             db: &self.db,
             transcript_to_session: &self.transcript_to_session,
             hook_event_channels: &self.hook_event_channels,
-            cli_sessions: &self.cli_sessions,
             interaction_data: &self.interaction_data,
         }
     }
@@ -608,7 +603,6 @@ impl LiveSessionManager {
                     Ok(SessionEvent::SessionUpsert { .. } | SessionEvent::SessionRemove { .. }) => {
                         publish(&sessions, &pids_tx).await;
                     }
-                    Ok(_) => {} // Ignore CLI session events, etc.
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         tracing::warn!(skipped = n, "pid_publisher lagged, re-syncing");
                         publish(&sessions, &pids_tx).await;

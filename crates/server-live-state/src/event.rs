@@ -5,18 +5,6 @@ use ts_rs::TS;
 
 use super::core::LiveSession;
 
-/// Lightweight CLI session info for SSE broadcast.
-/// Mirrors the shape of `CliSession` from the server's `cli_sessions` module
-/// but lives in the shared live-state crate so `SessionEvent` can carry it.
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CliSessionInfo {
-    pub id: String,
-    pub created_at: u64,
-    pub status: String,
-    pub project_dir: Option<String>,
-}
-
 /// Events broadcast over the SSE channel to connected Live Monitor clients.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -29,21 +17,6 @@ pub enum SessionEvent {
         #[serde(rename = "sessionId")]
         session_id: String,
         session: LiveSession,
-    },
-    /// A tmux-backed CLI session was created.
-    CliSessionCreated {
-        #[serde(rename = "cliSession")]
-        cli_session: crate::CliSessionInfo,
-    },
-    /// A CLI session's status changed (e.g. running → exited).
-    CliSessionUpdated {
-        #[serde(rename = "cliSession")]
-        cli_session: crate::CliSessionInfo,
-    },
-    /// A CLI session was removed (killed by user).
-    CliSessionRemoved {
-        #[serde(rename = "cliSessionId")]
-        cli_session_id: String,
     },
 }
 

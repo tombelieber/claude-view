@@ -23,9 +23,6 @@ use super::summary::build_summary;
 /// | `snapshot`            | On connect and lag recovery (full state)|
 /// | `session_upsert`      | Session created or updated             |
 /// | `session_remove`      | Session removed from active map        |
-/// | `cli_session_created` | CLI session created                    |
-/// | `cli_session_updated` | CLI session status changed             |
-/// | `cli_session_removed` | CLI session killed                     |
 /// | `heartbeat`           | Every 15 seconds to keep connection    |
 ///
 /// On initial connection the server sends a single `snapshot` event containing
@@ -76,9 +73,6 @@ pub async fn live_stream(
                             let event_name = match &session_event {
                                 SessionEvent::SessionUpsert { .. } => "session_upsert",
                                 SessionEvent::SessionRemove { .. } => "session_remove",
-                                SessionEvent::CliSessionCreated { .. } => "cli_session_created",
-                                SessionEvent::CliSessionUpdated { .. } => "cli_session_updated",
-                                SessionEvent::CliSessionRemoved { .. } => "cli_session_removed",
                             };
                             // No enrichment needed — ownership is a stored field
                             // in the session record. Just serialize directly.
