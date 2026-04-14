@@ -9,7 +9,6 @@
 
 pub mod handlers;
 pub mod health;
-pub mod lifecycle_debug;
 pub mod reconcile;
 pub mod ring_buffer;
 pub mod terminal;

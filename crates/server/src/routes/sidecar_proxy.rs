@@ -59,6 +59,7 @@ pub fn router() -> Router<Arc<AppState>> {
 /// Forward any HTTP request under `/api/sidecar/*` to the sidecar.
 ///
 /// Calls `ensure_running()` to auto-start the sidecar if it crashed.
+#[tracing::instrument(skip_all)]
 async fn http_proxy_handler(State(state): State<Arc<AppState>>, req: Request) -> Response {
     // Ensure sidecar is running (idempotent, fast when already alive)
     let sidecar_base = match state.sidecar.ensure_running().await {
@@ -165,6 +166,7 @@ fn error_response(status: StatusCode, message: &str) -> Response {
 // ── WebSocket reverse proxy ─────────────────────────────────────────
 
 /// Upgrade to WebSocket and relay to sidecar's `/ws/chat/:session_id`.
+#[tracing::instrument(skip_all, fields(%session_id))]
 async fn ws_proxy_handler(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
@@ -195,6 +197,7 @@ async fn ws_proxy_handler(
 /// The sidecar→client direction is tapped to detect interaction events
 /// (permission_request, ask_question, plan_approval, elicitation) and
 /// emit coordinator mutations so the Live Monitor can show pending state.
+#[tracing::instrument(skip_all, fields(%session_id))]
 async fn relay_websocket(
     client_ws: WebSocket,
     target_url: String,
@@ -270,6 +273,7 @@ async fn relay_websocket(
 
 /// Inspect a sidecar message for interaction or turn-end events and emit
 /// coordinator mutations. Fire-and-forget — never blocks the relay.
+#[tracing::instrument(skip_all, fields(%session_id))]
 async fn tap_interaction_events(
     text: &str,
     session_id: &str,

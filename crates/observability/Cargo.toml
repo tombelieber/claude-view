@@ -1,0 +1,52 @@
+[package]
+name = "claude-view-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = []
+otel = ["dep:tracing-opentelemetry", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp"]
+
+[lib]
+name = "claude_view_observability"
+path = "src/lib.rs"
+
+[dependencies]
+claude-view-core = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tracing-appender = { workspace = true }
+sentry = { workspace = true }
+sentry-tracing = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true, features = ["request-id", "trace", "util"] }
+http = "1"
+axum = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+ulid = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+dirs = { workspace = true }
+tempfile = "3"
+tracing-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[[bin]]
+name = "panic_harness"
+path = "src/bin/panic_harness.rs"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "dispatch"
+harness = false

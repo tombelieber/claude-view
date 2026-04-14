@@ -31,6 +31,7 @@ impl LiveSessionManager {
     ///
     /// Cleans: live_sessions, transcript_to_session, hook_event_channels,
     ///         accumulators, and signals drain_loop to drop its dirty entry.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub(crate) async fn reap_session(self: &Arc<Self>, session_id: &str) -> ReapResult {
         // Phase 1: Remove from live_sessions, capture for closed_ring.
         let (cleanup_tp, closed_session) = {
@@ -108,6 +109,7 @@ impl LiveSessionManager {
     }
 
     /// Reap multiple sessions. Returns count of successfully reaped sessions.
+    #[tracing::instrument(skip_all)]
     pub(crate) async fn reap_sessions(self: &Arc<Self>, session_ids: &[String]) -> u32 {
         let mut count = 0u32;
         for id in session_ids {

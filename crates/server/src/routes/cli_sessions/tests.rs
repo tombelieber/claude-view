@@ -163,7 +163,7 @@ async fn test_kill_session_success() {
     let mut state = crate::state::AppState::new(db);
     let mock_tmux = MockTmux::new();
     // Pre-register a session in mock tmux.
-    mock_tmux.new_session("cv-kill-me", None, &[]).unwrap();
+    mock_tmux.new_session("cv-kill-me", None, &[], &[]).unwrap();
     {
         let s = std::sync::Arc::get_mut(&mut state).unwrap();
         s.tmux = std::sync::Arc::new(mock_tmux);
@@ -215,7 +215,7 @@ fn test_mock_tmux_new_and_kill() {
     assert!(mock.is_available());
     assert!(!mock.has_session("cv-test"));
 
-    mock.new_session("cv-test", None, &[]).unwrap();
+    mock.new_session("cv-test", None, &[], &[]).unwrap();
     assert!(mock.has_session("cv-test"));
 
     let sessions = mock.active_sessions();
@@ -230,16 +230,16 @@ fn test_mock_tmux_unavailable() {
     let mock = MockTmux::unavailable();
     assert!(!mock.is_available());
 
-    let result = mock.new_session("cv-fail", None, &[]);
+    let result = mock.new_session("cv-fail", None, &[], &[]);
     assert!(result.is_err());
 }
 
 #[test]
 fn test_mock_tmux_duplicate_session_errors() {
     let mock = MockTmux::new();
-    mock.new_session("cv-dup", None, &[]).unwrap();
+    mock.new_session("cv-dup", None, &[], &[]).unwrap();
 
-    let result = mock.new_session("cv-dup", None, &[]);
+    let result = mock.new_session("cv-dup", None, &[], &[]);
     assert!(result.is_err());
 }
 

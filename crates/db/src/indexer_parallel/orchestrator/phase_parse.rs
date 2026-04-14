@@ -20,6 +20,7 @@ use super::super::types::*;
 ///
 /// Returns `(indexed_sessions, skipped_count)`. Fires `on_file_done` for each
 /// skipped or errored file; parsed sessions are returned for Phase 2.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn run_phase_parse<F>(
     files: Vec<(PathBuf, String, String)>,
     hints: &HashMap<String, IndexHints>,

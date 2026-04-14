@@ -30,6 +30,14 @@ use super::ws_init;
 /// 2. Send scrollback buffer
 /// 3. Stream live updates via file watcher
 /// 4. Handle client messages and heartbeat
+#[tracing::instrument(
+    skip_all,
+    fields(
+        session_id = %session_id,
+        trace_id = tracing::field::Empty,
+        request_id = tracing::field::Empty,
+    ),
+)]
 pub(super) async fn handle_terminal_ws(
     mut socket: WebSocket,
     session_id: String,
@@ -50,6 +58,8 @@ pub(super) async fn handle_terminal_ws(
                     HandshakeMessage {
                         mode: default_mode(),
                         scrollback: default_scrollback(),
+                        trace_id: None,
+                        request_id: None,
                     }
                 }
             }
@@ -66,9 +76,19 @@ pub(super) async fn handle_terminal_ws(
             HandshakeMessage {
                 mode: default_mode(),
                 scrollback: default_scrollback(),
+                trace_id: None,
+                request_id: None,
             }
         }
     };
+
+    // Record trace IDs from handshake on the current span for log correlation.
+    if let Some(ref tid) = handshake.trace_id {
+        tracing::Span::current().record("trace_id", tracing::field::display(tid));
+    }
+    if let Some(ref rid) = handshake.request_id {
+        tracing::Span::current().record("request_id", tracing::field::display(rid));
+    }
 
     // Track current mode (mutable -- can be switched mid-stream)
     let mut current_mode = handshake.mode.clone();

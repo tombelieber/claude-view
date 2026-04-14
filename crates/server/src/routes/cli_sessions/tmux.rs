@@ -10,13 +10,17 @@ pub trait TmuxCommand: Send + Sync {
     /// Create a new tmux session running `claude` with given args.
     ///
     /// Runs:
-    ///   tmux new-session -d -s {name} -x 120 -y 40 'claude {args}'
+    ///   tmux new-session -d -s {name} -e K=V ... -x 120 -y 40 'claude {args}'
     ///   tmux set-option -t {name} aggressive-resize on
+    ///
+    /// `env_vars` are injected via tmux's `-e` flag so the spawned CLI
+    /// inherits them (e.g. `CLAUDE_VIEW_TRACE_ID`, `CLAUDE_VIEW_CLI_SESSION_ID`).
     fn new_session(
         &self,
         name: &str,
         project_dir: Option<&str>,
         args: &[String],
+        env_vars: &[(&str, &str)],
     ) -> Result<(), String>;
 
     /// Kill a tmux session by name.
@@ -48,6 +52,7 @@ impl TmuxCommand for RealTmux {
         name: &str,
         project_dir: Option<&str>,
         args: &[String],
+        env_vars: &[(&str, &str)],
     ) -> Result<(), String> {
         // Build the shell command that tmux will run inside the session.
         let mut claude_cmd = String::from("claude");
@@ -65,7 +70,14 @@ impl TmuxCommand for RealTmux {
                 cmd.env_remove(&key);
             }
         }
-        cmd.args(["new-session", "-d", "-s", name, "-x", "120", "-y", "40"]);
+        cmd.args(["new-session", "-d", "-s", name]);
+
+        // Inject env vars via tmux's -e flag so the spawned CLI inherits them.
+        for (k, v) in env_vars {
+            cmd.arg("-e").arg(format!("{k}={v}"));
+        }
+
+        cmd.args(["-x", "120", "-y", "40"]);
 
         if let Some(dir) = project_dir {
             cmd.args(["-c", dir]);
@@ -244,6 +256,7 @@ pub mod mock {
             name: &str,
             _project_dir: Option<&str>,
             _args: &[String],
+            _env_vars: &[(&str, &str)],
         ) -> Result<(), String> {
             if !self.available {
                 return Err("tmux not available".to_string());

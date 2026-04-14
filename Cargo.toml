@@ -44,9 +44,20 @@ serde_json = "1"
 thiserror = "2"
 anyhow = "1"
 
-# Logging
+# Logging & observability
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "registry", "fmt"] }
+tracing-appender = "0.2"
+ulid = "1"
+sha2 = "0.10"
+sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
+sentry-tracing = "0.38"
+
+# OpenTelemetry (optional, feature-gated in observability crate)
+tracing-opentelemetry = "0.32"
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"] }
 
 # Metrics (Prometheus)
 metrics = "0.24"
@@ -121,6 +132,7 @@ claude-view-server-live-state = { path = "crates/server-live-state" }
 claude-view-server-process-tree = { path = "crates/server-process-tree" }
 claude-view-server-local-llm = { path = "crates/server-local-llm" }
 claude-view-server-types = { path = "crates/server-types" }
+claude-view-observability = { path = "crates/observability" }
 
 # ── Build Profiles ────────────────────────────────────────────────────
 #

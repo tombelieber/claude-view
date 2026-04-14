@@ -15,6 +15,14 @@ pub(super) struct HandshakeMessage {
     /// Number of scrollback lines to send on connect (default: 100).
     #[serde(default = "default_scrollback")]
     pub scrollback: usize,
+    /// Optional trace ID for cross-process correlation.
+    /// When present, recorded on the WS handler span so all log lines
+    /// within this connection carry the trace context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trace_id: Option<String>,
+    /// Optional request ID for per-request correlation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub request_id: Option<String>,
 }
 
 pub(super) fn default_mode() -> String {
