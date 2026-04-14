@@ -1,0 +1,28 @@
+# Dependabot config — automatic version bumps for GitHub Actions pinned in
+# .github/workflows/release.yml. Respects SHA-pinning: Dependabot updates both
+# the SHA and the trailing `# vX.Y.Z` comment in one PR.
+#
+# Scope: GitHub Actions only. This file MUST NOT enable ecosystems that would
+# create lint/test/drift workflows — project rule: GitHub Actions are reserved
+# for release builds and release publishing only.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: Asia/Hong_Kong
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+    labels:
+      - ci
+      - dependencies
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    open-pull-requests-limit: 5

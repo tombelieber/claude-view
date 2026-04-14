@@ -15,6 +15,7 @@ set -euo pipefail
 #   SKIP_PIPELINE=1   Skip block pipeline drift check
 #   SKIP_STORYBOOK=1  Skip Storybook build check
 #   SKIP_INTEGRITY=1  Skip integrity gates (parser/indexer/replay)
+#   SKIP_ACTIONLINT=1 Skip GitHub Actions workflow lint (requires `brew install actionlint`)
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -25,7 +26,7 @@ GATE=0
 gate() {
   GATE=$((GATE + 1))
   echo ""
-  echo "--- [$GATE/9] $1 ---"
+  echo "--- [$GATE/10] $1 ---"
 }
 
 elapsed() {
@@ -102,5 +103,17 @@ if [ "${SKIP_INTEGRITY:-0}" != "1" ]; then
   S=$(date +%s); ./scripts/integrity/ci-gates.sh; elapsed $S
 else echo "  SKIP (SKIP_INTEGRITY=1)"; fi
 
+# ── 10. GitHub Actions workflow lint (actionlint) ──
+gate "Actionlint (.github/workflows/*.yml)"
+if [ "${SKIP_ACTIONLINT:-0}" != "1" ]; then
+  if ! command -v actionlint >/dev/null 2>&1; then
+    echo "  FAIL: actionlint not installed" >&2
+    echo "  Install: brew install actionlint" >&2
+    echo "  Or skip: SKIP_ACTIONLINT=1 $0" >&2
+    exit 1
+  fi
+  S=$(date +%s); actionlint -color; elapsed $S
+else echo "  SKIP (SKIP_ACTIONLINT=1)"; fi
+
 echo ""
-echo "=== Local CI: ALL 9 GATES PASSED ($(( $(date +%s) - TOTAL_START ))s) ==="
+echo "=== Local CI: ALL 10 GATES PASSED ($(( $(date +%s) - TOTAL_START ))s) ==="
