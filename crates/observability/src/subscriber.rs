@@ -8,10 +8,18 @@ use tracing_subscriber::{fmt, EnvFilter, Registry};
 pub struct ObservabilityHandle {
     _appender_guard: Option<WorkerGuard>,
     _sentry_guard: Option<crate::sentry_integration::SentryGuard>,
+    #[cfg(feature = "otel")]
+    _otel_provider: Option<opentelemetry_sdk::trace::SdkTracerProvider>,
 }
 
 impl ObservabilityHandle {
     pub fn shutdown(self) {
+        #[cfg(feature = "otel")]
+        if let Some(provider) = &self._otel_provider {
+            if let Err(e) = provider.shutdown() {
+                eprintln!("OTel provider shutdown error: {e}");
+            }
+        }
         drop(self);
     }
 }
@@ -67,11 +75,29 @@ pub fn init(cfg: ServiceConfig) -> anyhow::Result<ObservabilityHandle> {
 
     let sentry_layer = sentry_guard.as_ref().map(|_| sentry_tracing::layer());
 
+    // OTel layer: only built when the `otel` feature is enabled AND an endpoint is configured.
+    #[cfg(feature = "otel")]
+    let (otel_layer, otel_provider) = match cfg.otel_endpoint.as_deref() {
+        Some(ep) => {
+            let provider = crate::otel::build_tracer_provider(
+                cfg.service_name,
+                cfg.service_version,
+                Some(ep),
+            )?;
+            let layer = crate::otel::build_layer(&provider);
+            (Some(layer), Some(provider))
+        }
+        None => (None, None),
+    };
+    #[cfg(not(feature = "otel"))]
+    let otel_layer: Option<tracing_subscriber::layer::Identity> = None;
+
     Registry::default()
         .with(filter)
         .with(dev_layer)
         .with(file_layer)
         .with(sentry_layer)
+        .with(otel_layer)
         .try_init()
         .map_err(|e| anyhow::anyhow!("tracing subscriber init: {e}"))?;
 
@@ -83,11 +109,14 @@ pub fn init(cfg: ServiceConfig) -> anyhow::Result<ObservabilityHandle> {
         build_sha = %cfg.build_sha,
         deployment_mode = ?cfg.deployment_mode,
         log_dir = %cfg.log_dir.display(),
+        otel_enabled = cfg.otel_endpoint.is_some(),
         "observability.init.complete"
     );
 
     Ok(ObservabilityHandle {
         _appender_guard: Some(guard),
         _sentry_guard: sentry_guard,
+        #[cfg(feature = "otel")]
+        _otel_provider: otel_provider,
     })
 }

@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+otel = ["dep:tracing-opentelemetry", "dep:opentelemetry", "dep:opentelemetry_sdk", "dep:opentelemetry-otlp"]
+
 [lib]
 name = "claude_view_observability"
 path = "src/lib.rs"
@@ -29,6 +33,10 @@ sha2 = { workspace = true }
 hex = { workspace = true }
 dirs = { workspace = true }
 tempfile = "3"
+tracing-opentelemetry = { workspace = true, optional = true }
+opentelemetry = { workspace = true, optional = true }
+opentelemetry_sdk = { workspace = true, optional = true }
+opentelemetry-otlp = { workspace = true, optional = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [[bin]]

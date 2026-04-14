@@ -1,6 +1,8 @@
 pub mod config;
 pub mod correlation;
 pub mod http_middleware;
+#[cfg(feature = "otel")]
+pub mod otel;
 pub mod panic_hook;
 pub mod sentry_integration;
 pub mod service_meta;

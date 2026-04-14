@@ -64,7 +64,7 @@ time = { version = "0.3.47", features = ["macros", "serde-well-known"] }
 tokio = { version = "1.51.1", features = ["full", "test-util"] }
 tokio-stream = { version = "0.1.18", features = ["fs"] }
 tokio-util = { version = "0.7.18", features = ["codec", "io"] }
-tower = { version = "0.5.3", default-features = false, features = ["log", "make", "timeout", "util"] }
+tower = { version = "0.5.3", default-features = false, features = ["balance", "buffer", "limit", "load-shed", "log", "timeout"] }
 tower-http = { version = "0.6.8", features = ["compression-gzip", "cors", "fs", "limit", "request-id", "trace", "util"] }
 tracing = { version = "0.1.44", features = ["log"] }
 tracing-core = { version = "0.1.36" }
@@ -77,6 +77,7 @@ zeroize = { version = "1.8.2", features = ["zeroize_derive"] }
 aho-corasick = { version = "1.1.4" }
 crypto-common = { version = "0.1.7", default-features = false, features = ["getrandom", "std"] }
 digest = { version = "0.10.7", features = ["mac", "oid", "std"] }
+either = { version = "1.15.0", features = ["serde", "use_std"] }
 flate2 = { version = "1.1.9", features = ["zlib-rs"] }
 generic-array = { version = "0.14.7", default-features = false, features = ["more_lengths", "zeroize"] }
 getrandom = { version = "0.2.17", default-features = false, features = ["std"] }
@@ -87,6 +88,7 @@ rand_core = { version = "0.6.4", default-features = false, features = ["std"] }
 regex = { version = "1.12.3" }
 regex-automata = { version = "0.4.14" }
 regex-syntax = { version = "0.8.10" }
+serde = { version = "1.0.228", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1.0.228", features = ["alloc", "rc"] }
 sha2 = { version = "0.10.9", features = ["oid"] }
 simd-adler32 = { version = "0.3.9", default-features = false, features = ["std"] }

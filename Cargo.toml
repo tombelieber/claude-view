@@ -53,6 +53,12 @@ sha2 = "0.10"
 sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
 sentry-tracing = "0.38"
 
+# OpenTelemetry (optional, feature-gated in observability crate)
+tracing-opentelemetry = "0.32"
+opentelemetry = "0.31"
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"] }
+
 # Metrics (Prometheus)
 metrics = "0.24"
 metrics-exporter-prometheus = "0.16"
