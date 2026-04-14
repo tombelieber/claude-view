@@ -9,4 +9,6 @@ pub mod testing;
 
 pub use config::{DeploymentMode, ServiceConfig, SinkMode};
 pub use correlation::{CliSessionId, RequestId, SessionId, TraceId};
+pub use http_middleware::apply_request_id_layers;
+pub use service_meta::ServiceMeta;
 pub use subscriber::{init, ObservabilityHandle};
