@@ -86,11 +86,15 @@ run_cq_no_nextest() {
     done
   done <<< "$PATH"
   # Mock dir comes first (provides mock perl), but has no cargo-nextest.
+  # Pre-resolve CARGO so cq doesn't need to find it via PATH (the path
+  # filtering above may remove the dir containing both cargo and cargo-nextest).
+  local real_cargo
+  real_cargo="$(command -v cargo)"
   # Use trap to restore on interrupt (I1: teardown atomicity).
   mv "$MOCK_DIR/cargo-nextest" "$MOCK_DIR/_cargo-nextest.bak"
   local _restore="mv '$MOCK_DIR/_cargo-nextest.bak' '$MOCK_DIR/cargo-nextest'"
   trap "$_restore; trap - RETURN" RETURN
-  PATH="$MOCK_DIR${clean_path:+:$clean_path}" "$CQ" "$@" 2>/dev/null || true
+  CARGO="$real_cargo" PATH="$MOCK_DIR${clean_path:+:$clean_path}" "$CQ" "$@" 2>/dev/null || true
   eval "$_restore"
   trap - RETURN
 }

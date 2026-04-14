@@ -690,7 +690,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-view-core"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -719,7 +719,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -749,7 +749,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-observability"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -781,7 +781,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -832,7 +832,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -915,7 +915,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-insights"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "serde",
  "ts-rs",
@@ -925,7 +925,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-jobs"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "chrono",
  "serde",
@@ -938,7 +938,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-live-state"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "claude-view-core",
  "claude-view-db",
@@ -954,7 +954,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-local-llm"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "claude-view-core",
  "claude-view-types",
@@ -972,7 +972,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-process-tree"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "chrono",
  "libc",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-sidecar"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "libc",
  "reqwest",
@@ -998,7 +998,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-teams"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -1015,7 +1015,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-types"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "axum 0.8.9",
  "claude-view-core",
@@ -1036,7 +1036,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-types"
-version = "0.37.1"
+version = "0.38.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2192,9 +2192,9 @@ dependencies = [
 
 [[package]]
 name = "hyper-rustls"
-version = "0.27.8"
+version = "0.27.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2b52f86d1d4bc0d6b4e6826d960b1b333217e07d36b882dca570a5e1c48895b"
+checksum = "33ca68d021ef39cf6463ab54c1d0f5daf03377b70561305bb89a8f83aab66e0f"
 dependencies = [
  "http 1.4.0",
  "hyper",
@@ -2526,6 +2526,15 @@ name = "itertools"
 version = "0.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ba291022dbbd398a455acf126c1e341954079855bc60dfdda641363bd6922569"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
 dependencies = [
  "either",
 ]
@@ -3722,7 +3731,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27c6023962132f4b30eb4c172c91ce92d933da334c59c23cddee82358ddafb0b"
 dependencies = [
  "anyhow",
- "itertools 0.12.1",
+ "itertools 0.14.0",
  "proc-macro2",
  "quote",
  "syn",
