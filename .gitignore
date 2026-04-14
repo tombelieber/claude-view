@@ -11,6 +11,7 @@ storybook-static/
 # Rust/Cargo
 target/
 target-codex*/
+target-nightly/
 target-wt/
 **/*.rs.bk
 *.pdb
