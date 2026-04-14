@@ -28,6 +28,7 @@ ulid = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 dirs = { workspace = true }
+tempfile = "3"
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [[bin]]
@@ -35,5 +36,4 @@ name = "panic_harness"
 path = "src/bin/panic_harness.rs"
 
 [dev-dependencies]
-tempfile = "3"
 tokio = { workspace = true, features = ["test-util", "macros", "rt-multi-thread"] }
