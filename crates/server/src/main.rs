@@ -247,6 +247,11 @@ fn format_bytes(bytes: u64) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Parse CLI arguments FIRST — clap handles --version/--help and exits
+    // before any I/O, tracing, or TLS setup. This keeps `--version` output
+    // clean (no tracing init lines on stderr that break CI version checks).
+    let cli_parsed = cli::Cli::parse();
+
     // Install TLS crypto provider before ANY network I/O. Cargo feature unification
     // compiles both ring and aws-lc-rs into the binary; rustls 0.23+ panics at runtime
     // if it can't auto-detect a single provider. Explicit selection = no ambiguity.
@@ -264,9 +269,6 @@ async fn main() -> Result<()> {
     // Load runtime config from ~/.claude-view/config.toml
     let app_config = claude_view_core::app_config::AppConfig::load();
     tracing::info!(?app_config, "app.config.loaded");
-
-    // Parse CLI arguments with clap
-    let cli_parsed = cli::Cli::parse();
 
     // Handle `claude-view cleanup` subcommand early, before any async/DB work
     if let Some(cli::Cmd::Cleanup) = &cli_parsed.command {
