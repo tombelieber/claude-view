@@ -8822,19 +8822,16 @@
       },
       "IdeInfo": {
         "type": "object",
-        "description": "Describes a single detected IDE.",
         "required": [
           "id",
           "name"
         ],
         "properties": {
           "id": {
-            "type": "string",
-            "description": "Machine-readable identifier (e.g. \"vscode\", \"cursor\")."
+            "type": "string"
           },
           "name": {
-            "type": "string",
-            "description": "Human-readable display name (e.g. \"VS Code\", \"Cursor\")."
+            "type": "string"
           }
         }
       },
@@ -12529,7 +12526,6 @@
               "null"
             ],
             "format": "int32",
-            "description": "The real context window limit in tokens (200_000 or 1_000_000).\nThis is the authoritative value -- no guessing needed.",
             "minimum": 0
           },
           "current_usage": {
@@ -12538,8 +12534,7 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/StatuslineCurrentUsage",
-                "description": "Current turn token usage breakdown. Claude Code sends this as an object\nwith per-category token counts, not a single integer."
+                "$ref": "#/components/schemas/StatuslineCurrentUsage"
               }
             ]
           },
@@ -12548,8 +12543,7 @@
               "number",
               "null"
             ],
-            "format": "double",
-            "description": "Pre-computed percentage remaining (0.0-100.0)."
+            "format": "double"
           },
           "total_input_tokens": {
             "type": [
@@ -12557,7 +12551,6 @@
               "null"
             ],
             "format": "int64",
-            "description": "Cumulative input tokens across the session.",
             "minimum": 0
           },
           "total_output_tokens": {
@@ -12566,7 +12559,6 @@
               "null"
             ],
             "format": "int64",
-            "description": "Cumulative output tokens across the session.",
             "minimum": 0
           },
           "used_percentage": {
@@ -12574,8 +12566,7 @@
               "number",
               "null"
             ],
-            "format": "double",
-            "description": "Pre-computed percentage used (0.0-100.0). Null early in session."
+            "format": "double"
           }
         }
       },
@@ -12588,7 +12579,6 @@
               "null"
             ],
             "format": "int64",
-            "description": "API-only duration in milliseconds.",
             "minimum": 0
           },
           "total_cost_usd": {
@@ -12596,8 +12586,7 @@
               "number",
               "null"
             ],
-            "format": "double",
-            "description": "Claude Code's own total cost calculation in USD."
+            "format": "double"
           },
           "total_duration_ms": {
             "type": [
@@ -12605,7 +12594,6 @@
               "null"
             ],
             "format": "int64",
-            "description": "Total wall-clock session duration in milliseconds.",
             "minimum": 0
           },
           "total_lines_added": {
@@ -12614,7 +12602,6 @@
               "null"
             ],
             "format": "int64",
-            "description": "Total lines added across the session.",
             "minimum": 0
           },
           "total_lines_removed": {
@@ -12623,7 +12610,6 @@
               "null"
             ],
             "format": "int64",
-            "description": "Total lines removed across the session.",
             "minimum": 0
           }
         }
@@ -14021,19 +14007,16 @@
           },
           "percentage": {
             "type": "number",
-            "format": "double",
-            "description": "0.0–100.0"
+            "format": "double"
           },
           "resetAt": {
-            "type": "string",
-            "description": "ISO-8601 reset timestamp"
+            "type": "string"
           },
           "spent": {
             "type": [
               "string",
               "null"
-            ],
-            "description": "Dollar description for budget tiers"
+            ]
           }
         }
       },
