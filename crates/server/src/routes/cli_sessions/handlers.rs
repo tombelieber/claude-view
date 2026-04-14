@@ -105,10 +105,20 @@ pub async fn create_session(
         "cli.tmux_index.registered"
     );
 
+    // Generate observability correlation IDs so the spawned CLI session
+    // can be traced back to this create request.
+    let trace_id = claude_view_observability::TraceId::new();
+    let cli_session_id = claude_view_observability::CliSessionId::new();
+    let env_vars = [
+        ("CLAUDE_VIEW_TRACE_ID", trace_id.0.as_str()),
+        ("CLAUDE_VIEW_CLI_SESSION_ID", cli_session_id.0.as_str()),
+    ];
+
     // Create the tmux session.
-    if let Err(e) = state
-        .tmux
-        .new_session(&tmux_name, req.project_dir.as_deref(), &req.args)
+    if let Err(e) =
+        state
+            .tmux
+            .new_session(&tmux_name, req.project_dir.as_deref(), &req.args, &env_vars)
     {
         tracing::error!(
             tmux_session = %tmux_name,

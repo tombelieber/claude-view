@@ -62,7 +62,7 @@ mod tests {
         tmux_index.insert("cv-dead".to_string()).await;
 
         // Also insert a "live" one that IS in tmux.
-        tmux.new_session("cv-alive", None, &[]).unwrap();
+        tmux.new_session("cv-alive", None, &[], &[]).unwrap();
         tmux_index.insert("cv-alive".to_string()).await;
 
         // Run the health check.
