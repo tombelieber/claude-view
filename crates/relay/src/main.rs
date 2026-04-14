@@ -13,30 +13,13 @@ async fn main() {
     // if it can't auto-detect a single provider. Explicit selection = no ambiguity.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    // Sentry init — REPLACES the standalone tracing_subscriber::fmt().init()
-    let _sentry = sentry::init((
-        std::env::var("SENTRY_DSN").unwrap_or_default(),
-        sentry::ClientOptions {
-            release: sentry::release_name!(),
-            environment: Some(
-                std::env::var("ENVIRONMENT")
-                    .unwrap_or_else(|_| "development".to_string())
-                    .into(),
-            ),
-            traces_sample_rate: 0.1,
-            ..Default::default()
-        },
-    ));
-
-    use tracing_subscriber::prelude::*;
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "warn,claude_view_relay=info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .with(sentry_tracing::layer())
-        .init();
+    // Initialize unified observability (structured JSON file + dev stderr + optional Sentry).
+    let mut obs_cfg = claude_view_observability::ServiceConfig::new(
+        "claude-view-relay",
+        env!("CARGO_PKG_VERSION"),
+    );
+    obs_cfg.sentry_dsn = std::env::var("SENTRY_DSN").ok().filter(|s| !s.is_empty());
+    let _obs_handle = claude_view_observability::init(obs_cfg).expect("observability init");
 
     // Load Supabase JWT validator (optional — disabled if SUPABASE_URL not set)
     let supabase_auth = match std::env::var("SUPABASE_URL") {

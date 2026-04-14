@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+claude-view-observability = { path = "../observability" }
 tower = { workspace = true }
 tower-http = { version = "0.6", features = ["cors", "limit", "trace"] }
 dashmap = "6"
@@ -24,7 +25,7 @@ reqwest = { version = "0.12", features = ["json"] }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 anyhow = { workspace = true }
 rustls = { workspace = true }
-sentry = { version = "0.38", default-features = false, features = ["backtrace", "contexts", "reqwest", "rustls"] }
-sentry-tracing = "0.38"
+sentry = { workspace = true }
+sentry-tracing = { workspace = true }
 axum-extra = { version = "0.10", features = ["typed-header"] }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
