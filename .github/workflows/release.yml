@@ -74,6 +74,7 @@ jobs:
           node-version: "24"
 
       - name: Verify version matches tag
+        if: github.ref_type == 'tag'
         shell: bash
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
