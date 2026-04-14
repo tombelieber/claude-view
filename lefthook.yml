@@ -1,6 +1,8 @@
 # Lefthook git hooks — fast gate strategy
 # Pre-commit: format + lint (~2s)
-# Pre-push: Rust quality + codegen freshness + supply chain
+# Post-merge: regenerate types after pull (catches upstream drift at source)
+# Pre-push: Rust quality + supply chain + workspace test (full safety net)
+# Release time: ci-local.sh runs ALL 9 gates via release.sh
 
 pre-commit:
   parallel: true
@@ -25,13 +27,25 @@ pre-commit:
       glob: "{claude-view/**,packages/plugin/src/tools/**,plugin.json,marketplace.json}"
       run: bash test/skill-sync.sh
 
+# Catch upstream type drift at point of introduction, not on next push.
+# Runs after `git pull` / `git merge`. If upstream changed any .rs file,
+# regenerate types and warn if they drifted. User commits the regenerated
+# files as a follow-up, rather than discovering drift when they try to push.
+post-merge:
+  commands:
+    regen-drifted-types:
+      run: bash scripts/ci/post-merge-regen-types.sh
+
 pre-push:
   parallel: true
   commands:
     clippy:
       run: ./scripts/cq clippy --workspace -- -D warnings
-    generated-types:
-      run: bash scripts/ci/check-generated-types.sh
+    # NOTE: generated-types moved to post-merge. Drift is now caught at pull
+    # time (when it's upstream-owned) instead of push time (when it's the
+    # next pusher's problem). Keep this commented reminder for future eng.
+    # generated-types:
+    #   run: bash scripts/ci/check-generated-types.sh
     openapi-drift:
       run: bash scripts/ci/check-openapi-drift.sh
     cargo-deny:

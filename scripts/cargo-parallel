@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# scripts/cargo-parallel — opt-in parallel rustc frontend for big rebuilds
+#
+# Wraps nightly cargo with -Z threads=16 for the parallel rustc frontend,
+# which shards work inside a single crate's compilation (parsing, typeck,
+# borrowck, MIR). Big wins on cold/large crate rebuilds.
+#
+# Benchmarked 2026-04-14 on M5 Max:
+#   B2 clean-check-server  6.27s → 2.72s   -56%   (biggest single-crate win)
+#   B1 touch-rebuild        ~840ms → ~830ms  noise (link-dominated, nothing to shard)
+#
+# Use this for:
+#   - Cold rebuilds of single heavy crates (claude-view-server is 17s cold)
+#   - After cargo clean or profile changes
+#   - When editing many files in one crate
+#
+# Don't use for:
+#   - Touch-one-file rebuilds (use normal `cq build` — no win)
+#   - Production builds (this uses unstable nightly features)
+#
+# Usage:
+#   ./scripts/cargo-parallel build -p claude-view-server
+#   ./scripts/cargo-parallel check --workspace
+#
+# Caveats:
+#   - Requires rustup nightly installed: rustup toolchain install nightly
+#   - Bypasses sccache (which doesn't help Rust on this project anyway)
+#   - Uses a separate target dir (target-nightly) to avoid polluting stable cache
+#   - Homebrew's /opt/homebrew/bin/cargo doesn't support +toolchain, so we
+#     invoke the rustup shim directly.
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT_DIR"
+
+NIGHTLY_BIN="$HOME/.rustup/toolchains/nightly-aarch64-apple-darwin/bin"
+if [ ! -x "$NIGHTLY_BIN/cargo" ]; then
+  echo "error: nightly toolchain not found at $NIGHTLY_BIN" >&2
+  echo "  run: rustup toolchain install nightly" >&2
+  exit 1
+fi
+
+# Separate target dir prevents invalidating the stable target/ cache
+# when switching between rustc versions.
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$ROOT_DIR/target-nightly}"
+
+# Disable sccache — it doesn't know about the rustup proxy and intercepts
+# with the wrong rustc binary, breaking -Z flags.
+export RUSTC_WRAPPER=""
+
+# -Z threads=N — parallel rustc frontend (nightly)
+# Value ≥ core count is fine; rustc caps internally.
+export RUSTFLAGS="${RUSTFLAGS:-} -Z threads=16"
+
+exec "$NIGHTLY_BIN/cargo" "$@"

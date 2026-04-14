@@ -156,3 +156,7 @@ apps/landing/.astro/
 !apps/landing/public/*.png
 .gstack/
 .context/
+
+# Compile benchmark results (machine-specific)
+bench/results/
+

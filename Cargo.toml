@@ -133,9 +133,24 @@ claude-view-server-types = { path = "crates/server-types" }
 # Ship/CI: cargo build --profile dist -p claude-view-server --no-default-features --features dist
 
 [profile.dev]
-opt-level = 0          # Fastest compile (no optimization)
+opt-level = 0          # Fastest compile (no optimization) for YOUR code
 debug = 1              # Minimal debug info (2→1 saves ~40% disk + link time)
 incremental = true     # Reuse previous compilation work
+# split-debuginfo: left at macOS default ("packed")
+# Measured 2026-04-14: "unpacked" regressed B1 +14%, B2 +8%, B3 +7% on this
+# workload. Hypothesis: at debug=1, dsymutil already does little work, so
+# skipping it saves nothing while per-.o file I/O overhead remains.
+
+# External dependencies — slight optimization + no debug info.
+# Deps are compiled once and cached; paying a small one-time compile cost
+# for opt-level=1 is worth it because:
+#   (a) proc macros run faster during YOUR code's compilation
+#   (b) test runtime is much faster (deps are the hot path)
+#   (c) debug=false skips DWARF emission for 500+ deps (link speedup)
+# This is the Bevy/Zed-style split: fast-iterate your code, optimize theirs.
+[profile.dev.package."*"]
+opt-level = 1
+debug = false
 
 [profile.release]
 opt-level = 2          # 95% of -O3 speed, measurably faster compile than -O3
@@ -154,4 +169,4 @@ strip = true           # No debug symbols in shipped binary
 # trim-paths via RUSTFLAGS in build-dist.sh (not stable in Cargo.toml yet)
 
 [profile.test]
-opt-level = 1  # Faster test compilation
+opt-level = 0  # Fastest test compilation (iterate faster; runtime penalty minimal for I/O-bound tests)
