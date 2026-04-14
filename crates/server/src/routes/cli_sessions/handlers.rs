@@ -79,25 +79,19 @@ pub async fn create_session(
     let short_id = &uuid::Uuid::new_v4().to_string()[..8];
     let tmux_name = format!("cv-{short_id}");
 
-    use super::lifecycle_debug::log_lifecycle;
-    log_lifecycle(
-        "API_CREATE_START",
-        None,
-        None,
-        Some(&tmux_name),
-        &format!("POST /api/cli-sessions — project_dir={:?}", req.project_dir),
+    tracing::info!(
+        tmux_session = %tmux_name,
+        project_dir = ?req.project_dir,
+        "cli.create.start"
     );
 
     // Register in tmux index BEFORE creating the session so the Born handler
     // can match it immediately when Claude writes pid.json.
     state.tmux_index.insert(tmux_name.clone()).await;
 
-    log_lifecycle(
-        "TMUX_INDEX_REGISTERED",
-        None,
-        None,
-        Some(&tmux_name),
-        "tmux index entry created before tmux spawn",
+    tracing::debug!(
+        tmux_session = %tmux_name,
+        "cli.tmux_index.registered"
     );
 
     // Create the tmux session.
@@ -105,12 +99,10 @@ pub async fn create_session(
         .tmux
         .new_session(&tmux_name, req.project_dir.as_deref(), &req.args)
     {
-        log_lifecycle(
-            "TMUX_SPAWN_FAILED",
-            None,
-            None,
-            Some(&tmux_name),
-            &format!("tmux new-session failed: {e}"),
+        tracing::error!(
+            tmux_session = %tmux_name,
+            error = %e,
+            "cli.tmux.spawn.failed"
         );
         // Rollback tmux index on failure.
         state.tmux_index.remove(&tmux_name).await;
@@ -119,12 +111,9 @@ pub async fn create_session(
         )));
     }
 
-    log_lifecycle(
-        "TMUX_SESSION_SPAWNED",
-        None,
-        None,
-        Some(&tmux_name),
-        "tmux new-session -d succeeded",
+    tracing::info!(
+        tmux_session = %tmux_name,
+        "cli.tmux.spawned"
     );
 
     // Auto-accept workspace trust dialog. Claude CLI shows an interactive
@@ -147,22 +136,17 @@ pub async fn create_session(
     // Get the pane PID — after exec, this is the Claude process PID.
     let pane_pid = match state.tmux.pane_pid(&tmux_name) {
         Some(pid) => {
-            log_lifecycle(
-                "TMUX_PANE_PID_RESOLVED",
-                Some(pid),
-                None,
-                Some(&tmux_name),
-                &format!("pane_pid={pid} (Claude CLI process)"),
+            tracing::debug!(
+                tmux_session = %tmux_name,
+                pane_pid = pid,
+                "cli.tmux.pid_resolved"
             );
             pid
         }
         None => {
-            log_lifecycle(
-                "TMUX_PANE_PID_FAILED",
-                None,
-                None,
-                Some(&tmux_name),
-                "could not read pane PID",
+            tracing::error!(
+                tmux_session = %tmux_name,
+                "cli.tmux.pid.failed"
             );
             // Cleanup: kill tmux session, remove from index.
             let _ = state.tmux.kill_session(&tmux_name);
@@ -177,12 +161,11 @@ pub async fn create_session(
     // we arrive here at ~63ms), skip the waiter/poll entirely.
     let session_id_precheck = resolve_claude_session_id(pane_pid);
     if let Some(ref id) = session_id_precheck {
-        log_lifecycle(
-            "PID_JSON_PRECHECK_HIT",
-            Some(pane_pid),
-            Some(id),
-            Some(&tmux_name),
-            "pid.json already existed before waiter registered",
+        tracing::debug!(
+            tmux_session = %tmux_name,
+            pane_pid = pane_pid,
+            session_id = %id,
+            "cli.born.precheck_hit"
         );
     }
 
@@ -219,12 +202,10 @@ pub async fn create_session(
             disarmed: false,
         };
 
-        log_lifecycle(
-            "BORN_WAITER_REGISTERED",
-            Some(pane_pid),
-            None,
-            Some(&tmux_name),
-            "racing Born event vs fallback poll",
+        tracing::debug!(
+            tmux_session = %tmux_name,
+            pane_pid = pane_pid,
+            "cli.born.waiting"
         );
 
         let result = tokio::select! {
@@ -233,12 +214,11 @@ pub async fn create_session(
                 guard.disarmed = true;
                 match result {
                     Ok(id) => {
-                        log_lifecycle(
-                            "BORN_EVENT_RECEIVED",
-                            Some(pane_pid),
-                            Some(&id),
-                            Some(&tmux_name),
-                            "sessionId from Born handler (zero-poll)",
+                        tracing::info!(
+                            tmux_session = %tmux_name,
+                            pane_pid = pane_pid,
+                            session_id = %id,
+                            "cli.born.pid_resolved"
                         );
                         Some(id)
                     }
@@ -248,12 +228,11 @@ pub async fn create_session(
             result = poll_for_session_id(pane_pid) => {
                 // Poll won — guard will clean up the waiter on drop.
                 if let Some(ref id) = result {
-                    log_lifecycle(
-                        "POLL_RESOLVED",
-                        Some(pane_pid),
-                        Some(id),
-                        Some(&tmux_name),
-                        "sessionId from fallback poll",
+                    tracing::debug!(
+                        tmux_session = %tmux_name,
+                        pane_pid = pane_pid,
+                        session_id = %id,
+                        "cli.poll.fallback"
                     );
                 }
                 result
@@ -266,12 +245,10 @@ pub async fn create_session(
     let session_id = match session_id {
         Some(id) => id,
         None => {
-            log_lifecycle(
-                "SESSION_START_TIMEOUT",
-                Some(pane_pid),
-                None,
-                Some(&tmux_name),
-                "neither Born event nor poll found pid.json within timeout",
+            tracing::error!(
+                tmux_session = %tmux_name,
+                pane_pid = pane_pid,
+                "cli.session.start.timeout"
             );
             let _ = state.tmux.kill_session(&tmux_name);
             state.tmux_index.remove(&tmux_name).await;
@@ -281,19 +258,11 @@ pub async fn create_session(
         }
     };
 
-    log_lifecycle(
-        "API_CREATE_COMPLETE",
-        Some(pane_pid),
-        Some(&session_id),
-        Some(&tmux_name),
-        "full identity resolved, returning to frontend",
-    );
-
     tracing::info!(
-        tmux = %tmux_name,
+        tmux_session = %tmux_name,
         session_id = %session_id,
         pane_pid = pane_pid,
-        "CLI session created — Claude session resolved"
+        "cli.create.complete"
     );
 
     Ok(Json(CreateResponse {
@@ -341,8 +310,6 @@ pub async fn kill_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
-    use super::lifecycle_debug::log_lifecycle;
-
     // Resolve full identity BEFORE killing anything — capture pid + sessionId.
     let (resolved_pid, resolved_session_id) = {
         let map = state.live_sessions.read().await;
@@ -363,22 +330,18 @@ pub async fn kill_session(
         }
     };
 
-    log_lifecycle(
-        "API_KILL_START",
-        resolved_pid,
-        resolved_session_id.as_deref(),
-        Some(&id),
-        &format!("DELETE /api/cli-sessions/{id} — tab close initiated"),
+    tracing::info!(
+        tmux_session = %id,
+        pane_pid = ?resolved_pid,
+        session_id = ?resolved_session_id,
+        "cli.kill.start"
     );
 
     // Check tmux index.
     if !state.tmux_index.contains(&id).await {
-        log_lifecycle(
-            "API_KILL_NOT_FOUND",
-            resolved_pid,
-            resolved_session_id.as_deref(),
-            Some(&id),
-            "tmux name not in index",
+        tracing::debug!(
+            tmux_session = %id,
+            "cli.kill.not_found"
         );
         return Err(ApiError::NotFound(format!("CLI session not found: {id}")));
     }
@@ -387,24 +350,17 @@ pub async fn kill_session(
     let tmux_existed = state.tmux.has_session(&id);
     if tmux_existed {
         let kill_result = state.tmux.kill_session(&id);
-        log_lifecycle(
-            "TMUX_KILL_EXECUTED",
-            resolved_pid,
-            resolved_session_id.as_deref(),
-            Some(&id),
-            &format!(
-                "tmux kill-session -t {} — result={:?}",
-                id,
-                kill_result.as_ref().map(|_| "ok").unwrap_or("err")
-            ),
+        tracing::debug!(
+            tmux_session = %id,
+            pane_pid = ?resolved_pid,
+            success = kill_result.is_ok(),
+            "cli.kill.tmux_executed"
         );
     } else {
-        log_lifecycle(
-            "TMUX_ALREADY_DEAD",
-            resolved_pid,
-            resolved_session_id.as_deref(),
-            Some(&id),
-            "tmux session already gone before kill",
+        tracing::debug!(
+            tmux_session = %id,
+            pane_pid = ?resolved_pid,
+            "cli.kill.tmux_already_dead"
         );
     }
 
@@ -414,29 +370,24 @@ pub async fn kill_session(
             .map(|h| h.join(format!(".claude/sessions/{pid}.json")).exists())
             .unwrap_or(false);
         let process_alive = unsafe { libc::kill(pid as i32, 0) } == 0;
-        log_lifecycle(
-            "KILL_STATE_SNAPSHOT",
-            Some(pid),
-            resolved_session_id.as_deref(),
-            Some(&id),
-            &format!(
-                "post-tmux-kill snapshot: process_alive={process_alive}, pid_json_exists={pid_json_exists}"
-            ),
+        tracing::debug!(
+            tmux_session = %id,
+            pane_pid = pid,
+            process_alive,
+            pid_json_exists,
+            "cli.kill.state_snapshot"
         );
 
         // SIGTERM the Claude CLI process directly — tmux kill only sends SIGHUP
         // which Claude CLI ignores (keeps running its 30s timer).
         if process_alive {
             let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-            log_lifecycle(
-                "SIGTERM_SENT",
-                Some(pid),
-                resolved_session_id.as_deref(),
-                Some(&id),
-                &format!(
-                    "kill({pid}, SIGTERM) → {}",
-                    if result == 0 { "delivered" } else { "failed" }
-                ),
+            let delivered = result == 0;
+            tracing::debug!(
+                tmux_session = %id,
+                pane_pid = pid,
+                delivered,
+                "cli.kill.sigterm_sent"
             );
         }
     }
@@ -444,12 +395,9 @@ pub async fn kill_session(
     // Remove from tmux index.
     state.tmux_index.remove(&id).await;
 
-    log_lifecycle(
-        "TMUX_INDEX_REMOVED",
-        resolved_pid,
-        resolved_session_id.as_deref(),
-        Some(&id),
-        "tmux index entry removed",
+    tracing::debug!(
+        tmux_session = %id,
+        "cli.kill.index_removed"
     );
 
     // Reap through the canonical path — reap_session handles ALL secondary maps
@@ -468,25 +416,21 @@ pub async fn kill_session(
                 }
             }
             let result = manager.reap_session(key).await;
-            log_lifecycle(
-                "REAP_SESSION_RESULT",
-                resolved_pid,
-                Some(key),
-                Some(&id),
-                &format!("reap_session() → {:?}", result),
+            tracing::debug!(
+                tmux_session = %id,
+                session_id = %key,
+                reap_result = ?result,
+                "cli.kill.reaped"
             );
         }
     }
 
-    log_lifecycle(
-        "API_KILL_COMPLETE",
-        resolved_pid,
-        resolved_session_id.as_deref(),
-        Some(&id),
-        "kill handler finished, returning 200",
+    tracing::info!(
+        tmux_session = %id,
+        pane_pid = ?resolved_pid,
+        session_id = ?resolved_session_id,
+        "cli.kill.complete"
     );
-
-    tracing::info!(id = %id, "CLI session killed");
 
     Ok(Json(serde_json::json!({ "removed": true, "id": id })))
 }
