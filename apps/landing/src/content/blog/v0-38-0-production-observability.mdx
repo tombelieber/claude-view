@@ -1,0 +1,58 @@
+---
+title: "End-to-End Request Tracing for Claude Code Sessions"
+description: "v0.38.0 adds structured logging, crash reports, and request ID propagation so you can trace any operation from browser to CLI session."
+date: 2026-04-15
+author: claude-view team
+---
+
+When something goes wrong in a system that orchestrates CLI sessions, WebSocket connections, and a block pipeline processing thousands of JSONL events, the first question is always: "What happened?" Until now, the answer required grepping through unstructured stderr output and hoping the timestamps lined up.
+
+v0.38.0 ships a unified observability stack that makes every operation traceable.
+
+## The problem
+
+claude-view sits between your browser and Claude Code CLI sessions running in tmux. A single user action — opening a session, sending a message, watching blocks stream in — touches HTTP handlers, WebSocket connections, a block pipeline orchestrator, and the sidecar proxy. When something hung or crashed, you had no structured way to correlate events across these layers.
+
+Logs were `eprintln!` calls. Crashes left no trace. If a request timed out, you couldn't tell whether the bottleneck was in the pipeline, the sidecar, or the CLI itself.
+
+## What shipped
+
+**Structured JSON logs** roll daily under `~/.claude-view/logs/`. Every log line includes a timestamp, span context, and structured fields — no more parsing free-text messages. In dev mode, you still get human-readable stderr output.
+
+**Request ID propagation** is the core change. Every HTTP request entering the server gets a ULID `x-request-id`. That ID propagates through:
+
+- HTTP response headers (for browser DevTools correlation)
+- WebSocket init frames (so the sidecar knows which request spawned the connection)
+- Block pipeline orchestrator spans (so you can trace which pipeline phase processed which block)
+- tmux environment variables (`CLAUDE_VIEW_TRACE_ID`, `CLAUDE_VIEW_CLI_SESSION_ID`)
+
+If a session hangs, you can grep the log directory for the request ID and see the full lifecycle: HTTP request received, WebSocket upgraded, pipeline phase entered, blocks processed, response sent.
+
+**Crash logs** catch the cases where structured logging can't help — panics. A custom panic hook writes `crash-*.log` files with the full backtrace, the span context at the point of panic, and service metadata (version, host hash, deployment mode). These persist even when the process exits abnormally.
+
+**Opt-in Sentry** integration sends crash reports and error events to Sentry when you opt in via a consent file at `~/.claude-view/telemetry-consent` or the `SENTRY_DSN` environment variable. No data leaves your machine unless you explicitly enable it.
+
+## Under the hood
+
+The observability crate is built on `tracing` and `tracing-subscriber` with a layered architecture:
+
+- A **JSON file layer** with `tracing-appender` rolling daily files
+- A **dev stderr layer** with `tracing-subscriber::fmt` for human-readable output, active only in dev mode
+- An optional **OTLP layer** behind the `otel` feature flag, for sending traces to Jaeger, Grafana Tempo, or any OpenTelemetry-compatible backend
+- An optional **Sentry layer** that maps `tracing` events to Sentry breadcrumbs and errors
+
+All layers share a single `EnvFilter` configured via `RUST_LOG`. The subscriber is installed once at startup, and every `#[instrument]` annotation across the workspace automatically participates.
+
+We also added criterion benchmarks to ensure the observability layer doesn't add measurable latency to the block pipeline hot path.
+
+## ARM64 and pipeline hardening
+
+This release also extends the build matrix to **linux-arm64**, so ARM servers and Raspberry Pi devices get native binaries. The release pipeline now runs artifact verification contracts (tarball structure, binary version check, ELF architecture validation) and build provenance attestations before publishing.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Check `~/.claude-view/logs/` after running a few sessions to see structured traces in action.
