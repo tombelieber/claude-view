@@ -83,6 +83,10 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
     // entrypoint extraction (first line that has it: cli, claude-vscode, sdk-ts)
     let entrypoint_finder = memmem::Finder::new(b"\"entrypoint\":\"");
 
+    // Observability trace IDs injected by claude-view (preparatory -- CLI doesn't emit yet)
+    let cv_trace_id_finder = memmem::Finder::new(b"\"claude_view_trace_id\":\"");
+    let cv_cli_session_id_finder = memmem::Finder::new(b"\"claude_view_cli_session_id\":\"");
+
     for (byte_offset, line) in split_lines_with_offsets(data) {
         if line.is_empty() {
             diag.lines_empty += 1;
@@ -136,6 +140,31 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 if let Some(ep) = extract_quoted_string(&line[start..]) {
                     if !ep.is_empty() {
                         result.entrypoint = Some(ep);
+                    }
+                }
+            }
+        }
+
+        // Observability trace IDs (preparatory -- Claude CLI doesn't emit yet).
+        // Extract from the first line that contains them.
+        if result.claude_view_trace_id.is_none() {
+            if let Some(pos) = cv_trace_id_finder.find(line) {
+                let start = pos + b"\"claude_view_trace_id\":\"".len();
+                if let Some(tid) = extract_quoted_string(&line[start..]) {
+                    if !tid.is_empty() {
+                        tracing::Span::current().record("trace_id", &tid);
+                        result.claude_view_trace_id = Some(tid);
+                    }
+                }
+            }
+        }
+        if result.claude_view_cli_session_id.is_none() {
+            if let Some(pos) = cv_cli_session_id_finder.find(line) {
+                let start = pos + b"\"claude_view_cli_session_id\":\"".len();
+                if let Some(cid) = extract_quoted_string(&line[start..]) {
+                    if !cid.is_empty() {
+                        tracing::Span::current().record("cli_session_id", &cid);
+                        result.claude_view_cli_session_id = Some(cid);
                     }
                 }
             }

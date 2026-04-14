@@ -251,6 +251,12 @@ pub struct ParseResult {
     pub search_messages: Vec<claude_view_core::SearchableMessage>,
     /// How the session was launched (cli, claude-vscode, sdk-ts).
     pub entrypoint: Option<String>,
+    /// Observability trace ID injected by claude-view into the CLI env.
+    /// Preparatory: the Claude CLI doesn't emit this yet, but the parser
+    /// is ready to extract it when it does.
+    pub claude_view_trace_id: Option<String>,
+    /// Observability CLI session ID injected by claude-view into the CLI env.
+    pub claude_view_cli_session_id: Option<String>,
 }
 
 /// Collected results from one session's parse phase, to be written in a single transaction.
