@@ -242,6 +242,10 @@ export function CostTooltip({
                   USD totals ({pricedCoverage}% priced coverage).
                 </div>
               )}
+              {/* Keep in sync with data/anthropic-pricing.json `last_verified` field. */}
+              <div className="pt-1 mt-1 border-t border-gray-200 dark:border-gray-700 text-[10px] text-gray-400 dark:text-gray-500 italic">
+                Rates as of {PRICING_LAST_VERIFIED}
+              </div>
             </div>
           </div>,
           document.body,
@@ -249,6 +253,15 @@ export function CostTooltip({
     </div>
   )
 }
+
+/**
+ * Anthropic pricing verification date.
+ *
+ * Hardcoded for simplicity — matches the "update manually" philosophy in
+ * `data/README.md`. When bumping `last_verified` in `data/anthropic-pricing.json`,
+ * update this constant in the same commit.
+ */
+const PRICING_LAST_VERIFIED = '2026-04-14'
 
 function CostRow({
   label,

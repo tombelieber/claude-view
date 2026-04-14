@@ -1,6 +1,6 @@
 {
   "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
-  "last_verified": "2026-03-26",
+  "last_verified": "2026-04-14",
   "unit": "usd_per_million_tokens",
   "models": {
     "claude-opus-4-6": {
@@ -114,7 +114,8 @@
       "cache_read": 0.3,
       "max_input_tokens": 200000,
       "max_output_tokens": 64000,
-      "long_context_pricing": null
+      "long_context_pricing": null,
+      "deprecated": true
     },
     "claude-3-5-sonnet-20241022": {
       "display_name": "Claude Sonnet 3.5 v2",
@@ -125,7 +126,8 @@
       "cache_read": 0.3,
       "max_input_tokens": 200000,
       "max_output_tokens": 8192,
-      "long_context_pricing": null
+      "long_context_pricing": null,
+      "deprecated": true
     },
     "claude-3-5-sonnet-20240620": {
       "display_name": "Claude Sonnet 3.5 v1",
@@ -136,7 +138,8 @@
       "cache_read": 0.3,
       "max_input_tokens": 200000,
       "max_output_tokens": 8192,
-      "long_context_pricing": null
+      "long_context_pricing": null,
+      "deprecated": true
     },
     "claude-3-5-haiku-20241022": {
       "display_name": "Claude Haiku 3.5",
@@ -158,7 +161,8 @@
       "cache_read": 1.5,
       "max_input_tokens": 200000,
       "max_output_tokens": 4096,
-      "long_context_pricing": null
+      "long_context_pricing": null,
+      "deprecated": true
     },
     "claude-3-sonnet-20240229": {
       "display_name": "Claude Sonnet 3",
@@ -169,7 +173,8 @@
       "cache_read": 0.3,
       "max_input_tokens": 200000,
       "max_output_tokens": 4096,
-      "long_context_pricing": null
+      "long_context_pricing": null,
+      "deprecated": true
     },
     "claude-3-haiku-20240307": {
       "display_name": "Claude Haiku 3",
@@ -187,5 +192,85 @@
     "haiku": "claude-haiku-4-5-20251001",
     "sonnet": "claude-sonnet-4-6",
     "opus": "claude-opus-4-6"
+  },
+  "modifiers": {
+    "batch_discount": 0.5,
+    "cache_write_5m_multiplier": 1.25,
+    "cache_write_1h_multiplier": 2.0,
+    "cache_read_multiplier": 0.1,
+    "data_residency_us_multiplier": 1.1,
+    "data_residency_applies_from": "claude-opus-4-6-and-later",
+    "managed_agents_session_usd_per_hour": 0.08,
+    "web_search_usd_per_1000_requests": 10.0,
+    "code_execution_usd_per_container_hour": 0.05,
+    "code_execution_free_container_hours_per_month": 1550,
+    "code_execution_free_with_web_search_or_fetch": true,
+    "third_party_regional_premium_multiplier": 1.1,
+    "third_party_regional_applies_from": "claude-sonnet-4-5-and-later",
+    "notes": "batch_discount applies to both input and output tokens. cache_* multipliers are the standard pattern but Haiku 3 is an exception (1.20x write, 0.12x read vs standard 1.25x/0.1x). Always use per-model rates from the models table for actual cost calculation. Modifiers stack: e.g. fast mode × data residency × cache write multiplier."
+  },
+  "fast_mode": {
+    "claude-opus-4-6": {
+      "input": 30.0,
+      "output": 150.0,
+      "multiplier_vs_base": 6.0,
+      "available": "beta_research_preview",
+      "notes": "Applies across full 1M context window. Stacks with prompt caching and data residency. NOT available with Batch API."
+    }
+  },
+  "tool_overheads": {
+    "per_tool_input_tokens": {
+      "bash": 245,
+      "text_editor": 700,
+      "computer_use": 735
+    },
+    "computer_use_system_prompt": {
+      "min": 466,
+      "max": 499
+    },
+    "system_prompt_by_model_family": {
+      "claude-4-and-3-7": {
+        "auto_or_none": 346,
+        "any_or_tool": 313,
+        "applies_to": [
+          "claude-opus-4-6",
+          "claude-opus-4-5-20251101",
+          "claude-opus-4-1-20250805",
+          "claude-opus-4-20250514",
+          "claude-sonnet-4-6",
+          "claude-sonnet-4-5-20250929",
+          "claude-sonnet-4-20250514",
+          "claude-3-7-sonnet-20250219",
+          "claude-haiku-4-5-20251001"
+        ]
+      },
+      "claude-3-5-haiku": {
+        "auto_or_none": 264,
+        "any_or_tool": 340,
+        "applies_to": ["claude-3-5-haiku-20241022"]
+      },
+      "claude-3-opus": {
+        "auto_or_none": 530,
+        "any_or_tool": 281,
+        "applies_to": ["claude-3-opus-20240229"]
+      },
+      "claude-3-sonnet": {
+        "auto_or_none": 159,
+        "any_or_tool": 235,
+        "applies_to": ["claude-3-sonnet-20240229"]
+      },
+      "claude-3-haiku": {
+        "auto_or_none": 264,
+        "any_or_tool": 340,
+        "applies_to": ["claude-3-haiku-20240307"]
+      }
+    },
+    "notes": "These token counts reflect what Anthropic adds server-side. They are ALREADY INCLUDED in usage.input_tokens returned by the API — consumers must not add them again. Documented here for cost prediction and auditing only."
+  },
+  "third_party_platforms": {
+    "aws_bedrock": "https://aws.amazon.com/bedrock/pricing/",
+    "google_vertex_ai": "https://cloud.google.com/vertex-ai/generative-ai/pricing",
+    "microsoft_foundry": "https://azure.microsoft.com/en-us/pricing/details/ai-foundry/",
+    "notes": "Third-party platforms have their own pricing. For Sonnet 4.5, Haiku 4.5, and later, regional/multi-region endpoints carry a 10% premium over global endpoints."
   }
 }

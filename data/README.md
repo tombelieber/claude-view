@@ -2,7 +2,7 @@
 
 ## `anthropic-pricing.json`
 
-Static pricing table for Claude models. Embedded into the binary at compile time — no network dependency, no runtime fetch. Verified against [official Anthropic pricing](https://platform.claude.com/docs/en/docs/about-claude/pricing) on 2026-03-26.
+Static pricing table for Claude models. Embedded into the binary at compile time — no network dependency, no runtime fetch. Verified against [official Anthropic pricing](https://platform.claude.com/docs/en/docs/about-claude/pricing) on 2026-04-14.
 
 ### Architecture
 
