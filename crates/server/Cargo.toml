@@ -47,6 +47,7 @@ swagger = ["dep:utoipa-swagger-ui"]
 
 [dependencies]
 claude-view-core = { workspace = true }
+claude-view-observability = { path = "../observability" }
 claude-view-types = { workspace = true }
 claude-view-db = { workspace = true }
 claude-view-search = { workspace = true }

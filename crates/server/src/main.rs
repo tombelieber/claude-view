@@ -21,7 +21,6 @@ use claude_view_server::{
     PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder, SearchIndexHolder,
 };
 use indicatif::{ProgressBar, ProgressStyle};
-use tracing_subscriber::FmtSubscriber;
 
 mod cli;
 
@@ -253,20 +252,18 @@ async fn main() -> Result<()> {
     // if it can't auto-detect a single provider. Explicit selection = no ambiguity.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    // Initialize tracing — respects RUST_LOG env var, defaults to WARN.
-    // RUST_LOG=debug in dev:server script enables info/debug logs for classify, etc.
-    let subscriber = FmtSubscriber::builder()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("warn")),
-        )
-        .compact()
-        .finish();
-    tracing::subscriber::set_global_default(subscriber)?;
+    // Initialize unified observability (structured JSON file + dev stderr + optional Sentry).
+    let mut obs_cfg = claude_view_observability::ServiceConfig::new(
+        "claude-view-server",
+        env!("CARGO_PKG_VERSION"),
+    );
+    obs_cfg.sentry_dsn = claude_view_observability::sentry_integration::load_dsn();
+    let _obs_handle = claude_view_observability::init(obs_cfg)
+        .map_err(|e| anyhow::anyhow!("observability init: {e}"))?;
 
     // Load runtime config from ~/.claude-view/config.toml
     let app_config = claude_view_core::app_config::AppConfig::load();
-    tracing::info!(?app_config, "app config loaded");
+    tracing::info!(?app_config, "app.config.loaded");
 
     // Parse CLI arguments with clap
     let cli_parsed = cli::Cli::parse();
@@ -285,6 +282,13 @@ async fn main() -> Result<()> {
 
         // 3. Remove lock files from /tmp
         actions.extend(claude_view_core::paths::remove_lock_files());
+
+        // 4. Remove legacy debug/ directory (replaced by structured tracing)
+        let legacy_debug = claude_view_core::paths::data_dir().join("debug");
+        if legacy_debug.exists() {
+            let _ = std::fs::remove_dir_all(&legacy_debug);
+            actions.push("Removed legacy debug/ directory".to_string());
+        }
 
         if actions.is_empty() {
             eprintln!("  Nothing to clean up.");

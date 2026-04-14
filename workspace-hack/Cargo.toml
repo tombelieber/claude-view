@@ -103,7 +103,6 @@ bitflags = { version = "2.11.1", default-features = false, features = ["std"] }
 errno = { version = "0.3.14" }
 hyper-rustls = { version = "0.27.8", default-features = false, features = ["aws-lc-rs", "http1", "http2", "ring", "rustls-native-certs", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1.20", default-features = false, features = ["client-proxy", "client-proxy-system"] }
-miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd", "with-alloc"] }
 rustls = { version = "0.23.38", default-features = false, features = ["ring", "tls12"] }
 rustls-webpki = { version = "0.103.12", default-features = false, features = ["ring"] }
 security-framework-sys = { version = "2.17.0" }
@@ -113,6 +112,5 @@ tower-http = { version = "0.6.8", default-features = false, features = ["follow-
 [target.aarch64-apple-darwin.build-dependencies]
 cc = { version = "1.2.60", default-features = false, features = ["parallel"] }
 libc = { version = "0.2.185", features = ["extra_traits"] }
-miniz_oxide = { version = "0.8.9", default-features = false, features = ["simd", "with-alloc"] }
 
 ### END HAKARI SECTION
