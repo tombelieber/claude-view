@@ -355,11 +355,15 @@ impl LiveSessionManager {
     /// Called when sessions_watcher discovers a new pid.json for a session
     /// not yet in the live sessions map. The coordinator handles creation,
     /// JSONL pre-enrichment, death watcher registration, and SSE broadcast.
+    #[tracing::instrument(skip_all, fields(session_id, pid))]
     pub(crate) async fn handle_session_birth(
         self: &Arc<Self>,
         session: claude_view_core::session_files::ActiveSession,
         pid: u32,
     ) {
+        tracing::Span::current().record("session_id", tracing::field::display(&session.session_id));
+        tracing::Span::current().record("pid", pid);
+
         let now = helpers::unix_now();
         let ctx = self.mutation_context(self);
         let cwd = session.cwd.clone();
@@ -416,6 +420,7 @@ impl LiveSessionManager {
     }
 
     /// Called by hook handler when SessionStart creates a new session.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn create_accumulator_for_hook(&self, session_id: &str) {
         self.accumulators
             .write()
@@ -443,6 +448,7 @@ impl LiveSessionManager {
     /// - startup recovery (promote_from_snapshot: enrich before broadcast)
     ///
     /// If no accumulator exists or it has no data, this is a no-op.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn apply_accumulator_to_session(&self, session_id: &str, session: &mut LiveSession) {
         let accumulators = self.accumulators.read().await;
         let Some(acc) = accumulators.get(session_id) else {
@@ -496,6 +502,7 @@ impl LiveSessionManager {
 
     /// Enrich a session that IS already in the map. Used by the file watcher
     /// event loop when a JSONL file changes and the session needs updating.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn enrich_session_in_map(&self, session_id: &str) {
         let accumulators = self.accumulators.read().await;
         let Some(acc) = accumulators.get(session_id) else {
@@ -561,6 +568,7 @@ impl LiveSessionManager {
     }
 
     /// Called by hook handler when SessionEnd removes a session after delay.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn remove_accumulator(&self, session_id: &str) {
         self.accumulators.write().await.remove(session_id);
     }
@@ -627,6 +635,7 @@ impl LiveSessionManager {
     }
 
     /// CAS bind a control session to a live session.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn bind_control(
         &self,
         session_id: &str,
@@ -657,6 +666,7 @@ impl LiveSessionManager {
     }
 
     /// Remove the control binding.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn unbind_control(&self, session_id: &str) -> bool {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
@@ -672,6 +682,7 @@ impl LiveSessionManager {
     }
 
     /// Conditionally unbind: only if current control_id matches.
+    #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn unbind_control_if(&self, session_id: &str, expected_control_id: &str) -> bool {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(session_id) {
