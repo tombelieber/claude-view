@@ -711,6 +711,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-view-observability"
+version = "0.37.1"
+dependencies = [
+ "anyhow",
+ "axum 0.8.9",
+ "chrono",
+ "claude-view-core",
+ "dirs",
+ "hex",
+ "http 1.4.0",
+ "sentry",
+ "sentry-tracing",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "ulid",
+ "workspace-hack",
+]
+
+[[package]]
 name = "claude-view-relay"
 version = "0.37.1"
 dependencies = [
@@ -5069,6 +5096,7 @@ dependencies = [
  "tower-layer",
  "tower-service",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -5093,6 +5121,18 @@ dependencies = [
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
+]
+
+[[package]]
+name = "tracing-appender"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "786d480bce6247ab75f005b14ae1624ad978d3029d9113f0a22fa1ac773faeaf"
+dependencies = [
+ "crossbeam-channel",
+ "thiserror 2.0.18",
+ "time",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5128,6 +5168,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tracing-serde"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "704b1aeb7be0d0a84fc9828cae51dab5970fee5088f83d1dd7ee6f6246fc6ff1"
+dependencies = [
+ "serde",
+ "tracing-core",
+]
+
+[[package]]
 name = "tracing-subscriber"
 version = "0.3.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5137,12 +5187,15 @@ dependencies = [
  "nu-ansi-term",
  "once_cell",
  "regex-automata",
+ "serde",
+ "serde_json",
  "sharded-slab",
  "smallvec",
  "thread_local",
  "tracing",
  "tracing-core",
  "tracing-log",
+ "tracing-serde",
 ]
 
 [[package]]
@@ -5214,6 +5267,16 @@ name = "typenum"
 version = "1.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "562d481066bde0658276a35467c4af00bdc6ee726305698a55b86e61d7ad82bb"
+
+[[package]]
+name = "ulid"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "470dbf6591da1b39d43c14523b2b469c86879a53e8b758c8e090a470fe7b1fbe"
+dependencies = [
+ "rand 0.9.4",
+ "web-time",
+]
 
 [[package]]
 name = "uname"
@@ -6081,6 +6144,7 @@ dependencies = [
  "aho-corasick",
  "bitflags 2.11.1",
  "cc",
+ "crossbeam-utils",
  "crypto-common",
  "deranged",
  "digest",
@@ -6100,6 +6164,7 @@ dependencies = [
  "hyper-rustls",
  "hyper-util",
  "indexmap",
+ "lazy_static",
  "libc",
  "log",
  "memchr",
@@ -6114,6 +6179,7 @@ dependencies = [
  "regex-syntax",
  "reqwest",
  "rustls",
+ "rustls-pki-types",
  "rustls-webpki",
  "security-framework-sys",
  "serde",
