@@ -527,11 +527,12 @@ pub fn create_app_full(
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();
 
-    let mut app = Router::new()
+    let app = Router::new()
         .merge(routes::api_routes(state))
         .layer(CompressionLayer::new())
         .layer(cors_layer())
         .layer(TraceLayer::new_for_http());
+    let mut app = claude_view_observability::apply_request_id_layers(app);
 
     if let Some(dir) = static_dir {
         let index = dir.join("index.html");
@@ -575,11 +576,12 @@ pub fn create_app_with_indexing_and_static(
 ) -> Router {
     let state = AppState::builder(db).with_indexing(indexing).build();
 
-    let mut app = Router::new()
+    let app = Router::new()
         .merge(routes::api_routes(state))
         .layer(CompressionLayer::new())
         .layer(cors_layer())
         .layer(TraceLayer::new_for_http());
+    let mut app = claude_view_observability::apply_request_id_layers(app);
 
     // Serve static files with SPA fallback
     // Use .fallback() instead of .not_found_service() to return 200 for SPA routing
