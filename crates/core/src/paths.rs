@@ -71,6 +71,10 @@ pub fn workflows_user_dir() -> PathBuf {
     config_dir().join("workflows").join("user")
 }
 
+pub fn log_dir() -> PathBuf {
+    data_dir().join("logs")
+}
+
 /// Remove all claude-view cache data (DB, WAL, search index, prompt index).
 pub fn remove_cache_data() -> Vec<String> {
     let dir = data_dir();
@@ -241,6 +245,15 @@ mod tests {
             workflows_user_dir(),
             PathBuf::from("/tmp/test-cv/workflows/user")
         );
+        env::remove_var("CLAUDE_VIEW_DATA_DIR");
+    }
+
+    #[test]
+    fn log_dir_is_under_data_dir() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/cv-test-log-dir-xyz");
+        let dir = log_dir();
+        assert_eq!(dir, PathBuf::from("/tmp/cv-test-log-dir-xyz/logs"));
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
     }
 }
