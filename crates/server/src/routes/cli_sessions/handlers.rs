@@ -127,6 +127,23 @@ pub async fn create_session(
         "tmux new-session -d succeeded",
     );
 
+    // Auto-accept workspace trust dialog. Claude CLI shows an interactive
+    // "trust this folder?" prompt for untrusted directories that blocks
+    // pid.json creation. The dialog needs ~1s to render before it can
+    // accept input. We fire Enter at 1s and 2s to cover the window.
+    // For already-trusted directories the poll resolves in <300ms and
+    // the spawned task's Enter hits an empty prompt line (harmless no-op).
+    {
+        let tmux = state.tmux.clone();
+        let name = tmux_name.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let _ = tmux.send_keys(&name, "Enter");
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let _ = tmux.send_keys(&name, "Enter");
+        });
+    }
+
     // Get the pane PID — after exec, this is the Claude process PID.
     let pane_pid = match state.tmux.pane_pid(&tmux_name) {
         Some(pid) => {

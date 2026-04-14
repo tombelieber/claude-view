@@ -34,6 +34,9 @@ pub trait TmuxCommand: Send + Sync {
 
     /// List all tmux session names.
     fn list_sessions(&self) -> Vec<String>;
+
+    /// Send keys to a tmux pane.
+    fn send_keys(&self, name: &str, keys: &str) -> Result<(), String>;
 }
 
 /// Production implementation that shells out to the real tmux binary.
@@ -55,6 +58,13 @@ impl TmuxCommand for RealTmux {
         }
 
         let mut cmd = Command::new("tmux");
+        // Strip Claude Code env vars to prevent nested-session detection when
+        // the Rust server is spawned from inside a Claude Code terminal.
+        for (key, _) in std::env::vars() {
+            if key.starts_with("CLAUDE") {
+                cmd.env_remove(&key);
+            }
+        }
         cmd.args(["new-session", "-d", "-s", name, "-x", "120", "-y", "40"]);
 
         if let Some(dir) = project_dir {
@@ -140,6 +150,18 @@ impl TmuxCommand for RealTmux {
                 .collect(),
             _ => Vec::new(),
         }
+    }
+
+    fn send_keys(&self, name: &str, keys: &str) -> Result<(), String> {
+        let output = Command::new("tmux")
+            .args(["send-keys", "-t", name, keys])
+            .output()
+            .map_err(|e| format!("Failed to spawn tmux: {e}"))?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("tmux send-keys failed: {stderr}"));
+        }
+        Ok(())
     }
 }
 
@@ -265,6 +287,10 @@ pub mod mock {
 
         fn list_sessions(&self) -> Vec<String> {
             self.sessions.lock().unwrap().iter().cloned().collect()
+        }
+
+        fn send_keys(&self, _name: &str, _keys: &str) -> Result<(), String> {
+            Ok(())
         }
     }
 }
