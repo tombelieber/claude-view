@@ -14,6 +14,7 @@ use super::super::writer::check_token_reconciliation;
 /// Writes session upserts, topology, turns, invocations, and hook events.
 /// Fires `on_file_done` after each chunk is committed.
 /// Returns the number of sessions written.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn run_phase_write<F>(
     db: &Database,
     indexed_sessions: &[IndexedSession],

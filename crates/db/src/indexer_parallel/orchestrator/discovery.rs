@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 /// Collect all `.jsonl` files at depth 2: `{projects_dir}/{project_encoded}/{session_id}.jsonl`.
 /// Returns `(file_path, project_encoded, session_id)` triples.
+#[tracing::instrument(skip_all)]
 pub(crate) fn discover_jsonl_files(
     projects_dir: &Path,
 ) -> Result<Vec<(PathBuf, String, String)>, String> {

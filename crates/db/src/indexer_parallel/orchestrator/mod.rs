@@ -30,6 +30,7 @@ use super::types::IndexHints;
 /// after the filesystem walk, before any parsing begins. This is the single
 /// source of truth for "total sessions to process" -- callers should use it
 /// to set their progress total instead of guessing from external sources.
+#[tracing::instrument(skip_all)]
 pub async fn scan_and_index_all<F, T, W>(
     claude_dir: &Path,
     db: &Database,

@@ -11,6 +11,7 @@ use super::super::types::IndexedSession;
 ///
 /// Called after Phase 2 SQLite writes succeed. Commits the index and
 /// reloads the reader on success.
+#[tracing::instrument(skip_all)]
 pub(crate) fn run_phase_search(
     indexed_sessions: &[IndexedSession],
     search_index: &Arc<claude_view_search::SearchIndex>,
@@ -93,6 +94,7 @@ pub(crate) fn aggregate_integrity(
 }
 
 /// Persist the index run completion record with timing and integrity data.
+#[tracing::instrument(skip_all)]
 pub(crate) async fn finalize_index_run(
     db: &Database,
     indexed_sessions: &[IndexedSession],
