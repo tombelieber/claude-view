@@ -32,6 +32,15 @@ pub(super) fn resolve_claude_session_id(pid: u32) -> Option<String> {
 /// returns the real Claude session UUID. The Born handler (sessions_lifecycle)
 /// creates the LiveSession and sets tmux ownership naturally — no intermediate
 /// "Spawning" entry needed.
+#[tracing::instrument(
+    skip_all,
+    fields(
+        tmux_session = tracing::field::Empty,
+        pane_pid = tracing::field::Empty,
+        cli_session_id = tracing::field::Empty,
+    ),
+    err,
+)]
 #[utoipa::path(post, path = "/api/cli-sessions", tag = "cli",
     request_body = CreateRequest,
     responses(
@@ -78,6 +87,8 @@ pub async fn create_session(
     // Generate a short unique tmux session name.
     let short_id = &uuid::Uuid::new_v4().to_string()[..8];
     let tmux_name = format!("cv-{short_id}");
+
+    tracing::Span::current().record("tmux_session", tracing::field::display(&tmux_name));
 
     tracing::info!(
         tmux_session = %tmux_name,
@@ -136,6 +147,7 @@ pub async fn create_session(
     // Get the pane PID — after exec, this is the Claude process PID.
     let pane_pid = match state.tmux.pane_pid(&tmux_name) {
         Some(pid) => {
+            tracing::Span::current().record("pane_pid", pid);
             tracing::debug!(
                 tmux_session = %tmux_name,
                 pane_pid = pid,
@@ -258,6 +270,8 @@ pub async fn create_session(
         }
     };
 
+    tracing::Span::current().record("cli_session_id", tracing::field::display(&session_id));
+
     tracing::info!(
         tmux_session = %tmux_name,
         session_id = %session_id,
@@ -299,6 +313,7 @@ async fn poll_for_session_id(pid: u32) -> Option<String> {
 ///
 /// `id` is the tmux session name (e.g. "cv-abc123"). Finds the corresponding
 /// LiveSession by tmux ownership and reaps it.
+#[tracing::instrument(skip_all, fields(tmux_session), err)]
 #[utoipa::path(delete, path = "/api/cli-sessions/{id}", tag = "cli",
     params(("id" = String, Path, description = "Tmux session name")),
     responses(
@@ -310,6 +325,8 @@ pub async fn kill_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    tracing::Span::current().record("tmux_session", tracing::field::display(&id));
+
     // Resolve full identity BEFORE killing anything — capture pid + sessionId.
     let (resolved_pid, resolved_session_id) = {
         let map = state.live_sessions.read().await;
