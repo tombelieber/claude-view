@@ -17,6 +17,7 @@ const PLATFORM_MAP = {
   'darwin-arm64': { artifact: 'claude-view-darwin-arm64.tar.gz', ext: 'tar.gz' },
   'darwin-x64': { artifact: 'claude-view-darwin-x64.tar.gz', ext: 'tar.gz' },
   'linux-x64': { artifact: 'claude-view-linux-x64.tar.gz', ext: 'tar.gz' },
+  'linux-arm64': { artifact: 'claude-view-linux-arm64.tar.gz', ext: 'tar.gz' },
   'win32-x64': { artifact: 'claude-view-win32-x64.zip', ext: 'zip' },
 }
 
@@ -26,7 +27,7 @@ const platformInfo = PLATFORM_MAP[platformKey]
 if (!platformInfo) {
   console.error(
     `Error: Unsupported platform "${process.platform}" with architecture "${process.arch}".\n` +
-      `Supported: macOS (arm64, x64), Linux (x64), Windows (x64).`,
+      `Supported: macOS (arm64, x64), Linux (arm64, x64), Windows (x64).`,
   )
   process.exit(1)
 }
