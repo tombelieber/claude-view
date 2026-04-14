@@ -3577,6 +3577,29 @@ npx claude-view@latest
 ```
 
 
+--- changelog/v0.37.1.md ---
+
+---
+title: "v0.37.1 — Trust Dialog Auto-Accept for npx Users"
+date: 2026-04-14
+version: v0.37.1
+---
+
+## Fixes
+
+**First-run hang from untrusted directories** — `npx claude-view` could hang indefinitely when starting a CLI session from a directory Claude hadn't previously trusted (like `$HOME`). Claude CLI was blocking on its interactive "trust this folder?" dialog, but nobody was there to press Enter in the detached tmux pane, so the session never wrote `pid.json` and the API timed out with a 503 after 5 seconds. claude-view now sends Enter to the tmux pane automatically 1s and 2s after creation to auto-accept the dialog. For already-trusted directories the poll resolves in under 300ms and the Enter is a harmless no-op.
+
+## Improvements
+
+**Nested session detection** — CLAUDE* environment variables are now stripped from the tmux command when spawning CLI sessions. This prevents Claude CLI from mis-detecting a nested session when the claude-view server is itself launched from inside a Claude Code terminal.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
 --- changelog/v0.4.0.md ---
 
 ---
