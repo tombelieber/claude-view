@@ -1,7 +1,7 @@
 //! WebSocket client that connects to the relay server and forwards
 //! encrypted session updates to paired mobile devices.
 
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::broadcast;
@@ -38,6 +38,41 @@ impl Default for RelayClientConfig {
     }
 }
 
+/// Returns `true` iff there's an unexpired pairing offer on disk.
+///
+/// A pairing offer is a file under `~/.claude-view/pairing_secrets/` written
+/// by `store_verification_secret()` inside the `/api/pairing/qr` route. The
+/// relay is notified via `POST /pair` at the same time, so the presence of
+/// a recent file means "the relay now knows our device_id — it's safe to
+/// auth the WS". Offers time out server-side after 5 minutes (see
+/// `crates/relay/src/pairing.rs::claim_pair`), so we use the same cutoff.
+///
+/// Stale files left behind after successful pairing (the relay deletes them
+/// via `find_and_verify_hmac`, but crashes can leave orphans) are ignored by
+/// the mtime check, so they don't cause phantom reconnects.
+fn pairing_in_progress() -> bool {
+    let dir = claude_view_core::paths::crypto_dir().join("pairing_secrets");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return false;
+    };
+    let now = SystemTime::now();
+    let ttl = Duration::from_secs(300);
+    for entry in entries.flatten() {
+        let Ok(meta) = entry.metadata() else { continue };
+        let Ok(modified) = meta.modified() else {
+            continue;
+        };
+        if now
+            .duration_since(modified)
+            .map(|age| age < ttl)
+            .unwrap_or(false)
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// Spawn the relay client as a background task.
 /// Subscribes to the broadcast channel and forwards encrypted session updates.
 pub fn spawn_relay_client(
@@ -68,12 +103,30 @@ pub fn spawn_relay_client(
         let mut backoff = Duration::from_secs(1);
 
         loop {
-            // Always connect — even with no paired devices.
-            // The relay connection must be open to receive pair_complete
-            // messages for the first-ever pairing (bootstrap).
-            // Session-sending loops are naturally guarded by iterating
-            // over paired_devices (empty list = no sends).
+            // Lazy-start: only connect when there's actually something to do.
+            //
+            // The relay server only knows about devices that went through
+            // POST /pair (driven by the desktop pairing UI). With no paired
+            // devices and no active pairing offer, our WS auth is guaranteed
+            // to be rejected — polling the relay in that state is pure log
+            // spam and a wasted socket.
+            //
+            // We connect when EITHER:
+            //   (a) `load_paired_devices()` is non-empty — normal streaming, OR
+            //   (b) `pairing_in_progress()` sees a fresh file under
+            //       `~/.claude-view/pairing_secrets/` — the desktop just called
+            //       POST /pair, so the relay now knows our device_id and the
+            //       WS is needed to receive the `pair_complete` push.
+            //
+            // When idle, we poll at 10s granularity — fast enough that a user
+            // clicking "Pair phone" sees the WS open well within the 5-minute
+            // pairing offer TTL.
             let paired_devices = load_paired_devices();
+            let pairing = pairing_in_progress();
+            if paired_devices.is_empty() && !pairing {
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                continue;
+            }
 
             match connect_and_stream(
                 &identity,
@@ -90,6 +143,9 @@ pub fn spawn_relay_client(
                     backoff = Duration::from_secs(1);
                 }
                 Err(e) => {
+                    // With paired devices present (or a pairing in progress),
+                    // auth rejection is a real problem — relay forgot us, clock
+                    // skew, server restart. Log it loudly.
                     warn!(
                         backoff_secs = backoff.as_secs(),
                         "relay connection failed: {e}"
