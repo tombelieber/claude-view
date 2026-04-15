@@ -23,6 +23,7 @@ pub mod local_llm;
 pub use claude_view_server_types::metrics;
 pub mod openapi;
 pub mod routes;
+pub mod search_migration;
 pub mod search_service;
 pub mod share_serializer;
 pub use claude_view_server_sidecar as sidecar;
