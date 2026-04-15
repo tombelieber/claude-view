@@ -171,6 +171,11 @@ pub(crate) fn resolve_open_plan(base: &Path) -> Result<ResolvedPlan, SearchError
         .into_iter()
         .find(|(v, p)| is_complete_versioned_index(p, *v))
     {
+        tracing::info!(
+            version = found_version,
+            path = %found_path.display(),
+            "opening older search index version as fallback during blue-green migration"
+        );
         return Ok(ResolvedPlan {
             open_path: found_path.clone(),
             pending_migration: Some(PendingMigration {
