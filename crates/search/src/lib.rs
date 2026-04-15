@@ -19,6 +19,7 @@ pub mod prompt_index;
 pub mod query;
 pub mod types;
 pub mod unified;
+pub mod version_layout;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
