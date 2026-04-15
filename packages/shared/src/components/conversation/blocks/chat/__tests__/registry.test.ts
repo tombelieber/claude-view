@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import type {
+  AssistantBlock,
+  ProgressBlock,
+  SystemBlock,
+  UserBlock,
+} from '../../../../../types/blocks'
+import { developerRegistry } from '../../developer/registry'
 import { chatRegistry } from '../registry'
-import { isChatVisibleQueueOp } from '../SystemBlock'
-import type { SystemBlock } from '../../../../../types/blocks'
 
 // ── Registry shape ────────────────────────────────────────────────────────────
 
@@ -16,135 +21,132 @@ describe('chatRegistry', () => {
     expect(chatRegistry).toHaveProperty('progress')
     expect(chatRegistry).toHaveProperty('team_transcript')
   })
+})
 
-  it('exports canRender function', () => {
-    expect(typeof chatRegistry.canRender).toBe('function')
+describe('developerRegistry', () => {
+  // Developer mode is the zero-data-loss debug view — every block must render.
+  // This test is a hard regression guard: if someone ever adds a canRender to
+  // developerRegistry, this fails immediately.
+  it('does NOT expose canRender (developer mode must render every block)', () => {
+    expect(developerRegistry.canRender).toBeUndefined()
+  })
+
+  it('exports all required block type renderers', () => {
+    expect(developerRegistry).toHaveProperty('user')
+    expect(developerRegistry).toHaveProperty('assistant')
+    expect(developerRegistry).toHaveProperty('interaction')
+    expect(developerRegistry).toHaveProperty('turn_boundary')
+    expect(developerRegistry).toHaveProperty('notice')
+    expect(developerRegistry).toHaveProperty('system')
+    expect(developerRegistry).toHaveProperty('progress')
+    expect(developerRegistry).toHaveProperty('team_transcript')
   })
 })
 
-// ── canRender — queue_operation gate ─────────────────────────────────────────
+// ── chatRegistry.canRender — visibility rules ────────────────────────────────
 
 describe('chatRegistry.canRender', () => {
-  it('returns true for non-system blocks', () => {
-    const block = { type: 'user' as const, id: 'u-1', text: 'hi', timestamp: 0 }
-    expect(chatRegistry.canRender!(block)).toBe(true)
+  const canRender = chatRegistry.canRender!
+
+  // ── Always-visible block types ──────────────────────────────────────────
+
+  it('renders user blocks', () => {
+    const block: UserBlock = { type: 'user', id: 'u1', text: 'hi', timestamp: 0 }
+    expect(canRender(block)).toBe(true)
   })
 
-  it('returns true for system blocks with non-queue_operation variant', () => {
-    const block: SystemBlock = {
-      type: 'system',
-      id: 'sb-1',
-      variant: 'session_init',
-      data: {} as SystemBlock['data'],
+  it('renders non-empty assistant blocks', () => {
+    const block: AssistantBlock = {
+      type: 'assistant',
+      id: 'a1',
+      segments: [{ kind: 'text', text: 'hello' }],
+      streaming: false,
     }
-    expect(chatRegistry.canRender!(block)).toBe(true)
+    expect(canRender(block)).toBe(true)
   })
 
-  it('returns false for queue_operation enqueue without content', () => {
-    const block: SystemBlock = {
-      type: 'system',
-      id: 'sb-2',
-      variant: 'queue_operation',
-      data: {
-        type: 'queue-operation',
-        operation: 'enqueue',
-        timestamp: new Date().toISOString(),
-        content: '',
-      },
+  it('renders streaming assistant blocks even if segments are empty', () => {
+    const block: AssistantBlock = {
+      type: 'assistant',
+      id: 'a1',
+      segments: [],
+      streaming: true,
     }
-    expect(chatRegistry.canRender!(block)).toBe(false)
+    expect(canRender(block)).toBe(true)
   })
 
-  it('returns true for queue_operation enqueue with non-empty content', () => {
-    const block: SystemBlock = {
-      type: 'system',
-      id: 'sb-3',
-      variant: 'queue_operation',
-      data: {
-        type: 'queue-operation',
-        operation: 'enqueue',
-        timestamp: new Date().toISOString(),
-        content: 'Hello user',
-      },
+  // ── Empty assistant blocks filtered out ─────────────────────────────────
+
+  it('filters out empty assistant blocks (no segments, no thinking, not streaming)', () => {
+    const block: AssistantBlock = {
+      type: 'assistant',
+      id: 'a1',
+      segments: [],
+      streaming: false,
     }
-    expect(chatRegistry.canRender!(block)).toBe(true)
+    expect(canRender(block)).toBe(false)
   })
 
-  it('returns false for queue_operation dequeue', () => {
-    const block: SystemBlock = {
-      type: 'system',
-      id: 'sb-4',
-      variant: 'queue_operation',
-      data: {
-        type: 'queue-operation',
-        operation: 'dequeue',
-        timestamp: new Date().toISOString(),
-      },
+  it('filters out assistant blocks with whitespace-only text segment', () => {
+    const block: AssistantBlock = {
+      type: 'assistant',
+      id: 'a1',
+      segments: [{ kind: 'text', text: '   \n' }],
+      streaming: false,
     }
-    expect(chatRegistry.canRender!(block)).toBe(false)
+    expect(canRender(block)).toBe(false)
   })
 
-  it('returns true for team_transcript blocks', () => {
+  // ── Hook noise filtered out ─────────────────────────────────────────────
+
+  it('filters out progress blocks with variant=hook (REST channel hook)', () => {
     const block = {
-      type: 'team_transcript' as const,
-      id: 'tt-1',
-      teamName: 'T',
-      description: '',
-      speakers: [],
-      entries: [],
-    }
-    expect(chatRegistry.canRender!(block)).toBe(true)
+      type: 'progress',
+      id: 'p1',
+      variant: 'hook',
+      category: 'hook',
+      ts: 0,
+      parentToolUseId: null,
+      data: { type: 'hook', hookEvent: 'PreToolUse', hookName: 'format-on-save' },
+    } as unknown as ProgressBlock
+    expect(canRender(block)).toBe(false)
   })
-})
 
-// ── isChatVisibleQueueOp ──────────────────────────────────────────────────────
+  it('still renders non-hook progress variants (bash, mcp, agent, etc.)', () => {
+    const block = {
+      type: 'progress',
+      id: 'p1',
+      variant: 'bash',
+      category: 'builtin',
+      ts: 0,
+      parentToolUseId: null,
+      data: { type: 'bash', output: 'hi', elapsedTimeSeconds: 1 },
+    } as unknown as ProgressBlock
+    expect(canRender(block)).toBe(true)
+  })
 
-describe('isChatVisibleQueueOp', () => {
-  function makeQueueOp(operation: string, content?: string): SystemBlock {
-    return {
+  it('filters out system blocks with variant=hook_event (WebSocket channel hook)', () => {
+    const block = {
       type: 'system',
-      id: 'sb-q',
-      variant: 'queue_operation',
+      id: 's1',
+      variant: 'hook_event',
       data: {
-        type: 'queue-operation',
-        operation: operation as 'enqueue' | 'dequeue' | 'remove' | 'popAll',
-        timestamp: new Date().toISOString(),
-        content,
+        type: 'hook_event',
+        hookName: 'format-on-save',
+        phase: 'PreToolUse',
+        outcome: 'success',
       },
-    }
-  }
+    } as unknown as SystemBlock
+    expect(canRender(block)).toBe(false)
+  })
 
-  it('returns false for non-queue_operation variant', () => {
-    const block: SystemBlock = {
+  it('still renders non-hook system variants (session_init, queue_operation, etc.)', () => {
+    const block = {
       type: 'system',
-      id: 'sb-x',
+      id: 's1',
       variant: 'session_init',
       data: {} as SystemBlock['data'],
-    }
-    expect(isChatVisibleQueueOp(block)).toBe(false)
-  })
-
-  it('returns false for enqueue without content', () => {
-    expect(isChatVisibleQueueOp(makeQueueOp('enqueue'))).toBe(false)
-  })
-
-  it('returns false for enqueue with empty content', () => {
-    expect(isChatVisibleQueueOp(makeQueueOp('enqueue', '   '))).toBe(false)
-  })
-
-  it('returns true for enqueue with non-empty content', () => {
-    expect(isChatVisibleQueueOp(makeQueueOp('enqueue', 'Hello'))).toBe(true)
-  })
-
-  it('returns false for dequeue operation', () => {
-    expect(isChatVisibleQueueOp(makeQueueOp('dequeue'))).toBe(false)
-  })
-
-  it('returns false for remove operation', () => {
-    expect(isChatVisibleQueueOp(makeQueueOp('remove'))).toBe(false)
-  })
-
-  it('returns false for popAll operation', () => {
-    expect(isChatVisibleQueueOp(makeQueueOp('popAll'))).toBe(false)
+    } as SystemBlock
+    expect(canRender(block)).toBe(true)
   })
 })

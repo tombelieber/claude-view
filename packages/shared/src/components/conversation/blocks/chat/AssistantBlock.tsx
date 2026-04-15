@@ -10,6 +10,36 @@ interface AssistantBlockProps {
   block: AssistantBlockType
 }
 
+/**
+ * Should a ChatAssistantBlock be hidden in chat mode?
+ *
+ * The stream accumulator creates assistant blocks eagerly — `ensureAssistant()`
+ * pre-allocates `segments: []`, and `finalizeCurrentAssistant()` commits the
+ * block even if no content ever arrived. Three real producers of empty blocks:
+ *   - `message_start` → `content_block_start` → `message_stop` with no deltas
+ *   - `turn_complete` / `turn_error` firing after ensureAssistant() but before content
+ *   - API error aborting the turn before the first text delta
+ *
+ * Without this guard, the empty block still renders a bare `<MessageTimestamp>`
+ * row — visually, a blank line with a lone timestamp. Developer mode shows the
+ * block via DevAssistantBlock (zero data loss), but chat mode treats it as
+ * progressive-disclosure noise and hides it.
+ *
+ * A streaming cursor counts as content (liveness signal). A non-empty
+ * `thinking` string counts. Any tool-call segment counts. Whitespace-only text
+ * does NOT count. agentId / sidechain badges alone do NOT justify a row — if
+ * there's no actual content to attribute, the badge is just noise.
+ */
+export function isChatAssistantBlockEmpty(block: AssistantBlockType): boolean {
+  if (block.streaming) return false
+  if (block.thinking && block.thinking.length > 0) return false
+  for (const seg of block.segments) {
+    if (seg.kind === 'tool') return false
+    if (seg.kind === 'text' && seg.text.trim().length > 0) return false
+  }
+  return true
+}
+
 function ThinkingIndicator({ thinking }: { thinking: string }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -40,6 +70,8 @@ function ThinkingIndicator({ thinking }: { thinking: string }) {
 }
 
 export function ChatAssistantBlock({ block }: AssistantBlockProps) {
+  if (isChatAssistantBlockEmpty(block)) return null
+
   const isSidechain = block.isSidechain === true
 
   return (

@@ -5,8 +5,19 @@ interface Props {
   data: QueueOperation
 }
 
+/**
+ * Render user-typed enqueue as a chat bubble (right-aligned, like user messages).
+ *
+ * Only `enqueue` with non-empty content is meaningful to a chat viewer — dequeue /
+ * remove / popAll are backend lifecycle events with no user-facing content, so this
+ * renderer returns `null` for them. This was previously a registry-level
+ * `canRender` gate; moving it here keeps per-variant visibility decisions local to
+ * the renderer (see chat/registry.ts for the rationale).
+ */
 export function QueueOperationBubble({ data }: Props) {
-  // Render user-typed enqueue as a chat bubble (right-aligned, like user messages)
+  if (data.operation !== 'enqueue') return null
+  if (!data.content?.trim()) return null
+
   return (
     <div data-testid="queued-user-message" className="flex justify-end">
       <div className="max-w-[80%]">

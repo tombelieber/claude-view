@@ -18,6 +18,8 @@ export default defineConfig({
       'src/components/conversation/blocks/chat/__tests__/TeamTranscriptBlock.test.tsx',
       'src/components/conversation/blocks/chat/__tests__/TurnBoundary.test.tsx',
       'src/components/conversation/blocks/chat/__tests__/NoticeBlock.test.tsx',
+      'src/components/conversation/blocks/chat/__tests__/hook-noise.test.tsx',
+      'src/components/conversation/blocks/chat/__tests__/AssistantBlock.test.tsx',
     ],
     setupFiles: ['./src/test-setup.ts'],
     passWithNoTests: true,

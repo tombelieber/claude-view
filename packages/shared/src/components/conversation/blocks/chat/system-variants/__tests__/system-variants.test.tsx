@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import type { QueueOperation } from '../../../../../../types/sidecar-protocol'
 import { AiTitlePill } from '../ai-title'
 import { AttachmentPill } from '../attachment'
 import { CommandOutputBlock } from '../command-output'
@@ -9,11 +10,21 @@ import { HookEventPill } from '../hook-event'
 import { LastPromptPill } from '../last-prompt'
 import { LocalCommandBlock } from '../local-command'
 import { PermissionModeChangePill } from '../permission-mode-change'
+import { QueueOperationBubble } from '../queue-operation'
 import { ScheduledTaskFirePill } from '../scheduled-task-fire'
 import { SessionInitPill } from '../session-init'
 import { SessionStatusPill } from '../session-status'
 import { UnknownSystemPill } from '../unknown'
 import { WorktreeStatePill } from '../worktree-state'
+
+function makeQueueOp(operation: QueueOperation['operation'], content?: string): QueueOperation {
+  return {
+    type: 'queue-operation',
+    operation,
+    timestamp: new Date().toISOString(),
+    content,
+  }
+}
 
 // ── SessionInitPill ───────────────────────────────────────────────────────────
 
@@ -486,5 +497,45 @@ describe('UnknownSystemPill', () => {
   it('falls back to "unknown" label when neither sdkType nor type provided', () => {
     render(<UnknownSystemPill data={{}} />)
     expect(screen.getByText('unknown')).toBeInTheDocument()
+  })
+})
+
+// ── QueueOperationBubble ──────────────────────────────────────────────────────
+// Visibility rules used to live in a registry-level `canRender` gate. They now
+// live inside the renderer itself so per-variant visibility is explicit in code.
+
+describe('QueueOperationBubble', () => {
+  it('renders the queued content bubble for enqueue with non-empty content', () => {
+    const { container } = render(
+      <QueueOperationBubble data={makeQueueOp('enqueue', 'Hello Claude')} />,
+    )
+    expect(container.firstChild).not.toBeNull()
+    expect(screen.getByText('Hello Claude')).toBeInTheDocument()
+    expect(screen.getByText('Queued')).toBeInTheDocument()
+  })
+
+  it('returns null for enqueue with undefined content', () => {
+    const { container } = render(<QueueOperationBubble data={makeQueueOp('enqueue')} />)
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('returns null for enqueue with whitespace-only content', () => {
+    const { container } = render(<QueueOperationBubble data={makeQueueOp('enqueue', '   ')} />)
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('returns null for dequeue operation', () => {
+    const { container } = render(<QueueOperationBubble data={makeQueueOp('dequeue')} />)
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('returns null for remove operation', () => {
+    const { container } = render(<QueueOperationBubble data={makeQueueOp('remove')} />)
+    expect(container.firstChild).toBeNull()
+  })
+
+  it('returns null for popAll operation', () => {
+    const { container } = render(<QueueOperationBubble data={makeQueueOp('popAll')} />)
+    expect(container.firstChild).toBeNull()
   })
 })
