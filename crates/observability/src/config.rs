@@ -46,7 +46,7 @@ impl ServiceConfig {
             build_sha: option_env!("CLAUDE_VIEW_BUILD_SHA").unwrap_or("dev"),
             log_dir: claude_view_core::paths::log_dir(),
             default_filter: format!(
-                "info,{}=debug,sqlx=warn,hyper=warn,tower_http=info",
+                "info,{}=debug,sqlx=warn,hyper=warn,tower_http=info,tantivy=warn",
                 service_name.replace('-', "_")
             ),
             sink_mode: SinkMode::Both,
