@@ -377,26 +377,39 @@ async fn main() -> Result<()> {
 
     // Step 3: Open the Tantivy full-text search index (fast — reads existing files).
     // Wrapped in SearchIndexHolder so clear_cache can swap it at runtime.
-    let search_index_holder: SearchIndexHolder = if app_config.features.search {
+    //
+    // Uses the blue-green versioned layout: if a schema bump is detected, the
+    // previous-version index keeps serving queries while a background task builds
+    // the new version at `v{N}/`. When the rebuild completes, the holder atomically
+    // swaps to the new index. See `claude_view_server::search_migration`.
+    let (search_index_holder, pending_search_migration): (
+        SearchIndexHolder,
+        Option<claude_view_search::migration::PendingMigration>,
+    ) = if app_config.features.search {
         let index_dir = claude_view_core::paths::search_index_dir()
             .expect("search_index_dir() always returns Some after data_dir() refactor");
 
-        match claude_view_search::SearchIndex::open(&index_dir) {
-            Ok(idx) => {
-                tracing::info!("Search index opened at {}", index_dir.display());
-                Arc::new(RwLock::new(Some(Arc::new(idx))))
+        match claude_view_search::SearchIndex::open_versioned(&index_dir) {
+            Ok(result) => {
+                tracing::info!(
+                    "Search index opened at {} (pending_migration={})",
+                    index_dir.display(),
+                    result.pending_migration.is_some()
+                );
+                let holder = Arc::new(RwLock::new(Some(Arc::new(result.index))));
+                (holder, result.pending_migration)
             }
             Err(e) => {
                 tracing::warn!(
                     "Failed to open search index: {}. Search will be unavailable.",
                     e
                 );
-                Arc::new(RwLock::new(None))
+                (Arc::new(RwLock::new(None)), None)
             }
         }
     } else {
         tracing::info!("Search feature disabled by config");
-        Arc::new(RwLock::new(None))
+        (Arc::new(RwLock::new(None)), None)
     };
 
     // Step 3b: Create shutdown channel for SSE stream termination on Ctrl+C
@@ -598,6 +611,13 @@ async fn main() -> Result<()> {
     let idx_prompt_stats = prompt_stats_holder.clone();
     let idx_prompt_templates = prompt_templates_holder.clone();
     let idx_telemetry = telemetry_for_indexer;
+
+    // Pre-clone state for the optional blue-green rebuild task below. Must be
+    // done before the indexer spawn because `async move` will consume these.
+    let rebuild_claude_dir = claude_dir.clone();
+    let rebuild_db = db.clone();
+    let rebuild_search_holder = search_index_holder.clone();
+    let rebuild_registry_holder = registry_holder.clone();
     tokio::spawn(async move {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
@@ -966,6 +986,23 @@ async fn main() -> Result<()> {
             }
         }
     });
+
+    // If SearchIndex::open_versioned detected a schema bump, the holder
+    // currently points at the previous-version fallback index. Spawn a
+    // background task to build the new version, atomically swap the holder,
+    // and delete the old version directory. Search keeps working the entire
+    // time (the old index stays mmap'd while in-flight queries run).
+    if let Some(plan) = pending_search_migration {
+        let rebuild_hints = build_index_hints(&rebuild_claude_dir);
+        claude_view_server::search_migration::spawn_background_rebuild(
+            plan,
+            rebuild_search_holder,
+            rebuild_claude_dir,
+            rebuild_db,
+            rebuild_hints,
+            rebuild_registry_holder,
+        );
+    }
 
     // Step 8: Spawn TUI progress task (runs concurrently with the server)
     let tui_state = indexing.clone();
