@@ -992,7 +992,18 @@ async fn main() -> Result<()> {
     // background task to build the new version, atomically swap the holder,
     // and delete the old version directory. Search keeps working the entire
     // time (the old index stays mmap'd while in-flight queries run).
+    //
+    // ORDERING: This block MUST run AFTER the indexer spawn above. The
+    // rebuild task's `wait_for_registry()` polls `registry_holder` which is
+    // only populated inside the indexer's tokio::spawn closure. Moving this
+    // block earlier will hang the rebuild for REGISTRY_WAIT_TIMEOUT (60s)
+    // before aborting with a warning.
     if let Some(plan) = pending_search_migration {
+        tracing::info!(
+            target_version = plan.target_version,
+            fallback_path = ?plan.old_version_path,
+            "scheduling background search index rebuild (blue-green migration)"
+        );
         let rebuild_hints = build_index_hints(&rebuild_claude_dir);
         claude_view_server::search_migration::spawn_background_rebuild(
             plan,
