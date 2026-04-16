@@ -81,6 +81,7 @@ impl CatalogRow {
 pub struct Filter {
     pub project_id: Option<ProjectId>,
     pub min_last_ts: Option<i64>,
+    pub max_last_ts: Option<i64>,
 }
 
 impl Filter {
@@ -99,6 +100,11 @@ impl Filter {
         }
         if let Some(min_ts) = self.min_last_ts {
             if row.sort_ts() < min_ts {
+                return false;
+            }
+        }
+        if let Some(max_ts) = self.max_last_ts {
+            if row.sort_ts() > max_ts {
                 return false;
             }
         }

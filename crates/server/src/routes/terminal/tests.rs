@@ -90,6 +90,7 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
     });
 
     // Register the session in the live sessions map
@@ -331,6 +332,7 @@ async fn ws_unknown_session_returns_error() {
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
     });
 
     let (addr, server_handle) = start_test_server(state).await;

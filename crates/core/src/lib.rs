@@ -43,6 +43,7 @@ pub mod report;
 pub mod session_catalog;
 pub mod session_files;
 pub mod session_index;
+pub mod session_stats;
 pub mod settings_files;
 pub mod subagent;
 pub mod tail;

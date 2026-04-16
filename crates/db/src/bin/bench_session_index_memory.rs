@@ -32,8 +32,16 @@ fn fmt_bytes(n: u64) -> String {
 }
 
 fn rss_bytes() -> Option<u64> {
-    // macOS: read from /usr/bin/ps — avoids pulling in libc::mach_task_self().
-    // If ps is unavailable, return None.
+    // Try /proc/self/status first (Linux), fall back to ps (macOS/BSD).
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmRSS:") {
+                let kb: u64 = rest.trim().trim_end_matches(" kB").trim().parse().ok()?;
+                return Some(kb * 1024);
+            }
+        }
+    }
+    // macOS/BSD fallback: parse `ps -o rss=`
     let pid = std::process::id();
     let output = std::process::Command::new("ps")
         .args(["-o", "rss=", "-p", &pid.to_string()])

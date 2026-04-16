@@ -112,6 +112,7 @@ mod tests {
             terminal_manager: Arc::new(
                 crate::routes::cli_sessions::terminal::TerminalManager::new(),
             ),
+            session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
             jwks: None,
             share: None,
             auth_identity: tokio::sync::OnceCell::new(),

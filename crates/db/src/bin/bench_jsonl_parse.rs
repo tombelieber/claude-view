@@ -47,6 +47,7 @@ struct FileSample {
 }
 
 #[derive(Debug, Clone, Copy)]
+#[allow(dead_code)]
 struct ParseMeasurement {
     bytes: u64,
     /// Decompress time (0 for uncompressed files).

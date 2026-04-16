@@ -299,7 +299,7 @@ pub struct PaginatedMessages {
 }
 
 /// Session info for listing (without full message content)
-#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {

@@ -96,6 +96,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
+        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
         jwks: None,
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
@@ -215,6 +216,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
+        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
         jwks: None,
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
@@ -441,6 +443,19 @@ pub fn create_app_full(
         hook_event_channels,
         sidecar,
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
+        session_catalog: {
+            let catalog = claude_view_core::session_catalog::SessionCatalog::new();
+            let home = dirs::home_dir().expect("home dir exists");
+            let _ = catalog.rebuild_from_filesystem(
+                &home.join(".claude").join("projects"),
+                &home.join(".claude-backup").join("machines"),
+            );
+            tracing::info!(
+                sessions = catalog.len(),
+                "JSONL-first session catalog populated"
+            );
+            catalog
+        },
         jwks,
         share,
         auth_identity: tokio::sync::OnceCell::new(),
@@ -523,6 +538,32 @@ pub fn create_app_full(
         state.tmux.clone(),
         state.shutdown.clone(),
     );
+
+    // Spawn JSONL-first session catalog reconcile loop.
+    // Re-walks live + backup dirs every 5s to pick up new/modified sessions.
+    // At 283ms per walk (8,564 sessions), this is 5.7% CPU duty cycle — acceptable.
+    {
+        let catalog = state.session_catalog.clone();
+        let mut shutdown = state.shutdown.clone();
+        tokio::spawn(async move {
+            let home = dirs::home_dir().expect("home dir exists");
+            let live_root = home.join(".claude").join("projects");
+            let backup_root = home.join(".claude-backup").join("machines");
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            interval.tick().await; // skip immediate tick (startup already populated)
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let _ = catalog.rebuild_from_filesystem(&live_root, &backup_root);
+                    }
+                    _ = shutdown.changed() => {
+                        tracing::debug!("Session catalog reconcile loop shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+    }
 
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();

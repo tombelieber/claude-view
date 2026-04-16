@@ -125,6 +125,7 @@ fn main() {
     let q4_filter = Filter {
         project_id: None,
         min_last_ts: Some(now - 7 * 24 * 3600),
+        max_last_ts: None,
     };
     let (j, k, l) = time_iter(ITERS, || {
         let resp = list_sessions(&idx, &q4_filter, Sort::LastTsDesc, 200);

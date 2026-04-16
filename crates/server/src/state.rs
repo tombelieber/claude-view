@@ -135,6 +135,9 @@ pub struct AppState {
     pub sidecar: Arc<SidecarManager>,
     /// Rust-native terminal relay manager (portable-pty).
     pub terminal_manager: Arc<TerminalManager>,
+    /// JSONL-first session catalog (in-memory walk of live + backup).
+    /// Populated once at startup, refreshed by mtime-poll reconcile loop.
+    pub session_catalog: claude_view_core::session_catalog::SessionCatalog,
     /// Supabase JWKS cache for JWT validation (sharing feature).
     /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).
     pub jwks: Option<Arc<tokio::sync::RwLock<JwksCache>>>,
@@ -296,6 +299,15 @@ impl AppStateBuilder {
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             sidecar: Arc::new(SidecarManager::new()),
             terminal_manager: Arc::new(TerminalManager::new()),
+            session_catalog: {
+                let catalog = claude_view_core::session_catalog::SessionCatalog::new();
+                let home = dirs::home_dir().expect("home dir exists");
+                let _ = catalog.rebuild_from_filesystem(
+                    &home.join(".claude").join("projects"),
+                    &home.join(".claude-backup").join("machines"),
+                );
+                catalog
+            },
             jwks: None,
             share: None,
             auth_identity: OnceCell::new(),

@@ -80,6 +80,50 @@ pub fn count_parseable<T: DeserializeOwned>(
 }
 
 // ---------------------------------------------------------------------------
+// Shared typed projection for JSONL lines.
+//
+// Every module that reads JSONL (analytics_rollup, sessions_v2 handlers,
+// POC handlers) needs a minimal typed shape to extract assistant messages
+// with usage data. These types are the single canonical definition —
+// import from here, don't redefine.
+// ---------------------------------------------------------------------------
+
+/// Minimal typed projection of one JSONL line. Covers assistant
+/// messages with usage and timestamps. Unknown fields are silently
+/// ignored by serde.
+#[derive(serde::Deserialize)]
+pub struct MinLine {
+    #[serde(rename = "type")]
+    pub line_type: Option<String>,
+    #[serde(default)]
+    pub timestamp: Option<String>,
+    #[serde(default)]
+    pub message: Option<MinMessage>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct MinMessage {
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub usage: Option<MinUsage>,
+}
+
+#[derive(serde::Deserialize, Debug, Clone, Copy, Default)]
+pub struct MinUsage {
+    #[serde(default)]
+    pub input_tokens: Option<u64>,
+    #[serde(default)]
+    pub output_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_read_input_tokens: Option<u64>,
+    #[serde(default)]
+    pub cache_creation_input_tokens: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
