@@ -14,4 +14,9 @@ pub enum SidecarError {
     NodeNotFound,
     #[error("Sidecar returned error: {0}")]
     RequestError(String),
+    /// Too many sidecar spawns in a short window — something is repeatedly
+    /// crashing it. Refuse to spawn again until user action or cooldown.
+    /// See `CIRCUIT_BREAKER_THRESHOLD` and `CIRCUIT_BREAKER_WINDOW` in manager.rs.
+    #[error("Sidecar circuit open: {0}")]
+    CircuitOpen(String),
 }

@@ -32,10 +32,6 @@ impl LiveSessionManager {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
             let mut tick_count: u64 = 0;
-            // Cooldown: timestamp of last sidecar recovery attempt.
-            // Prevents rapid restart loops when the sidecar crashes repeatedly
-            // (e.g. Node OOM under sustained load). 60s between attempts.
-            let mut last_sidecar_recovery: Option<tokio::time::Instant> = None;
 
             loop {
                 interval.tick().await;
@@ -72,11 +68,9 @@ impl LiveSessionManager {
                 }
 
                 // =============================================================
-                // Phase 1b: Stale control binding detection
+                // Phase 1b: Sidecar health observation (passive — never acts)
                 // =============================================================
-                manager
-                    .reconcile_controlled_sessions(&mut last_sidecar_recovery)
-                    .await;
+                manager.observe_sidecar_health().await;
 
                 // Sweep expired pending mutations from coordinator buffer
                 manager.coordinator.sweep_expired().await;
@@ -189,71 +183,32 @@ impl LiveSessionManager {
         }
     }
 
-    /// Reconcile controlled sessions with sidecar state.
+    /// Observe sidecar health and log transitions — NEVER spawns or recovers.
     ///
-    /// Includes a 60-second cooldown between sidecar restart attempts to prevent
-    /// rapid restart loops when the sidecar crashes repeatedly (e.g. Node OOM).
-    /// Without this cooldown, each 10s tick would: restart sidecar → create empty
-    /// SDK sessions → sidecar crashes → sessions close → closed count grows.
-    async fn reconcile_controlled_sessions(
-        self: &Arc<Self>,
-        last_recovery: &mut Option<tokio::time::Instant>,
-    ) {
+    /// Recovery is strictly demand-driven: when a user interacts with a
+    /// controlled session (`ws_proxy`, `interact`, `http_proxy`), the handler
+    /// calls `ensure_session_control_alive` which spawns the sidecar and
+    /// resumes only that one session. The reconciler's previous autonomous
+    /// `ensure_running + recover_controlled_sessions` path created fresh SDK
+    /// sessions on a timer — when the sidecar OOM'd repeatedly, each cycle
+    /// produced new controlled sessions that died moments later, accumulating
+    /// as "closed sessions" in the UI (#54). Removing the autonomous path is
+    /// the root-cause fix; the old 60s cooldown was a symptom band-aid.
+    async fn observe_sidecar_health(self: &Arc<Self>) {
+        let Some(ref sidecar) = self.sidecar else {
+            return;
+        };
+        if sidecar.is_running() {
+            return;
+        }
         let controlled = self.controlled_session_ids().await;
         if controlled.is_empty() {
             return;
         }
-        if let Some(ref sidecar) = self.sidecar {
-            if !sidecar.is_running() {
-                // Cooldown: skip if we already attempted recovery within 60s.
-                if let Some(last) = last_recovery {
-                    if last.elapsed() < Duration::from_secs(60) {
-                        tracing::debug!(
-                            elapsed_s = last.elapsed().as_secs(),
-                            controlled = controlled.len(),
-                            "Sidecar recovery cooldown active, skipping"
-                        );
-                        return;
-                    }
-                }
-
-                *last_recovery = Some(tokio::time::Instant::now());
-                tracing::warn!(
-                    "Sidecar not running, attempting restart for {} controlled sessions",
-                    controlled.len()
-                );
-                match sidecar.ensure_running().await {
-                    Ok(_) => {
-                        let recovered = sidecar.recover_controlled_sessions(&controlled).await;
-                        for (session_id, new_control_id) in &recovered {
-                            let old_id = controlled
-                                .iter()
-                                .find(|(id, _)| id == session_id)
-                                .map(|(_, cid)| cid.as_str());
-                            self.bind_control(session_id, new_control_id.clone(), old_id)
-                                .await;
-                        }
-                        let recovered_ids: std::collections::HashSet<&str> =
-                            recovered.iter().map(|(id, _)| id.as_str()).collect();
-                        for (session_id, old_control_id) in &controlled {
-                            if !recovered_ids.contains(session_id.as_str()) {
-                                self.unbind_control_if(session_id, old_control_id).await;
-                            }
-                        }
-                        self.request_snapshot_save();
-                    }
-                    Err(e) => {
-                        tracing::error!(
-                            "Failed to restart sidecar: {e}. Clearing all control bindings."
-                        );
-                        for (session_id, old_control_id) in &controlled {
-                            self.unbind_control_if(session_id, old_control_id).await;
-                        }
-                        self.request_snapshot_save();
-                    }
-                }
-            }
-        }
+        tracing::warn!(
+            controlled = controlled.len(),
+            "Sidecar not running — controlled sessions will lazy-recover on next user interaction"
+        );
     }
 
     /// Refresh process count from oracle (Phase 2 of reconciliation).

@@ -133,8 +133,8 @@ pub async fn interact_handler(
     }
 
     // Step 5: dispatch based on ownership
-    let sidecar_forwarded = if let Some(ref sdk) = ownership.sdk {
-        match forward_to_sidecar(&state, &sdk.control_id, &req).await {
+    let sidecar_forwarded = if ownership.sdk.is_some() {
+        match forward_to_sidecar(&state, &session_id, &req).await {
             Ok(()) => true,
             Err(e) => {
                 tracing::warn!(
@@ -169,16 +169,23 @@ pub async fn interact_handler(
 }
 
 /// Forward the interaction resolution to the sidecar HTTP API.
+///
+/// Uses lazy recovery: resolves the session's current valid control_id
+/// (resuming in the sidecar if the previous one was orphaned by a restart).
 async fn forward_to_sidecar(
     state: &AppState,
-    control_id: &str,
+    session_id: &str,
     req: &InteractRequest,
 ) -> Result<(), String> {
-    let sidecar_base = state
-        .sidecar
-        .ensure_running()
+    let live_manager = state
+        .live_manager
+        .as_ref()
+        .ok_or_else(|| "Live manager not initialized".to_string())?;
+    let control_id = live_manager
+        .ensure_session_control_alive(session_id, "interact")
         .await
         .map_err(|e| format!("Sidecar not available: {e}"))?;
+    let sidecar_base = state.sidecar.base_url().to_string();
 
     let url = format!("{sidecar_base}/api/sessions/{control_id}/message");
 

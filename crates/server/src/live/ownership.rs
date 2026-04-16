@@ -90,6 +90,7 @@ mod tests {
         ControlBinding {
             control_id: control_id.to_string(),
             bound_at: 1000,
+            bound_at_generation: 0,
             cancel: CancellationToken::new(),
         }
     }

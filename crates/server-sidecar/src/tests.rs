@@ -93,9 +93,11 @@ async fn test_external_mode_never_spawns_or_kills() {
         child: std::sync::Mutex::new(None),
         base_url: "http://localhost:1".to_string(),
         port: 1,
+        spawn_generation: std::sync::atomic::AtomicU64::new(0),
+        spawn_history: std::sync::Mutex::new(std::collections::VecDeque::new()),
     };
 
-    let result = mgr.ensure_running().await;
+    let result = mgr.ensure_running("test").await;
     // External mode + nothing listening → HealthCheckTimeout (not spawned)
     assert!(matches!(result, Err(SidecarError::HealthCheckTimeout)));
 
@@ -103,6 +105,38 @@ async fn test_external_mode_never_spawns_or_kills() {
     // mode `is_running()` is optimistic (returns true), but child_pid
     // returns None because we never spawn.
     assert_eq!(mgr.child_pid(), None);
+}
+
+/// Circuit breaker: repeated spawns within the window must return
+/// `CircuitOpen` instead of blindly respawning. This is the defense
+/// against the runaway restart loop that caused #54.
+#[test]
+fn test_circuit_breaker_opens_after_threshold_spawns() {
+    let mgr = SidecarManager::new();
+    // Threshold is 10 per 5min — 9 must succeed (inside window).
+    for i in 0..9 {
+        mgr.check_and_record_spawn()
+            .unwrap_or_else(|e| panic!("spawn {i} rejected too early: {e}"));
+    }
+    // 10th also ok (reaches threshold).
+    mgr.check_and_record_spawn().expect("spawn 10 should be ok");
+    // 11th must trip the breaker.
+    let err = mgr
+        .check_and_record_spawn()
+        .expect_err("11th spawn must be rejected");
+    assert!(
+        matches!(err, SidecarError::CircuitOpen(ref msg) if msg.contains("refusing to spawn")),
+        "expected CircuitOpen, got {err:?}"
+    );
+}
+
+/// Generation counter is zero until the first spawn bumps it.
+/// `ensure_session_control_alive` uses this to detect stale bindings —
+/// if the counter doesn't actually change, lazy recovery will never fire.
+#[test]
+fn test_generation_starts_at_zero() {
+    let mgr = SidecarManager::new();
+    assert_eq!(mgr.generation(), 0);
 }
 
 #[test]

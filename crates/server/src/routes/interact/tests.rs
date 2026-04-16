@@ -46,6 +46,7 @@ async fn insert_sdk_session(state: &AppState, id: &str, control_id: &str) {
     session.control = Some(claude_view_server_live_state::core::ControlBinding {
         control_id: control_id.to_string(),
         bound_at: 1000,
+        bound_at_generation: 0,
         cancel: tokio_util::sync::CancellationToken::new(),
     });
     state

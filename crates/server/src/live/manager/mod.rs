@@ -647,11 +647,16 @@ impl LiveSessionManager {
     }
 
     /// CAS bind a control session to a live session.
+    ///
+    /// `bound_at_generation` must be the sidecar's current spawn generation at
+    /// bind time. Lazy recovery compares the binding's generation against the
+    /// live sidecar generation to detect stale control IDs after a restart.
     #[tracing::instrument(skip_all, fields(%session_id))]
     pub async fn bind_control(
         &self,
         session_id: &str,
         control_id: String,
+        bound_at_generation: u64,
         expected_current: Option<&str>,
     ) -> bool {
         let mut sessions = self.sessions.write().await;
@@ -667,6 +672,7 @@ impl LiveSessionManager {
             session.control = Some(super::state::ControlBinding {
                 control_id,
                 bound_at: now,
+                bound_at_generation,
                 cancel: tokio_util::sync::CancellationToken::new(),
             });
             // Source will be derived from JSONL entrypoint ("sdk-ts") via apply_jsonl_metadata.
@@ -675,6 +681,86 @@ impl LiveSessionManager {
         } else {
             false
         }
+    }
+
+    /// Ensure the controlled session has a live binding in the current sidecar.
+    ///
+    /// This is the **lazy recovery** path. Called by user-demand handlers
+    /// (interact POST, WS proxy upgrade) before they forward to the sidecar:
+    ///
+    /// 1. Spawns the sidecar if not running (via `ensure_running(caller)`).
+    /// 2. Reads the session's current `ControlBinding`.
+    /// 3. If the binding's `bound_at_generation` is older than the sidecar's
+    ///    current generation, the sidecar has restarted since the binding was
+    ///    made — the old control_id is dead. Call `resume_session` to create
+    ///    a fresh control_id in the new sidecar and rebind.
+    ///
+    /// Returns the control_id that is now valid (either unchanged or fresh).
+    /// Errors if there is no sidecar configured, no such session, no existing
+    /// control binding, or the sidecar rejects the resume.
+    ///
+    /// Replaces the old autonomous reconciliation-loop recovery that created
+    /// empty SDK sessions every 10s when the sidecar was crashing (#54).
+    #[tracing::instrument(skip_all, fields(%session_id, caller))]
+    pub async fn ensure_session_control_alive(
+        &self,
+        session_id: &str,
+        caller: &'static str,
+    ) -> Result<String, crate::sidecar::SidecarError> {
+        let Some(ref sidecar) = self.sidecar else {
+            return Err(crate::sidecar::SidecarError::RequestError(
+                "No sidecar configured".into(),
+            ));
+        };
+        sidecar.ensure_running(caller).await?;
+        let current_gen = sidecar.generation();
+
+        let (needs_recovery, existing_control_id) = {
+            let sessions = self.sessions.read().await;
+            let Some(session) = sessions.get(session_id) else {
+                return Err(crate::sidecar::SidecarError::RequestError(format!(
+                    "Session not found: {session_id}"
+                )));
+            };
+            let Some(binding) = session.control.as_ref() else {
+                return Err(crate::sidecar::SidecarError::RequestError(format!(
+                    "No control binding for session: {session_id}"
+                )));
+            };
+            (
+                binding.bound_at_generation != current_gen,
+                binding.control_id.clone(),
+            )
+        };
+
+        if !needs_recovery {
+            return Ok(existing_control_id);
+        }
+
+        tracing::info!(
+            session_id,
+            caller,
+            old_control_id = %existing_control_id,
+            current_gen,
+            "Lazy-recovering stale control binding after sidecar restart"
+        );
+        let new_control_id = sidecar.resume_session(session_id).await?;
+        let bound = self
+            .bind_control(
+                session_id,
+                new_control_id.clone(),
+                current_gen,
+                Some(&existing_control_id),
+            )
+            .await;
+        if !bound {
+            tracing::warn!(
+                session_id,
+                "Lazy recovery: CAS on bind_control failed — another task already rebound"
+            );
+        }
+        self.request_snapshot_save();
+        Ok(new_control_id)
     }
 
     /// Remove the control binding.

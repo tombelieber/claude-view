@@ -679,6 +679,7 @@ async fn pid_uniqueness_skips_sidecar_sessions() {
         session.control = Some(crate::live::state::ControlBinding {
             control_id: "ctrl-123".into(),
             bound_at: 1000,
+            bound_at_generation: 0,
             cancel: tokio_util::sync::CancellationToken::new(),
         });
         sessions.insert("sidecar-session".into(), session);

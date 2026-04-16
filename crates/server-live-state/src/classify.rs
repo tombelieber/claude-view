@@ -118,6 +118,7 @@ mod tests {
         session.control = Some(ControlBinding {
             control_id: "ctl-123".to_string(),
             bound_at: 0,
+            bound_at_generation: 0,
             cancel: tokio_util::sync::CancellationToken::new(),
         });
         let action = classify_live_session(Some(&session));

@@ -1,4 +1,3 @@
-// crates/server/src/sidecar/health.rs
 //! Health check and session recovery operations.
 
 use std::time::Duration;
@@ -31,7 +30,13 @@ impl SidecarManager {
         }
     }
 
-    /// Re-resume all previously controlled sessions after sidecar restart.
+    /// Re-resume a batch of previously controlled sessions after a restart.
+    ///
+    /// Called ONCE at server boot from `promote_from_snapshot`. NEVER called
+    /// from the reconciliation loop — autonomous recovery creates empty SDK
+    /// sessions when the sidecar repeatedly crashes (see #54). Runtime
+    /// recovery is lazy, per-session, on user interaction via
+    /// `LiveSessionManager::ensure_session_control_alive`.
     pub async fn recover_controlled_sessions(
         &self,
         session_ids: &[(String, String)], // (session_id, old_control_id)
@@ -60,7 +65,11 @@ impl SidecarManager {
     }
 
     /// Call sidecar POST /api/sidecar/sessions/:id/resume for a single session.
-    async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
+    ///
+    /// Returns the new `control_id`. Public so the app-layer lazy-recovery
+    /// helper (`LiveSessionManager::ensure_session_control_alive`) can call it
+    /// for a single session on user demand rather than bulk-recovering all.
+    pub async fn resume_session(&self, session_id: &str) -> Result<String, SidecarError> {
         let url = format!(
             "{}/api/sidecar/sessions/{}/resume",
             self.base_url, session_id

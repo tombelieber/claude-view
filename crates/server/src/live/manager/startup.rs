@@ -374,16 +374,19 @@ impl LiveSessionManager {
             );
         }
 
-        // Recover controlled sessions via sidecar
+        // Recover controlled sessions via sidecar (one-shot at boot only).
+        // Runtime recovery is lazy, per-session, via
+        // `ensure_session_control_alive` — never autonomous.
         if !sessions_to_recover.is_empty() {
             if let Some(ref sidecar) = self.sidecar {
-                match sidecar.ensure_running().await {
+                match sidecar.ensure_running("boot").await {
                     Ok(_) => {
+                        let gen = sidecar.generation();
                         let recovered = sidecar
                             .recover_controlled_sessions(&sessions_to_recover)
                             .await;
                         for (sid, new_ctrl_id) in &recovered {
-                            self.bind_control(sid, new_ctrl_id.clone(), None).await;
+                            self.bind_control(sid, new_ctrl_id.clone(), gen, None).await;
                         }
                         info!(
                             "Recovered {}/{} controlled sessions after restart",

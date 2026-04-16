@@ -33,6 +33,7 @@ mod tests {
         ControlBinding {
             control_id: id.to_string(),
             bound_at: 1000,
+            bound_at_generation: 0,
             cancel: tokio_util::sync::CancellationToken::new(),
         }
     }

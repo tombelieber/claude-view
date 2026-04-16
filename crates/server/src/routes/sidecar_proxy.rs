@@ -58,11 +58,12 @@ pub fn router() -> Router<Arc<AppState>> {
 
 /// Forward any HTTP request under `/api/sidecar/*` to the sidecar.
 ///
-/// Calls `ensure_running()` to auto-start the sidecar if it crashed.
+/// Calls `ensure_running("http_proxy")` to auto-start the sidecar if it crashed.
+/// No session-level lazy recovery here — the path is a raw proxy without
+/// session context; per-session recovery happens in `interact` and `ws_proxy`.
 #[tracing::instrument(skip_all)]
 async fn http_proxy_handler(State(state): State<Arc<AppState>>, req: Request) -> Response {
-    // Ensure sidecar is running (idempotent, fast when already alive)
-    let sidecar_base = match state.sidecar.ensure_running().await {
+    let sidecar_base = match state.sidecar.ensure_running("http_proxy").await {
         Ok(url) => url,
         Err(e) => {
             tracing::error!(error = %e, "Sidecar not available for proxy");
@@ -166,24 +167,35 @@ fn error_response(status: StatusCode, message: &str) -> Response {
 // ── WebSocket reverse proxy ─────────────────────────────────────────
 
 /// Upgrade to WebSocket and relay to sidecar's `/ws/chat/:session_id`.
+///
+/// Uses `ensure_session_control_alive` so a session whose previous control_id
+/// was orphaned by a sidecar restart gets lazy-resumed before the upgrade.
 #[tracing::instrument(skip_all, fields(%session_id))]
 async fn ws_proxy_handler(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(session_id): axum::extract::Path<String>,
     ws: WebSocketUpgrade,
 ) -> Response {
-    // Ensure sidecar is running before upgrading
-    let sidecar_base = match state.sidecar.ensure_running().await {
-        Ok(url) => url,
-        Err(e) => {
-            tracing::error!(error = %e, "Sidecar not available for WS proxy");
+    if let Some(ref live_manager) = state.live_manager {
+        if let Err(e) = live_manager
+            .ensure_session_control_alive(&session_id, "ws_proxy")
+            .await
+        {
+            tracing::error!(error = %e, "Lazy recovery failed for WS upgrade");
             return error_response(
                 StatusCode::SERVICE_UNAVAILABLE,
                 &format!("Sidecar not available: {e}"),
             );
         }
-    };
+    } else if let Err(e) = state.sidecar.ensure_running("ws_proxy").await {
+        tracing::error!(error = %e, "Sidecar not available for WS proxy");
+        return error_response(
+            StatusCode::SERVICE_UNAVAILABLE,
+            &format!("Sidecar not available: {e}"),
+        );
+    }
 
+    let sidecar_base = state.sidecar.base_url().to_string();
     let ws_url = sidecar_base
         .replace("http://", "ws://")
         .replace("https://", "wss://");

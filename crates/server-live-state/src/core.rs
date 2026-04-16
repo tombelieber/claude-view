@@ -49,6 +49,13 @@ pub struct ControlBinding {
     /// Unix timestamp when this binding was created.
     #[ts(type = "number")]
     pub bound_at: i64,
+    /// Sidecar spawn generation active when this binding was created.
+    /// If the sidecar restarts, its generation increments and this value
+    /// becomes stale — lazy-recovery detects the mismatch and re-resumes.
+    /// Backend-only: not sent to UI, not persisted in snapshots.
+    #[serde(skip, default)]
+    #[ts(skip)]
+    pub bound_at_generation: u64,
     /// Cancellation token to abort the WS relay task on unbind.
     /// Not serialized -- runtime-only.
     #[serde(skip)]
@@ -243,6 +250,7 @@ mod tests {
         let binding = ControlBinding {
             control_id: "abc-123".to_string(),
             bound_at: 1700000000,
+            bound_at_generation: 1,
             cancel: tokio_util::sync::CancellationToken::new(),
         };
         let json = serde_json::to_value(&binding).unwrap();

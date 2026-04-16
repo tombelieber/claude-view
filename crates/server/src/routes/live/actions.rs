@@ -98,6 +98,7 @@ pub async fn bind_control(
         session.control = Some(ControlBinding {
             control_id: body.control_id,
             bound_at: now,
+            bound_at_generation: state.sidecar.generation(),
             cancel: tokio_util::sync::CancellationToken::new(),
         });
         // Control binding = sidecar Agent SDK -- set source immediately

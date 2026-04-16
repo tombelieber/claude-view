@@ -1,7 +1,7 @@
-// crates/server/src/sidecar/lifecycle.rs
 //! Sidecar process lifecycle: spawn, readiness, shutdown, Drop.
 
 use std::process::{Command, Stdio};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::time::sleep;
 
@@ -13,7 +13,14 @@ impl SidecarManager {
     /// Start sidecar if not already running. Returns the base URL.
     ///
     /// Idempotent: if the child is already alive, returns immediately.
-    /// If the child died (crash), restarts it.
+    /// If the child died (crash), restarts it — subject to the circuit breaker
+    /// (`CIRCUIT_BREAKER_THRESHOLD` spawns per `CIRCUIT_BREAKER_WINDOW`) to
+    /// prevent runaway restart loops when the sidecar is persistently failing.
+    ///
+    /// `caller` labels WHICH code path triggered this — tagged into logs so we
+    /// can track down autonomous spawn sources. Valid callers: `"boot"`,
+    /// `"interact"`, `"ws_proxy"`, `"http_proxy"`. If you see anything else
+    /// in logs, you've added a new spawn path without updating the tag set.
     ///
     /// External sidecar support: if a sidecar is already running on the
     /// configured port (e.g. via `tsx watch` in dev mode), we skip spawning
@@ -28,7 +35,7 @@ impl SidecarManager {
     /// This is the industry-standard pattern for shared prod/dev ownership
     /// code (Tauri, Electron, Next.js standalone). Prod code asserts
     /// ownership by default; dev explicitly opts out via env var.
-    pub async fn ensure_running(&self) -> Result<String, SidecarError> {
+    pub async fn ensure_running(&self, caller: &'static str) -> Result<String, SidecarError> {
         // Dev-mode hands-off path: external orchestrator (e.g. concurrently
         // + tsx watch) owns the sidecar process. We only health-check.
         if Self::is_external_mode() {
@@ -38,7 +45,7 @@ impl SidecarManager {
             // Not ready yet — wait_for_ready() polls for 3s. If the external
             // sidecar isn't up by then, return HealthCheckTimeout so callers
             // can retry or surface an actionable error.
-            return self.wait_for_ready().await;
+            return self.wait_for_ready(caller).await;
         }
 
         // Determine action under the lock, then release lock before any async work.
@@ -55,11 +62,11 @@ impl SidecarManager {
                         "check_health"
                     }
                     Ok(Some(status)) => {
-                        tracing::warn!("Sidecar exited with {status}, restarting...");
+                        tracing::warn!(caller, %status, "Sidecar exited, restarting...");
                         "spawn"
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to check sidecar status: {e}");
+                        tracing::warn!(caller, error = %e, "Failed to check sidecar status");
                         "spawn"
                     }
                 }
@@ -74,25 +81,30 @@ impl SidecarManager {
                 return Ok(self.base_url.clone());
             }
             // Health check failed but child alive — wait for readiness
-            return self.wait_for_ready().await;
+            return self.wait_for_ready(caller).await;
         }
 
         // Before spawning, check if an external sidecar is already running
         // on the port (e.g. `bun dev` runs sidecar independently via tsx watch).
         if self.health_check().await.is_ok() {
             tracing::info!(
+                caller,
                 port = self.port,
                 "External sidecar detected on port, skipping spawn"
             );
             return Ok(self.base_url.clone());
         }
 
+        // Circuit breaker: if we've spawned too many times recently, refuse
+        // to spawn again. Something persistent is wrong; keep trying hides it.
+        self.check_and_record_spawn()?;
+
         // Kill any stale process occupying the sidecar port (zombie from a
         // previous crash). Without this, node's listen() fails with EADDRINUSE.
         kill_port_holder(self.port);
 
         // Spawn new sidecar process
-        {
+        let spawned_pid = {
             let mut guard = self
                 .child
                 .lock()
@@ -128,25 +140,35 @@ impl SidecarManager {
                 .spawn()
                 .map_err(SidecarError::SpawnFailed)?;
 
-            tracing::info!(
-                pid = child.id(),
-                port = self.port,
-                "Spawned sidecar process on TCP"
-            );
-
+            let pid = child.id();
             *guard = Some(child);
-        } // drop lock before async health check
+            pid
+        }; // drop lock before async health check
 
-        self.wait_for_ready().await
+        // Bump generation AFTER spawn is visible to callers — consumers of
+        // `generation()` use it to mark their bindings stale post-restart.
+        let gen_after = self.spawn_generation.fetch_add(1, Ordering::Relaxed) + 1;
+        tracing::info!(
+            caller,
+            pid = spawned_pid,
+            port = self.port,
+            generation = gen_after,
+            "Spawned sidecar process on TCP"
+        );
+
+        self.wait_for_ready(caller).await
     }
 
     /// Poll sidecar health endpoint until it responds. Used after spawn
     /// and by concurrent callers that see the child alive but not yet ready.
-    pub(crate) async fn wait_for_ready(&self) -> Result<String, SidecarError> {
+    pub(crate) async fn wait_for_ready(
+        &self,
+        caller: &'static str,
+    ) -> Result<String, SidecarError> {
         for attempt in 0..30 {
             sleep(Duration::from_millis(100)).await;
             if self.health_check().await.is_ok() {
-                tracing::info!(attempts = attempt + 1, "Sidecar ready");
+                tracing::info!(caller, attempts = attempt + 1, "Sidecar ready");
                 return Ok(self.base_url.clone());
             }
         }

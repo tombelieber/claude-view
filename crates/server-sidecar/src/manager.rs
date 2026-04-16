@@ -1,11 +1,21 @@
-// crates/server/src/sidecar/manager.rs
 //! SidecarManager struct and core accessors.
 
+use std::collections::VecDeque;
 use std::process::Child;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// Default sidecar TCP port.
 const SIDECAR_PORT: u16 = 3001;
+
+/// Circuit breaker: if the sidecar is spawned this many times within
+/// `CIRCUIT_BREAKER_WINDOW`, stop spawning and surface an actionable error.
+/// 10 spawns / 5min covers normal crash-and-recover; exceeding it means
+/// something is persistently broken (Node OOM loop, corrupt binary, etc.)
+/// and retrying wastes cycles while hiding the real failure.
+pub(crate) const CIRCUIT_BREAKER_THRESHOLD: usize = 10;
+pub(crate) const CIRCUIT_BREAKER_WINDOW: Duration = Duration::from_secs(300);
 
 /// Manages the lifecycle of the Node.js sidecar child process.
 ///
@@ -17,6 +27,13 @@ pub struct SidecarManager {
     pub(crate) child: Mutex<Option<Child>>,
     pub(crate) base_url: String,
     pub(crate) port: u16,
+    /// Monotonically increasing counter — incremented after each successful spawn.
+    /// Consumers (`LiveSessionManager::ensure_session_control_alive`) compare this
+    /// to a binding's `bound_at_generation` to detect stale control IDs that need
+    /// lazy recovery after the sidecar restarted.
+    pub(crate) spawn_generation: AtomicU64,
+    /// Sliding window of recent spawn timestamps for the circuit breaker.
+    pub(crate) spawn_history: Mutex<VecDeque<Instant>>,
 }
 
 impl Default for SidecarManager {
@@ -35,7 +52,43 @@ impl SidecarManager {
             child: Mutex::new(None),
             base_url: format!("http://localhost:{port}"),
             port,
+            spawn_generation: AtomicU64::new(0),
+            spawn_history: Mutex::new(VecDeque::new()),
         }
+    }
+
+    /// Current spawn generation. Starts at 0, increments on every successful
+    /// spawn. Control bindings created before a restart will have a smaller
+    /// generation than this; callers use the mismatch to detect staleness.
+    pub fn generation(&self) -> u64 {
+        self.spawn_generation.load(Ordering::Relaxed)
+    }
+
+    /// Record a spawn in the circuit-breaker window and return `Err(CircuitOpen)`
+    /// if too many spawns have happened recently.
+    pub(crate) fn check_and_record_spawn(&self) -> Result<(), super::error::SidecarError> {
+        let now = Instant::now();
+        let Ok(mut history) = self.spawn_history.lock() else {
+            return Ok(()); // poisoned lock — don't make things worse by failing
+        };
+        // Drop entries outside the window.
+        while history
+            .front()
+            .is_some_and(|t| now.duration_since(*t) > CIRCUIT_BREAKER_WINDOW)
+        {
+            history.pop_front();
+        }
+        if history.len() >= CIRCUIT_BREAKER_THRESHOLD {
+            let oldest = history.front().copied().unwrap_or(now);
+            let window_s = now.duration_since(oldest).as_secs();
+            return Err(super::error::SidecarError::CircuitOpen(format!(
+                "{} sidecar spawns in {}s — refusing to spawn again. Restart claude-view to reset.",
+                history.len(),
+                window_s
+            )));
+        }
+        history.push_back(now);
+        Ok(())
     }
 
     /// Get the TCP base URL for this sidecar instance.
