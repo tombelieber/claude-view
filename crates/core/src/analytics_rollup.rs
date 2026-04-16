@@ -12,9 +12,10 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 use crate::features::{Feature, FeatureContext, FeatureError, SessionEvent};
+use crate::jsonl_reader::MinLine;
 use crate::session_catalog::{CatalogRow, SessionCatalog};
 
 /// One rollup bucket — accumulated token counts for a (date, project) pair.
@@ -101,8 +102,10 @@ impl AnalyticsRollupFeature {
     /// Grand total across all matching buckets.
     pub fn total_sums(&self, filter: &RollupFilter) -> RollupTotal {
         let buckets = self.daily_sums(filter);
-        let mut t = RollupTotal::default();
-        t.bucket_count = buckets.len();
+        let mut t = RollupTotal {
+            bucket_count: buckets.len(),
+            ..Default::default()
+        };
         for b in &buckets {
             t.input_tokens += b.input_tokens;
             t.output_tokens += b.output_tokens;
@@ -209,37 +212,12 @@ impl Feature for AnalyticsRollupFeature {
     }
 }
 
-// ---- Minimal typed JSONL shapes (same as the P4 bench) ----
-
-#[derive(Deserialize)]
-struct MinLine {
-    #[serde(rename = "type")]
-    line_type: Option<String>,
-    #[serde(default)]
-    timestamp: Option<String>,
-    #[serde(default)]
-    message: Option<MinMessage>,
-}
-
-#[derive(Deserialize)]
-struct MinMessage {
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    usage: Option<MinUsage>,
-}
-
-#[derive(Deserialize)]
-struct MinUsage {
-    #[serde(default)]
-    input_tokens: Option<u64>,
-    #[serde(default)]
-    output_tokens: Option<u64>,
-    #[serde(default)]
-    cache_read_input_tokens: Option<u64>,
-    #[serde(default)]
-    cache_creation_input_tokens: Option<u64>,
-}
+// MinLine, MinMessage, MinUsage → imported from crate::jsonl_reader
+//
+// The local definitions have been removed. All JSONL typed projections
+// now live in jsonl_reader.rs as the single canonical source.
+#[allow(dead_code)]
+const _TYPES_MOVED: &str = "see crate::jsonl_reader::{MinLine, MinMessage, MinUsage}";
 
 fn date_bucket(ts: &str) -> Option<String> {
     chrono::DateTime::parse_from_rfc3339(ts).ok().map(|dt| {
