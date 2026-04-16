@@ -41,6 +41,7 @@ export type DetailTabId =
   | 'tasks'
   | 'changes'
   | 'plan'
+  | 'cli'
 
 interface MonitorState {
   // Grid layout

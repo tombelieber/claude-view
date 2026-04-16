@@ -1,3 +1,8 @@
+import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
+import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
+import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
+import { ConversationActionsProvider } from '@claude-view/shared/contexts/conversation-actions-context'
+import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import {
   Check,
   CheckSquare,
@@ -9,6 +14,7 @@ import {
   GitBranch,
   LayoutDashboard,
   MessageSquare,
+  Terminal,
   Timer,
   TreePine,
   Users,
@@ -19,17 +25,12 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useSearchParams } from 'react-router-dom'
-import { ConversationActionsProvider } from '@claude-view/shared/contexts/conversation-actions-context'
-import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
-import { chatRegistry } from '@claude-view/shared/components/conversation/blocks/chat/registry'
-import { developerRegistry } from '@claude-view/shared/components/conversation/blocks/developer/registry'
 import { useChatPanel } from '../../hooks/use-chat-panel'
 import { useCommandExecutor } from '../../hooks/use-command-executor'
 import { useFileHistory } from '../../hooks/use-file-history'
-import { useTeamSidechains } from '../../hooks/use-teams'
 import { usePlanDocuments } from '../../hooks/use-plan-documents'
 import { useSessionDetail } from '../../hooks/use-session-detail'
-import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
+import { useTeamSidechains } from '../../hooks/use-teams'
 import { formatModelName } from '../../lib/format-model'
 import { formatCostUsd } from '../../lib/format-utils'
 import { cn } from '../../lib/utils'
@@ -37,26 +38,27 @@ import { useMonitorStore } from '../../store/monitor-store'
 import { COST_CATEGORY_COLORS } from '../../theme'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { CommitsPanel } from '../CommitsPanel'
+import { ErrorBoundary } from '../ErrorBoundary'
 import { FilesTouchedPanel, buildFilesTouched } from '../FilesTouchedPanel'
 import { SessionMetricsBar } from '../SessionMetricsBar'
-import { ErrorBoundary } from '../ErrorBoundary'
+import { CliTerminal } from '../cli-terminal/CliTerminal'
 
-import { TeamsTab } from '../teams/TeamsTab'
+import type { TaskItem } from '../../types/generated/TaskItem'
 import type { TeamTranscriptBlock as GeneratedTeamTranscriptBlock } from '../../types/generated/TeamTranscriptBlock'
+import { TodoChecklist } from '../session/TodoChecklist'
+import { TeamsTab } from '../teams/TeamsTab'
 import { CacheCountdownBar } from './CacheCountdownBar'
 import { ChangesTab } from './ChangesTab'
-import { DisplayModeToggle } from './DisplayModeToggle'
 import { ContextGauge } from './ContextGauge'
 import { CostBreakdown } from './CostBreakdown'
-import { SessionBadges } from './SessionBadges'
+import { DisplayModeToggle } from './DisplayModeToggle'
 import { PlanTab } from './PlanTab'
 import { ProjectMemorySection } from './ProjectMemorySection'
+import { SessionBadges } from './SessionBadges'
 import { SubAgentBlockView } from './SubAgentBlockView'
 import { SubAgentPills } from './SubAgentPills'
 import { SwimLanes } from './SwimLanes'
 import { TaskDetailTab } from './TaskDetailTab'
-import type { TaskItem } from '../../types/generated/TaskItem'
-import { TodoChecklist } from '../session/TodoChecklist'
 import { TasksOverviewSection } from './TasksOverviewSection'
 import { TimelineView } from './TimelineView'
 import { hasUnavailableCost } from './cost-display'
@@ -272,6 +274,8 @@ export function SessionDetailPanel({
   // Always-available tabs (not dependent on async data)
   const ALWAYS_AVAILABLE: Set<TabId> = new Set(['overview', 'chat', 'sub-agents', 'cost'])
   if (hasTeam) ALWAYS_AVAILABLE.add('teams')
+  // CLI tab: known at t=0 from SSE session record, not async-loaded.
+  if (detailOwnership?.tmux) ALWAYS_AVAILABLE.add('cli')
 
   // Reset tab and drill-down when session changes — use preferred tab with graceful fallback.
   // Conditional tabs (tasks, changes, plan) load async, so we can't know availability at t=0.
@@ -571,6 +575,26 @@ export function SessionDetailPanel({
           >
             <FileText className="w-3.5 h-3.5" />
             Plan
+          </button>
+        )}
+        {detailOwnership?.tmux && (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'cli'}
+            onClick={() => {
+              setActiveTab('cli')
+              setDrillDownAgent(null)
+            }}
+            className={cn(
+              'flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2',
+              activeTab === 'cli'
+                ? 'border-amber-500 text-amber-600 dark:text-amber-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-400',
+            )}
+          >
+            <Terminal className="w-3.5 h-3.5" />
+            CLI
           </button>
         )}
 
@@ -949,6 +973,16 @@ export function SessionDetailPanel({
 
         {/* ---- Plan tab ---- */}
         {activeTab === 'plan' && hasPlans && planDocuments && <PlanTab plans={planDocuments} />}
+
+        {/* ---- CLI tab (tmux-managed sessions only — attaches via xterm WS) ---- */}
+        {activeTab === 'cli' && detailOwnership?.tmux && (
+          <div className="h-full w-full bg-black">
+            <CliTerminal
+              tmuxSessionId={detailOwnership.tmux.cliSessionId}
+              className="h-full w-full"
+            />
+          </div>
+        )}
       </div>
     </div>
   )
