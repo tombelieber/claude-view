@@ -32,6 +32,10 @@ impl LiveSessionManager {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(10));
             let mut tick_count: u64 = 0;
+            // Cooldown: timestamp of last sidecar recovery attempt.
+            // Prevents rapid restart loops when the sidecar crashes repeatedly
+            // (e.g. Node OOM under sustained load). 60s between attempts.
+            let mut last_sidecar_recovery: Option<tokio::time::Instant> = None;
 
             loop {
                 interval.tick().await;
@@ -70,7 +74,9 @@ impl LiveSessionManager {
                 // =============================================================
                 // Phase 1b: Stale control binding detection
                 // =============================================================
-                manager.reconcile_controlled_sessions().await;
+                manager
+                    .reconcile_controlled_sessions(&mut last_sidecar_recovery)
+                    .await;
 
                 // Sweep expired pending mutations from coordinator buffer
                 manager.coordinator.sweep_expired().await;
@@ -184,13 +190,34 @@ impl LiveSessionManager {
     }
 
     /// Reconcile controlled sessions with sidecar state.
-    async fn reconcile_controlled_sessions(self: &Arc<Self>) {
+    ///
+    /// Includes a 60-second cooldown between sidecar restart attempts to prevent
+    /// rapid restart loops when the sidecar crashes repeatedly (e.g. Node OOM).
+    /// Without this cooldown, each 10s tick would: restart sidecar → create empty
+    /// SDK sessions → sidecar crashes → sessions close → closed count grows.
+    async fn reconcile_controlled_sessions(
+        self: &Arc<Self>,
+        last_recovery: &mut Option<tokio::time::Instant>,
+    ) {
         let controlled = self.controlled_session_ids().await;
         if controlled.is_empty() {
             return;
         }
         if let Some(ref sidecar) = self.sidecar {
             if !sidecar.is_running() {
+                // Cooldown: skip if we already attempted recovery within 60s.
+                if let Some(last) = last_recovery {
+                    if last.elapsed() < Duration::from_secs(60) {
+                        tracing::debug!(
+                            elapsed_s = last.elapsed().as_secs(),
+                            controlled = controlled.len(),
+                            "Sidecar recovery cooldown active, skipping"
+                        );
+                        return;
+                    }
+                }
+
+                *last_recovery = Some(tokio::time::Instant::now());
                 tracing::warn!(
                     "Sidecar not running, attempting restart for {} controlled sessions",
                     controlled.len()

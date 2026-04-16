@@ -21,14 +21,34 @@ export interface LiveSummary {
 
 type ConnectionState = 'connected' | 'reconnecting' | 'disconnected'
 
+// ---------------------------------------------------------------------------
+// Mutable event-time tracker — lives OUTSIDE Zustand to avoid per-event
+// Map copies that create unstable references and cascade re-renders.
+// Consumers read via `getLastEventTime()` or `useStalledSessions()`.
+// ---------------------------------------------------------------------------
+const _eventTimes = new Map<string, number>()
+
+export function getLastEventTime(sessionId: string): number | undefined {
+  return _eventTimes.get(sessionId)
+}
+
+/** Read the raw mutable map — only for derivation hooks, not for React state. */
+export function getEventTimesSnapshot(): ReadonlyMap<string, number> {
+  return _eventTimes
+}
+
+// ---------------------------------------------------------------------------
+// Store
+// ---------------------------------------------------------------------------
+
 interface LiveSessionState {
   sessionsById: Map<string, LiveSession>
   recentlyClosed: LiveSession[]
   summary: LiveSummary | null
   connectionState: ConnectionState
   isInitialized: boolean
-  lastUpdate: Date | null
-  lastEventTimes: Map<string, number>
+  /** Epoch-ms of the last SSE event (number, not Date — no object allocation). */
+  lastUpdateTs: number
 
   handleSnapshot: (
     summary: LiveSummary,
@@ -48,48 +68,46 @@ export const useLiveSessionStore = create<LiveSessionState>((set) => ({
   summary: null,
   connectionState: 'disconnected',
   isInitialized: false,
-  lastUpdate: null,
-  lastEventTimes: new Map(),
+  lastUpdateTs: 0,
 
   handleSnapshot: (summary, sessions, recentlyClosed) => {
     const map = new Map<string, LiveSession>()
-    for (const s of sessions) map.set(s.id, s)
     const now = Date.now()
-    const times = new Map<string, number>()
-    for (const s of sessions) times.set(s.id, now)
+    _eventTimes.clear()
+    for (const s of sessions) {
+      map.set(s.id, s)
+      _eventTimes.set(s.id, now)
+    }
     set({
       sessionsById: map,
       recentlyClosed,
       summary,
       isInitialized: true,
-      lastUpdate: new Date(),
-      lastEventTimes: times,
+      lastUpdateTs: now,
     })
   },
 
   handleUpsert: (session) => {
+    _eventTimes.set(session.id, Date.now())
     set((state) => {
       const next = new Map(state.sessionsById)
       next.set(session.id, session)
-      const times = new Map(state.lastEventTimes)
-      times.set(session.id, Date.now())
-      return { sessionsById: next, lastUpdate: new Date(), lastEventTimes: times }
+      return { sessionsById: next, lastUpdateTs: Date.now() }
     })
   },
 
   handleRemove: (sessionId, session) => {
+    _eventTimes.delete(sessionId)
     set((state) => {
       const next = new Map(state.sessionsById)
       next.delete(sessionId)
-      const times = new Map(state.lastEventTimes)
-      times.delete(sessionId)
-      const closed = [session, ...state.recentlyClosed].slice(0, 100)
-      return {
-        sessionsById: next,
-        recentlyClosed: closed,
-        lastUpdate: new Date(),
-        lastEventTimes: times,
-      }
+      // Prepend to closed list, cap at 100. Avoid spread when at capacity —
+      // splice is O(1) amortized vs spread's O(n) copy.
+      const closed =
+        state.recentlyClosed.length >= 100
+          ? [session, ...state.recentlyClosed.slice(0, 99)]
+          : [session, ...state.recentlyClosed]
+      return { sessionsById: next, recentlyClosed: closed, lastUpdateTs: Date.now() }
     })
   },
 
@@ -139,4 +157,21 @@ export function useIsLiveConnected(): boolean {
 
 export function useIsLiveInitialized(): boolean {
   return useLiveSessionStore((s) => s.isInitialized)
+}
+
+/**
+ * Derive stalled sessions from the mutable event-time map.
+ * Driven by a caller-provided `tick` (e.g. a 1s timer) so it re-evaluates
+ * periodically without Zustand reactivity.
+ */
+export function useStalledSessions(tick: number): Set<string> {
+  // biome-ignore lint/correctness/useExhaustiveDependencies: tick is an intentional external re-evaluation trigger (1s timer), not a reactive dependency
+  return useMemo(() => {
+    const now = Date.now()
+    const stalled = new Set<string>()
+    for (const [id, lastTime] of _eventTimes.entries()) {
+      if (now - lastTime > 3000) stalled.add(id)
+    }
+    return stalled
+  }, [tick])
 }

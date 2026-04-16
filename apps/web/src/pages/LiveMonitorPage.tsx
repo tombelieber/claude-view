@@ -37,6 +37,7 @@ import {
   useIsLiveConnected,
   useIsLiveInitialized,
   useLiveSessionStore,
+  useStalledSessions,
 } from '../store/live-session-store'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
 import { useTrackEvent } from '../hooks/use-track-event'
@@ -67,28 +68,18 @@ export function LiveMonitorPage() {
   const serverSummary = useLiveSummary()
   const isConnected = useIsLiveConnected()
   const isInitialized = useIsLiveInitialized()
-  const lastUpdate = useLiveSessionStore((s) => s.lastUpdate)
-  const lastEventTimes = useLiveSessionStore((s) => s.lastEventTimes)
+  const lastUpdateTs = useLiveSessionStore((s) => s.lastUpdateTs)
   const recentlyClosed = useRecentlyClosed()
   const dismissSession = useLiveSessionStore((s) => s.dismissSession)
   const dismissAllClosed = useLiveSessionStore((s) => s.dismissAllClosed)
 
-  // Derive stalled sessions from lastEventTimes (sessions with no event for >3s)
-  const stalledSessions = useMemo(() => {
-    const now = Date.now()
-    const stalled = new Set<string>()
-    for (const [id, lastTime] of lastEventTimes.entries()) {
-      if (now - lastTime > 3000) stalled.add(id)
-    }
-    return stalled
-  }, [lastEventTimes])
-
-  // Tick every ~1s for duration computation
+  // Tick every ~1s for duration computation + stalled detection
   const [currentTime, setCurrentTime] = useState<number>(() => Math.floor(Date.now() / 1000))
   useEffect(() => {
     const interval = setInterval(() => setCurrentTime(Math.floor(Date.now() / 1000)), 1000)
     return () => clearInterval(interval)
   }, [])
+  const stalledSessions = useStalledSessions(currentTime)
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
   const [viewMode, setViewMode] = useState<LiveViewMode>(() => resolveInitialView(searchParams))
@@ -377,7 +368,7 @@ export function LiveMonitorPage() {
   }
 
   // "Updated Xs ago" — only show when stale (>30s) to reduce noise
-  const isStale = lastUpdate ? Date.now() - lastUpdate.getTime() > 30_000 : false
+  const isStale = lastUpdateTs > 0 && Date.now() - lastUpdateTs > 30_000
 
   // Compute indexing percent once for filter bar
   const indexingPercent = indexingProgress
@@ -439,9 +430,9 @@ export function LiveMonitorPage() {
             {/* Right: CLI session, cost, tokens, stale indicator, usage — stays right-aligned */}
             <div className="flex items-center gap-3 ml-auto text-xs shrink-0">
               <NewCliSessionButton onSessionCreated={handleCliSessionCreated} />
-              {isStale && lastUpdate && (
+              {isStale && lastUpdateTs > 0 && (
                 <span className="text-amber-500/80 tabular-nums">
-                  {formatRelativeTime(lastUpdate)}
+                  {formatRelativeTime(lastUpdateTs)}
                 </span>
               )}
 
@@ -662,8 +653,8 @@ export function LiveMonitorPage() {
   )
 }
 
-function formatRelativeTime(date: Date): string {
-  const diff = (Date.now() - date.getTime()) / 1000
+function formatRelativeTime(epochMs: number): string {
+  const diff = (Date.now() - epochMs) / 1000
   if (diff < 5) return 'just now'
   if (diff < 60) return `${Math.floor(diff)}s ago`
   if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
