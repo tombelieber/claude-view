@@ -696,6 +696,7 @@ dependencies = [
  "chrono",
  "claude-view-types",
  "dirs",
+ "flate2",
  "memchr",
  "pretty_assertions",
  "regex-lite",

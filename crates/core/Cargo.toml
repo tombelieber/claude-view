@@ -22,6 +22,8 @@ uuid = { workspace = true }
 utoipa = { version = "5" }
 serde_yaml = "0.9"
 toml = "0.8"
+walkdir = { workspace = true }
+flate2 = { workspace = true }
 claude-view-types = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
@@ -35,7 +37,6 @@ tempfile = { workspace = true }
 tokio-test = { workspace = true }
 pretty_assertions = { workspace = true }
 serial_test = "3"
-walkdir = { workspace = true }
 dirs = { workspace = true }
 
 [[bin]]

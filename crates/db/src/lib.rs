@@ -9,6 +9,7 @@
 pub mod git_correlation;
 pub mod indexer_parallel;
 pub mod insights_trends;
+pub mod jsonl_first_poc;
 mod migrations;
 pub mod pricing;
 mod queries;
