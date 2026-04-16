@@ -25,17 +25,12 @@ async fn test_list_sessions_empty() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_with_data() {
-    let db = test_db().await;
-
+    let fx = CatalogFixture::new().await;
     let session = make_session("sess-1", "project-a", 1700000000);
-    db.insert_session(&session, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -71,26 +66,20 @@ async fn test_list_sessions_invalid_sort() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_has_commits() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     // Session without commits
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.commit_count = 0;
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     // Session with commits
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.commit_count = 3;
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?filter=has_commits").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?filter=has_commits").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -99,28 +88,22 @@ async fn test_list_sessions_filter_has_commits() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_high_reedit() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     // Session with low reedit rate (1/10 = 0.1)
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.files_edited_count = 10;
     session1.reedited_files_count = 1;
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     // Session with high reedit rate (5/10 = 0.5)
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.files_edited_count = 10;
     session2.reedited_files_count = 5;
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?filter=high_reedit").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?filter=high_reedit").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -129,26 +112,20 @@ async fn test_list_sessions_filter_high_reedit() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_long_session() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     // Short session (10 minutes)
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.duration_seconds = 600;
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     // Long session (1 hour)
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.duration_seconds = 3600;
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?filter=long_session").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?filter=long_session").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -157,26 +134,20 @@ async fn test_list_sessions_filter_long_session() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_sort_tokens() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.total_input_tokens = Some(1000);
     session1.total_output_tokens = Some(500);
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.total_input_tokens = Some(10000);
     session2.total_output_tokens = Some(5000);
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?sort=tokens").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?sort=tokens").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -186,24 +157,18 @@ async fn test_list_sessions_sort_tokens() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_sort_duration() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.duration_seconds = 600;
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.duration_seconds = 3600;
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?sort=duration").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?sort=duration").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -212,20 +177,16 @@ async fn test_list_sessions_sort_duration() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_pagination() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     // Insert 5 sessions
     for i in 0..5 {
         let session = make_session(&format!("sess-{}", i), "project-a", 1700000000 + i);
-        db.insert_session(&session, "project-a", "Project A")
-            .await
-            .unwrap();
+        fx.seed(session, "Project A").await;
     }
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?limit=2&offset=1").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?limit=2&offset=1").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -238,30 +199,23 @@ async fn test_list_sessions_pagination() {
 // ========================================================================
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
+#[ignore = "branches filter not yet wired into JSONL-first list handler (see list.rs:235 TODO re: CatalogRow branch field)"]
 async fn test_list_sessions_filter_by_branches() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.git_branch = Some("main".to_string());
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.git_branch = Some("feature/auth".to_string());
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
     let mut session3 = make_session("sess-3", "project-a", 1700000200);
     session3.git_branch = Some("fix/bug".to_string());
-    db.insert_session(&session3, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session3, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?branches=main,feature/auth").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?branches=main,feature/auth").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -311,24 +265,18 @@ async fn test_list_sessions_filter_by_models() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_has_skills() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.skills_used = vec!["git".to_string()];
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.skills_used = vec![];
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?has_skills=true").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?has_skills=true").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -337,24 +285,18 @@ async fn test_list_sessions_filter_has_skills() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_min_duration() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.duration_seconds = 300; // 5 minutes
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.duration_seconds = 2400; // 40 minutes
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?min_duration=1800").await; // 30 minutes
+    let (status, body) = do_get(fx.app(), "/api/sessions?min_duration=1800").await; // 30 minutes
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -363,24 +305,23 @@ async fn test_list_sessions_filter_min_duration() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_min_files() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
+    // JSONL-first: `min_files` = files_read_count + files_edited_count. Zero
+    // reads here keeps the test's intent (differentiate by edits) while
+    // honouring the handler's semantics.
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
+    session1.files_read_count = 0;
     session1.files_edited_count = 2;
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
+    session2.files_read_count = 0;
     session2.files_edited_count = 10;
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions?min_files=5").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions?min_files=5").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
@@ -425,29 +366,25 @@ async fn test_list_sessions_filter_min_tokens() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_list_sessions_filter_time_range() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
+    // The catalog filter matches against `CatalogRow::sort_ts()`, which in
+    // the fixture derives from the last JSONL timestamp (= modified_at +
+    // duration_seconds). The default 600s duration shifts each session by
+    // only +600s — within the test's time window resolution.
     let session1 = make_session("sess-1", "project-a", 1700000000); // Jan 2024
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let session2 = make_session("sess-2", "project-a", 1720000000); // Jul 2024
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
     let session3 = make_session("sess-3", "project-a", 1740000000); // Dec 2024
-    db.insert_session(&session3, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session3, "Project A").await;
 
-    let app = build_app(db);
     // Filter for sessions between Feb 2024 and Nov 2024
     let (status, body) = do_get(
-        app,
+        fx.app(),
         "/api/sessions?time_after=1710000000&time_before=1730000000",
     )
     .await;
@@ -459,38 +396,31 @@ async fn test_list_sessions_filter_time_range() {
 }
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
+#[ignore = "branches filter not yet wired into JSONL-first list handler (see list.rs:235 TODO re: CatalogRow branch field)"]
 async fn test_list_sessions_multiple_filters_combined() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let mut session1 = make_session("sess-1", "project-a", 1700000000);
     session1.git_branch = Some("main".to_string());
     session1.commit_count = 3;
     session1.duration_seconds = 2400;
-    db.insert_session(&session1, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session1, "Project A").await;
 
     let mut session2 = make_session("sess-2", "project-a", 1700000100);
     session2.git_branch = Some("feature/auth".to_string());
     session2.commit_count = 0;
     session2.duration_seconds = 2400;
-    db.insert_session(&session2, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session2, "Project A").await;
 
     let mut session3 = make_session("sess-3", "project-a", 1700000200);
     session3.git_branch = Some("main".to_string());
     session3.commit_count = 5;
     session3.duration_seconds = 600;
-    db.insert_session(&session3, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session3, "Project A").await;
 
-    let app = build_app(db);
     // Filter: main branch AND has commits AND duration >= 30 mins
     let (status, body) = do_get(
-        app,
+        fx.app(),
         "/api/sessions?branches=main&has_commits=true&min_duration=1800",
     )
     .await;

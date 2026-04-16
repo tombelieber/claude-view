@@ -11,26 +11,20 @@ use super::tests_common::*;
 // ========================================================================
 
 #[tokio::test]
-#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_get_session_detail() {
-    let db = test_db().await;
+    let fx = CatalogFixture::new().await;
 
     let session = make_session("sess-123", "project-a", 1700000000);
-    db.insert_session(&session, "project-a", "Project A")
-        .await
-        .unwrap();
+    fx.seed(session, "Project A").await;
 
-    let app = build_app(db);
-    let (status, body) = do_get(app, "/api/sessions/sess-123").await;
+    let (status, body) = do_get(fx.app(), "/api/sessions/sess-123").await;
 
     assert_eq!(status, StatusCode::OK);
     let json: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["id"], "sess-123");
     assert!(json["commits"].is_array());
     assert!(json["derivedMetrics"].is_object());
-    // Note: tokensPerPrompt requires turns table data which we don't insert in tests.
-    // The tokens come from the turns aggregate, not from session.total_input_tokens.
-    // Since we have files_edited_count=5 and reedited_files_count=2, reeditRate should be 0.4
+    // reedit_rate comes from DB enrichment (files_edited_count=5, reedited_files_count=2 → 0.4).
     assert!(json["derivedMetrics"]["reeditRate"].is_number());
     assert_eq!(json["derivedMetrics"]["reeditRate"], 0.4);
 }

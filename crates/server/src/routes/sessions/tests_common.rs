@@ -6,13 +6,18 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use claude_view_core::session_catalog::CatalogRow;
 use claude_view_core::{
     Message, PaginatedMessages, ParsedSession, SessionInfo, SessionMetadata, ToolCounts,
 };
 use claude_view_db::Database;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
 use tower::ServiceExt;
+
+use crate::state::AppState;
 
 use super::types::DerivedMetrics;
 
@@ -34,6 +39,165 @@ pub(super) async fn do_get(app: axum::Router, uri: &str) -> (StatusCode, String)
         .await
         .unwrap();
     (status, String::from_utf8(body.to_vec()).unwrap())
+}
+
+/// Harness for tests that exercise the JSONL-first `/api/sessions*` routes.
+///
+/// Owns the live `AppState` so tests can seed both the in-memory
+/// `SessionCatalog` (authoritative file-path lookup) and the SQLite mirror
+/// (archive / commit / skills / reedit enrichment). The pre-JSONL-first
+/// test harness only wrote DB rows — those tests could not observe the new
+/// pipeline and had to be `#[ignore]`d.
+///
+/// The inner `_tempdir` is kept alive for the lifetime of the fixture
+/// because every catalog row points at a real JSONL file on disk.
+pub(super) struct CatalogFixture {
+    pub state: Arc<AppState>,
+    /// Keeps all seeded JSONL files alive for the lifetime of the test.
+    _tempdir: TempDir,
+}
+
+impl CatalogFixture {
+    pub async fn new() -> Self {
+        let db = test_db().await;
+        let state = AppState::new(db);
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        Self {
+            state,
+            _tempdir: tempdir,
+        }
+    }
+
+    /// Build a `Router` bound to this fixture's `AppState`.
+    ///
+    /// Call after seeding — the router captures the state via `Arc` clone,
+    /// so later mutations are still visible inside the handlers.
+    pub fn app(&self) -> axum::Router {
+        crate::routes::api_routes(self.state.clone())
+    }
+
+    /// Seed a session in both the catalog and DB.
+    ///
+    /// Writes a minimal valid JSONL file (a session summary, one user text,
+    /// and one assistant text with usage) so `session_stats::extract_stats`
+    /// returns sensible defaults. The DB insert uses `insert_session`, which
+    /// covers every enrichment field the `/api/sessions` list/detail handlers
+    /// read (`archived_at` is handled separately via `archive_session` —
+    /// callers should chain `.archive()` after this).
+    ///
+    /// `session` is mutated so its `file_path` points at the real tempfile,
+    /// and `modified_at` sets the JSONL mtime (driving `last_ts` in the
+    /// catalog row → sort order).
+    pub async fn seed(&self, mut session: SessionInfo, project_display: &str) -> SessionInfo {
+        let project_id = session.project.clone();
+        let jsonl_path = self._tempdir.path().join(format!("{}.jsonl", session.id));
+
+        // Minimal valid JSONL: one user prompt + one assistant turn with usage.
+        // Timestamps are anchored at `modified_at` and span `duration_seconds`
+        // so:
+        //   * `session_stats::extract_stats` reports the caller's duration
+        //     (list handler reads it from JSONL, not DB)
+        //   * `CatalogRow::sort_ts()` returns a stable value the caller can
+        //     predict when writing time-range filter tests.
+        let first_ts_epoch: i64 = session.modified_at;
+        let last_ts_epoch = first_ts_epoch + session.duration_seconds as i64;
+        let first_ts = chrono::DateTime::from_timestamp(first_ts_epoch, 0)
+            .expect("first_ts")
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let last_ts = chrono::DateTime::from_timestamp(last_ts_epoch, 0)
+            .expect("last_ts")
+            .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+        // Choose a primary model. `insert_session` does not persist
+        // `primary_model`, so tests that filter by model rely on what's
+        // written into the JSONL here.
+        let primary_model = session
+            .primary_model
+            .clone()
+            .unwrap_or_else(|| "claude-sonnet-4".to_string());
+
+        // Emit one `Read` tool_use per `files_read_count` and one `Edit` per
+        // `files_edited_count` so the JSONL-derived counts match the caller's
+        // expectation. Split across synthetic assistant messages so each
+        // `files_edited_count` bump requires a dedicated tool_use block.
+        let mut tool_blocks: Vec<String> = Vec::new();
+        for i in 0..session.files_read_count {
+            tool_blocks.push(format!(
+                r#"{{"type":"tool_use","id":"read_{i}","name":"Read","input":{{}}}}"#
+            ));
+        }
+        for i in 0..session.files_edited_count {
+            tool_blocks.push(format!(
+                r#"{{"type":"tool_use","id":"edit_{i}","name":"Edit","input":{{}}}}"#
+            ));
+        }
+
+        // Token counts come from JSONL; if the caller set totals, distribute
+        // them across the single assistant message here.
+        let input_tokens = session.total_input_tokens.unwrap_or(100);
+        let output_tokens = session.total_output_tokens.unwrap_or(50);
+
+        let assistant_content = if tool_blocks.is_empty() {
+            r#"[{"type":"text","text":"Seed reply"}]"#.to_string()
+        } else {
+            format!("[{}]", tool_blocks.join(","))
+        };
+
+        let jsonl_body = format!(
+            "{user}\n{assistant}\n",
+            user = format!(
+                r#"{{"type":"user","timestamp":"{first_ts}","message":{{"role":"user","content":[{{"type":"text","text":"Seed prompt"}}]}}}}"#
+            ),
+            assistant = format!(
+                r#"{{"type":"assistant","timestamp":"{last_ts}","message":{{"id":"msg_{id}","model":"{model}","role":"assistant","content":{content},"usage":{{"input_tokens":{input},"output_tokens":{output}}},"stop_reason":"end_turn"}}}}"#,
+                id = session.id,
+                model = primary_model,
+                content = assistant_content,
+                input = input_tokens,
+                output = output_tokens,
+            ),
+        );
+        std::fs::write(&jsonl_path, jsonl_body).expect("write JSONL");
+
+        session.file_path = jsonl_path.to_string_lossy().into_owned();
+
+        // Persist DB row with the caller's desired enrichment fields.
+        self.state
+            .db
+            .insert_session(&session, &project_id, project_display)
+            .await
+            .expect("insert_session");
+
+        // Register the catalog row so the handler's authoritative path
+        // resolver (`state.session_catalog.get`) sees this session.
+        //
+        // `mtime` is set to the caller's requested `modified_at` (NOT the
+        // real filesystem mtime) because `build_session_info` copies
+        // `row.mtime` into `SessionInfo.modified_at`, and the
+        // `/api/sessions` list handler sorts descending by that field.
+        // Tests rely on a deterministic ordering.
+        let meta = std::fs::metadata(&jsonl_path).expect("jsonl metadata");
+        let existing = self.state.session_catalog.list(
+            &claude_view_core::session_catalog::Filter::default(),
+            claude_view_core::session_catalog::Sort::LastTsDesc,
+            usize::MAX,
+        );
+        let mut rows: Vec<CatalogRow> = existing.into_iter().collect();
+        rows.retain(|r| r.id != session.id);
+        rows.push(CatalogRow {
+            id: session.id.clone(),
+            file_path: jsonl_path,
+            is_compressed: false,
+            bytes: meta.len(),
+            mtime: session.modified_at,
+            project_id,
+            first_ts: Some(first_ts_epoch),
+            last_ts: Some(last_ts_epoch),
+        });
+        self.state.session_catalog.replace_all(rows);
+
+        session
+    }
 }
 
 pub(super) fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
