@@ -42,7 +42,6 @@ pub mod reports;
 pub mod score;
 pub mod search;
 pub mod sessions;
-pub mod sessions_v2;
 pub mod settings;
 pub mod share;
 pub mod sidecar_proxy;
@@ -181,8 +180,6 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api/local-llm", crate::local_llm::local_llm_routes())
         .nest("/api", auth_keys::router())
         .nest("/api", webhooks::router())
-        // JSONL-first v2 routes (strangler fig: live alongside v1)
-        .nest("/api/v2", sessions_v2::router())
         // Swagger UI + OpenAPI spec
         .merge(docs::router())
         // Metrics endpoint at root level (Prometheus convention)
