@@ -13,7 +13,6 @@ use claude_view_core::{
 use claude_view_db::Database;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tempfile::TempDir;
 use tower::ServiceExt;
 
