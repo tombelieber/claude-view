@@ -111,96 +111,152 @@ impl LiveSessionManager {
         }
     }
 
-    /// Reconcile tmux ownership at startup.
+    /// Reconcile tmux ownership at startup — runtime-derived discovery.
     ///
-    /// After `scan_sessions_dir_at_startup` creates live sessions (via
-    /// `handle_session_birth` → coordinator), those sessions lack tmux
-    /// ownership because the coordinator's `compute_ownership` only carries
-    /// forward existing bindings — and there are none on freshly-created
-    /// sessions.
+    /// Runs two passes:
     ///
-    /// This method discovers existing tmux panes (via `list_sessions` +
-    /// `pane_pid`), matches them to live sessions by PID, sets
-    /// `ownership.tmux`, populates the tmux index, and populates the
-    /// secondary index (Claude UUID → map key).
+    /// **Pass A — tmux_index hydration for cv-*-spawned sessions**. Lists
+    /// tmux sessions whose name starts with `cv-` and re-registers them in
+    /// `tmux_index`. This is needed because `scan_sessions_dir_at_startup`
+    /// creates sessions without going through the POST handler that
+    /// normally populates the index, and the index gates the DELETE
+    /// endpoint, health checks, and the `MAX_CLI_SESSIONS` limit.
+    /// **User-spawned sessions are intentionally NOT added to the index** —
+    /// they are observed, not owned, so claude-view must not kill them or
+    /// count them against its own session budget.
+    ///
+    /// **Pass B — ownership discovery for every live session**. For every
+    /// session with a PID, probes the process's environment for
+    /// `TMUX_PANE`, resolves the pane to a tmux session name, and sets
+    /// `ownership.tmux` on the live session. This covers both cv-*-spawned
+    /// and user-spawned tmux sessions uniformly, regardless of process-tree
+    /// depth (the env var is inherited transitively through any shell).
+    ///
+    /// Replaces the old direct `pane_pid == claude.pid` matching, which
+    /// only worked for sessions where claude was the direct child of a
+    /// tmux pane — breaking the common `tmux → shell → claude` case.
     pub(super) async fn reconcile_tmux_ownership(self: &Arc<Self>) {
+        // --- Pass A: re-hydrate tmux_index for cv-* sessions ---
         let tmux_names = self.tmux.list_sessions();
         let cv_names: Vec<String> = tmux_names
             .into_iter()
             .filter(|n| n.starts_with("cv-"))
             .collect();
-
-        if cv_names.is_empty() {
-            return;
-        }
-
-        // Build PID → tmux name mapping
-        let mut pid_to_tmux: Vec<(u32, String)> = Vec::new();
-        for name in &cv_names {
-            if let Some(pane_pid) = self.tmux.pane_pid(name) {
-                pid_to_tmux.push((pane_pid, name.clone()));
-            }
-        }
-
-        if pid_to_tmux.is_empty() {
-            return;
-        }
-
-        // Populate tmux index with discovered sessions
         for name in &cv_names {
             self.tmux_index.insert(name.clone()).await;
         }
 
-        // Match live sessions by PID and set ownership
+        // --- Pass B: env-probe based ownership discovery ---
+        // Snapshot (session_id, pid) pairs under a read lock, then drop it
+        // before running subprocess probes — we never want to hold the
+        // sessions lock across a blocking `ps eww` or `tmux display-message`.
+        let session_pids: Vec<(String, u32)> = {
+            let sessions = self.sessions.read().await;
+            sessions
+                .iter()
+                .filter_map(|(id, s)| s.hook.pid.map(|pid| (id.clone(), pid)))
+                .collect()
+        };
+
         let mut enriched = 0u32;
-        {
-            let mut sessions = self.sessions.write().await;
-            for (session_id, session) in sessions.iter_mut() {
-                let Some(pid) = session.hook.pid else {
-                    continue;
-                };
-                // Check if this session's PID matches a tmux pane
-                let tmux_name = pid_to_tmux
-                    .iter()
-                    .find(|(p, _)| *p == pid)
-                    .map(|(_, name)| name.clone());
-
-                if let Some(ref name) = tmux_name {
-                    // Set tmux ownership
-                    let mut ownership = session.ownership.clone().unwrap_or_default();
-                    ownership.tmux = Some(claude_view_types::TmuxBinding {
-                        cli_session_id: name.clone(),
-                    });
-                    session.ownership = Some(ownership);
-
-                    // Populate secondary index: Claude UUID → map key
-                    self.claude_session_id_index
-                        .write()
-                        .await
-                        .insert(session_id.clone(), session_id.clone());
-
-                    let _ = self.tx.send(SessionEvent::SessionUpsert {
-                        session: session.clone(),
-                    });
-
-                    enriched += 1;
-                    info!(
-                        session_id = %session_id,
-                        tmux = %name,
-                        pid = pid,
-                        "Reconciled tmux ownership at startup"
-                    );
-                }
+        for (session_id, pid) in session_pids {
+            if self.try_bind_tmux_env_for_pid(pid, &session_id).await {
+                enriched += 1;
             }
         }
 
         if enriched > 0 {
             info!(
                 enriched,
-                total_tmux = cv_names.len(),
+                cv_indexed = cv_names.len(),
                 "Tmux ownership reconciliation complete"
             );
         }
+    }
+
+    /// Probe a PID's environment for a tmux pane binding, resolve to a tmux
+    /// session name, and write `ownership.tmux` into the live session map.
+    ///
+    /// Returns `true` iff a binding was written (or was already correct —
+    /// the call is idempotent, so repeated invocations short-circuit).
+    /// Returns `false` if the process isn't in tmux, the pane can't be
+    /// resolved, the session isn't in the map, or tmux is unavailable.
+    ///
+    /// Called from:
+    /// - `reconcile_tmux_ownership` (Pass B) for startup catch-up.
+    /// - `handle_session_birth` for every runtime-born session.
+    ///
+    /// The two paths double-cover sessions born during startup
+    /// (`scan_sessions_dir_at_startup` → `handle_session_birth` → helper,
+    /// then later → `reconcile_tmux_ownership` → helper). That's fine:
+    /// the second call short-circuits on the idempotent check.
+    pub(crate) async fn try_bind_tmux_env_for_pid(
+        self: &Arc<Self>,
+        pid: u32,
+        session_id: &str,
+    ) -> bool {
+        // Step 1: read TMUX env vars from the process. Fast path — no lock.
+        let Some(env) = crate::live::env_probe::read_tmux_env(pid) else {
+            return false;
+        };
+
+        // Step 2: resolve pane_id to a tmux session name. Shells out to
+        // `tmux display-message`. Also no lock held — this can block.
+        let Some(tmux_name) = self.tmux.pane_to_session_name(&env.pane_id) else {
+            tracing::debug!(
+                session_id,
+                pid,
+                pane_id = %env.pane_id,
+                "env probe found TMUX_PANE but tmux display-message failed to resolve"
+            );
+            return false;
+        };
+
+        // Step 3: write ownership under the sessions write lock. Idempotent
+        // check short-circuits if ownership is already set to the same
+        // tmux name (common when startup Pass B re-runs over sessions that
+        // handle_session_birth already covered).
+        let mut sessions = self.sessions.write().await;
+        let Some(session) = sessions.get_mut(session_id) else {
+            return false;
+        };
+
+        if let Some(existing) = session
+            .ownership
+            .as_ref()
+            .and_then(|o| o.tmux.as_ref())
+            .filter(|t| t.cli_session_id == tmux_name)
+        {
+            tracing::trace!(
+                session_id,
+                tmux = %existing.cli_session_id,
+                "tmux ownership already bound — short-circuit"
+            );
+            return true;
+        }
+
+        let mut ownership = session.ownership.clone().unwrap_or_default();
+        ownership.tmux = Some(claude_view_types::TmuxBinding {
+            cli_session_id: tmux_name.clone(),
+        });
+        session.ownership = Some(ownership);
+
+        let snapshot = session.clone();
+        drop(sessions);
+
+        let _ = self
+            .tx
+            .send(SessionEvent::SessionUpsert { session: snapshot });
+
+        tracing::info!(
+            session_id,
+            tmux = %tmux_name,
+            pid,
+            pane_id = %env.pane_id,
+            "Bound tmux ownership via env probe"
+        );
+
+        true
     }
 
     /// Promote sessions from crash-recovery snapshot.

@@ -33,6 +33,15 @@ pub trait TmuxCommand: Send + Sync {
     /// Returns None if the session doesn't exist or pane PID can't be read.
     fn pane_pid(&self, name: &str) -> Option<u32>;
 
+    /// Resolve a tmux pane_id (e.g. `%7`) to the session name that contains it.
+    ///
+    /// Used for env-probe based tmux discovery: we read `TMUX_PANE` from a
+    /// Claude PID's environment, then ask tmux which session that pane
+    /// belongs to so we can `attach-session -t <name>` later.
+    ///
+    /// Returns `None` if the pane doesn't exist or tmux is unavailable.
+    fn pane_to_session_name(&self, pane_id: &str) -> Option<String>;
+
     /// Check if the tmux binary is available.
     fn is_available(&self) -> bool;
 
@@ -143,6 +152,26 @@ impl TmuxCommand for RealTmux {
         stdout.trim().parse::<u32>().ok()
     }
 
+    fn pane_to_session_name(&self, pane_id: &str) -> Option<String> {
+        // `display-message -t <pane_id> -p '#S'` prints the session name for
+        // the pane. We pass pane_id (e.g. "%7") directly — tmux accepts it as
+        // a target. The `-p` flag makes it print to stdout without a message
+        // bar, so we capture the output.
+        let output = Command::new("tmux")
+            .args(["display-message", "-t", pane_id, "-p", "#S"])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let name = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if name.is_empty() {
+            None
+        } else {
+            Some(name)
+        }
+    }
+
     fn is_available(&self) -> bool {
         Command::new("tmux")
             .arg("-V")
@@ -206,6 +235,8 @@ pub mod mock {
     pub struct MockTmux {
         sessions: Mutex<HashSet<String>>,
         pane_pids: Mutex<HashMap<String, u32>>,
+        /// pane_id (e.g. "%0") -> session name mapping for pane_to_session_name.
+        pane_to_session: Mutex<HashMap<String, String>>,
         available: bool,
         /// Auto-assigned PID counter for new sessions.
         next_pid: Mutex<u32>,
@@ -217,6 +248,7 @@ pub mod mock {
             Self {
                 sessions: Mutex::new(HashSet::new()),
                 pane_pids: Mutex::new(HashMap::new()),
+                pane_to_session: Mutex::new(HashMap::new()),
                 available: true,
                 next_pid: Mutex::new(900_000),
             }
@@ -229,6 +261,7 @@ pub mod mock {
             Self {
                 sessions: Mutex::new(HashSet::new()),
                 pane_pids: Mutex::new(HashMap::new()),
+                pane_to_session: Mutex::new(HashMap::new()),
                 available: true,
                 next_pid: Mutex::new(pid),
             }
@@ -239,6 +272,7 @@ pub mod mock {
             Self {
                 sessions: Mutex::new(HashSet::new()),
                 pane_pids: Mutex::new(HashMap::new()),
+                pane_to_session: Mutex::new(HashMap::new()),
                 available: false,
                 next_pid: Mutex::new(900_000),
             }
@@ -247,6 +281,16 @@ pub mod mock {
         /// Get the set of active session names (for assertions).
         pub fn active_sessions(&self) -> HashSet<String> {
             self.sessions.lock().unwrap().clone()
+        }
+
+        /// Register a pane_id -> session_name mapping for tests that exercise
+        /// env-probe based tmux discovery. Call this when seeding a mock
+        /// tmux state with a session that has a known pane.
+        pub fn register_pane(&self, pane_id: &str, session_name: &str) {
+            self.pane_to_session
+                .lock()
+                .unwrap()
+                .insert(pane_id.to_string(), session_name.to_string());
         }
     }
 
@@ -292,6 +336,10 @@ pub mod mock {
 
         fn pane_pid(&self, name: &str) -> Option<u32> {
             self.pane_pids.lock().unwrap().get(name).copied()
+        }
+
+        fn pane_to_session_name(&self, pane_id: &str) -> Option<String> {
+            self.pane_to_session.lock().unwrap().get(pane_id).cloned()
         }
 
         fn is_available(&self) -> bool {

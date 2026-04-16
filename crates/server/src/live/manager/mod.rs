@@ -411,7 +411,19 @@ impl LiveSessionManager {
         }
 
         // Register PID with death watcher for immediate exit notification.
-        self._death_watcher.watch(pid, session_id).await;
+        self._death_watcher.watch(pid, session_id.clone()).await;
+
+        // Runtime tmux-ownership discovery. Reads the PID's environment for
+        // `TMUX_PANE`, resolves to a tmux session name, and writes
+        // `ownership.tmux` if the process is inside a tmux pane. Covers
+        // user-spawned tmux sessions (regardless of process-tree depth)
+        // that the POST handler never saw — see
+        // `manager/startup.rs::try_bind_tmux_env_for_pid` for details.
+        //
+        // Runs after coordinator.handle() so the session is already in the
+        // map; causes at most one extra SessionUpsert broadcast with the
+        // tmux binding filled in. No-op when the process isn't in tmux.
+        self.try_bind_tmux_env_for_pid(pid, &session_id).await;
     }
 
     /// Subscribe to session events for SSE streaming.

@@ -21,14 +21,30 @@ const SCROLLBACK_BYTES: usize = 64 * 1024;
 /// mpsc write channel capacity: 64 keystroke messages.
 const WRITE_CHANNEL_CAPACITY: usize = 64;
 
-/// Session ID format: cv-{8 lowercase hex chars}, total length 11.
-/// Matches sidecar regex: /^cv-[a-f0-9]{8}$/
+/// Validate a tmux target name used as a WebSocket path segment.
+///
+/// Accepts any name that is safe to pass to `tmux attach-session -t <name>`
+/// and that tmux itself can parse without ambiguity:
+///
+/// - length 1..=128
+/// - characters restricted to `[A-Za-z0-9._-]`
+///
+/// This covers both claude-view-spawned sessions (`cv-abcd1234`) and
+/// user-spawned sessions discovered via env-probe (`work`, `dev_env`,
+/// `my-session`, `0`). Excludes anything that would break tmux argument
+/// parsing or (defence in depth) leak into a shell: `/`, `:`, `;`, `|`,
+/// `&`, `$`, backticks, quotes, whitespace, control characters.
+///
+/// Safe because the PTY layer uses `portable-pty`'s `CommandBuilder`
+/// which is exec-style (no shell) — but the stricter filter keeps the
+/// URL-path / log-line readable and prevents surprising tmux behavior on
+/// reserved characters.
 pub fn is_valid_session_id(id: &str) -> bool {
-    id.len() == 11
-        && id.starts_with("cv-")
-        && id[3..]
-            .chars()
-            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
+    if id.is_empty() || id.len() > 128 {
+        return false;
+    }
+    id.chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
 }
 
 /// A live terminal session attached to a tmux session via PTY.
@@ -239,20 +255,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn valid_session_ids() {
+    fn valid_claude_view_spawned_session_ids() {
+        // Backward compat: cv-*-spawned sessions still valid.
         assert!(is_valid_session_id("cv-abcd1234"));
         assert!(is_valid_session_id("cv-00000000"));
         assert!(is_valid_session_id("cv-ffffffff"));
     }
 
     #[test]
-    fn invalid_session_ids() {
+    fn valid_user_spawned_tmux_names() {
+        // Env-probe discovers user-spawned tmux sessions with arbitrary names.
+        assert!(is_valid_session_id("work"));
+        assert!(is_valid_session_id("my-session"));
+        assert!(is_valid_session_id("dev_env"));
+        assert!(is_valid_session_id("0"));
+        assert!(is_valid_session_id("project.branch"));
+        assert!(is_valid_session_id("MixedCase"));
+        assert!(is_valid_session_id("a"));
+        assert!(is_valid_session_id(&"a".repeat(128)));
+    }
+
+    #[test]
+    fn rejects_shell_metacharacters_and_path_separators() {
         assert!(!is_valid_session_id("evil; rm -rf /"));
-        assert!(!is_valid_session_id("cv-short"));
+        assert!(!is_valid_session_id("a/b"));
+        assert!(!is_valid_session_id("a:b"));
+        assert!(!is_valid_session_id("a b"));
+        assert!(!is_valid_session_id("$foo"));
+        assert!(!is_valid_session_id("`cmd`"));
+        assert!(!is_valid_session_id("a|b"));
+        assert!(!is_valid_session_id("a&b"));
+        assert!(!is_valid_session_id("a\"b"));
+        assert!(!is_valid_session_id("a'b"));
+        assert!(!is_valid_session_id("a\nb"));
+        assert!(!is_valid_session_id("a\tb"));
+    }
+
+    #[test]
+    fn rejects_empty_and_overlong_names() {
         assert!(!is_valid_session_id(""));
-        assert!(!is_valid_session_id("xx-abcd1234"));
-        assert!(!is_valid_session_id("cv-abcd123g")); // 'g' not hex
-        assert!(!is_valid_session_id("cv-abcd12345")); // too long
+        assert!(!is_valid_session_id(&"a".repeat(129)));
     }
 
     #[test]
