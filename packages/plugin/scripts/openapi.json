@@ -2272,8 +2272,8 @@
         "tags": [
           "projects"
         ],
-        "summary": "GET /api/projects - List all projects as lightweight summaries.",
-        "description": "Returns ProjectSummary[] (no sessions array). ~2 KB for 10 projects.",
+        "summary": "GET /api/projects — list all projects backed by the in-memory catalog.",
+        "description": "`is_archived` is derived from filesystem existence of the project directory —\nif the dir has been deleted, the project is flagged archived. This matches\nthe old DB-backed behavior exactly; the SQL query used `COUNT dir_exists`.",
         "operationId": "list_projects",
         "responses": {
           "200": {
@@ -2298,7 +2298,6 @@
           "projects"
         ],
         "summary": "GET /api/projects/:id/branches - List distinct branches with session counts.",
-        "description": "Returns all unique git_branch values for sessions in this project,\nsorted by session count descending.",
         "operationId": "list_project_branches",
         "parameters": [
           {
@@ -2330,7 +2329,7 @@
         "tags": [
           "projects"
         ],
-        "summary": "GET /api/projects/:id/sessions - Paginated sessions for a project.",
+        "summary": "GET /api/projects/:id/sessions — paginated sessions for one project.",
         "operationId": "list_project_sessions",
         "parameters": [
           {
@@ -2371,6 +2370,7 @@
           {
             "name": "branch",
             "in": "query",
+            "description": "Accepted for API compatibility but not yet honored — branch filtering\nrequires per-session JSONL parse + git-branch derivation. Deferred.",
             "required": false,
             "schema": {
               "type": [
@@ -2382,6 +2382,7 @@
           {
             "name": "includeSidechains",
             "in": "query",
+            "description": "Accepted for API compatibility; the catalog already excludes sidechains.",
             "required": false,
             "schema": {
               "type": "boolean"
@@ -2891,8 +2892,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /api/sessions - List all sessions with filter/sort (Step 20).",
-        "description": "Filters:\n- `all` (default): no filter\n- `has_commits`: commit_count > 0\n- `high_reedit`: reedit_rate > 0.2\n- `long_session`: duration_seconds > 1800 (30 minutes)\n\nSorts:\n- `recent` (default): first_message_at DESC\n- `tokens`: (total_input + total_output) DESC\n- `prompts`: user_prompt_count DESC\n- `files_edited`: files_edited_count DESC\n- `duration`: duration_seconds DESC\n\nReturns 400 with valid options list for invalid filter/sort.",
+        "summary": "GET /api/sessions — list sessions with filter/sort/search.",
+        "description": "See the module docstring for the pipeline. See\n[`SessionsListQuery`](super::types::SessionsListQuery) for the full set\nof supported parameters.",
         "operationId": "list_sessions",
         "parameters": [
           {
@@ -3294,8 +3295,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "GET /api/sessions/:id - Get extended session detail (Step 21).",
-        "description": "Returns session with:\n- All atomic units (files_read, files_edited arrays)\n- Derived metrics (tokens_per_prompt, reedit_rate, etc.)\n- Linked commits with tier",
+        "summary": "GET /api/sessions/:id — extended session detail.",
+        "description": "Pipeline (same shape as the list endpoint, scoped to one id):\n  1. `SessionCatalog::get` — id → file metadata.\n  2. `session_stats::extract_stats` — JSONL on-demand compute.\n  3. `enrichment::fetch_enrichments` — bulk DB layer (archived, commits_count,\n     skills, reedit_rate). Single-id call here; same layer as list path.\n  4. `get_commits_for_session` — per-session linked commit detail (full tier +\n     evidence), not derivable from JSONL so still DB-backed.\n  5. Read task/todo/plan files from `~/.claude/{tasks,todos,plans}`.",
         "operationId": "get_session_detail",
         "parameters": [
           {
