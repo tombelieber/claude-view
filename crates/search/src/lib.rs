@@ -15,10 +15,12 @@
 pub mod grep;
 pub mod grep_types;
 pub mod indexer;
+pub mod migration;
 pub mod prompt_index;
 pub mod query;
 pub mod types;
 pub mod unified;
+pub mod version_layout;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -199,6 +201,25 @@ impl SearchIndex {
         // the process is interrupted, the next startup re-triggers the full reindex.
 
         Self::from_index(index, schema, needs_rebuild, Some(version_path))
+    }
+
+    /// Open the search index using the versioned blue-green layout.
+    ///
+    /// `base_dir` is the parent directory (e.g. `~/.claude-view/search-index/`).
+    /// Returns a `VersionedOpenResult` containing the index to use immediately
+    /// plus an optional `PendingMigration` that the caller must hand off to
+    /// the background rebuild orchestrator.
+    ///
+    /// See `migration::resolve_open_plan` for the decision tree.
+    pub fn open_versioned(
+        base_dir: &Path,
+    ) -> Result<crate::migration::VersionedOpenResult, SearchError> {
+        let plan = crate::migration::resolve_open_plan(base_dir)?;
+        let index = Self::open(&plan.open_path)?;
+        Ok(crate::migration::VersionedOpenResult {
+            index,
+            pending_migration: plan.pending_migration,
+        })
     }
 
     /// Create a Tantivy index entirely in RAM. Useful for tests.
@@ -1290,5 +1311,54 @@ mod tests {
                 "fuzzy-only match should score lower than exact match"
             );
         }
+    }
+
+    #[test]
+    fn test_open_versioned_first_time_creates_v_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = SearchIndex::open_versioned(dir.path()).unwrap();
+        assert!(result.pending_migration.is_none());
+        // The current versioned directory must exist after opening
+        let expected = dir.path().join(format!("v{}", SEARCH_SCHEMA_VERSION));
+        assert!(expected.exists());
+    }
+
+    #[test]
+    fn test_open_versioned_legacy_flat_matching_version_no_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create a real legacy index by opening at the root, indexing, committing
+        {
+            let idx = SearchIndex::open(dir.path()).unwrap();
+            let doc = SearchDocument {
+                session_id: "s1".into(),
+                project: "p".into(),
+                branch: "".into(),
+                model: "".into(),
+                role: "user".into(),
+                content: "hello migration".into(),
+                turn_number: 1,
+                timestamp: 0,
+                skills: vec![],
+            };
+            idx.index_session("s1", &[doc]).unwrap();
+            idx.commit().unwrap();
+            idx.mark_schema_synced();
+        }
+
+        // Re-open via versioned API — should migrate in-place, no rebuild needed
+        let result = SearchIndex::open_versioned(dir.path()).unwrap();
+        assert!(result.pending_migration.is_none());
+
+        // Index must be queryable AND the versioned dir must exist
+        result.index.reader.reload().unwrap();
+        let r = result
+            .index
+            .search("hello", None, 10, 0, false)
+            .expect("search after migration");
+        assert_eq!(r.total_sessions, 1, "indexed data preserved by migration");
+
+        let v_dir = dir.path().join(format!("v{}", SEARCH_SCHEMA_VERSION));
+        assert!(v_dir.exists());
+        assert!(v_dir.join("schema_version").exists());
     }
 }
