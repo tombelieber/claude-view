@@ -444,7 +444,14 @@ async fn ws_initial_buffer_sent() {
 // Test 4: ws_live_lines_streamed
 // =========================================================================
 
+/// `#[serial]`: macOS FSEvents coalescing becomes unreliable under heavy
+/// parallel-test CPU pressure (2800+ tests running simultaneously). This
+/// specific test depends on FSEvents firing within 30s after a file write;
+/// under nextest's default parallelism that window was blowing out and
+/// producing flakes in `cq test --workspace`. Serializing it removes the
+/// load-dependent timing without weakening the assertion.
 #[tokio::test]
+#[serial_test::serial(fsevents)]
 async fn ws_live_lines_streamed() {
     let tmp = tempfile::NamedTempFile::new().unwrap();
     // Write initial content
