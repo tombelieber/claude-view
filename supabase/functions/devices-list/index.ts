@@ -1,6 +1,6 @@
+import { extractCaller, serviceRoleClient } from '../_shared/auth.ts'
 import { correlationIdFrom } from '../_shared/correlation.ts'
 import { errorResponse, jsonResponse } from '../_shared/errors.ts'
-import { extractCaller, serviceRoleClient } from '../_shared/auth.ts'
 
 Deno.serve(async (req) => {
   const correlation_id = correlationIdFrom(req)

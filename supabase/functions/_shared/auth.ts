@@ -9,7 +9,7 @@
 // across every edge function gets compile-time schema validation. A new
 // column in public.devices → regenerate types → every consumer updates.
 
-import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
+import { type SupabaseClient, createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0'
 
 // Import the generated Database type from the shared workspace package.
 // This is the single source of truth for schema shape across the whole
