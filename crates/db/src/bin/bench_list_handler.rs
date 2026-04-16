@@ -91,16 +91,10 @@ fn main() {
 
     // Q1 — recent 50 all projects
     let q1_filter = Filter::default();
-    let q1_p50;
-    let q1_p95;
-    let q1_max;
-    let (a, b, c) = time_iter(ITERS, || {
+    let (q1_p50, q1_p95, q1_max) = time_iter(ITERS, || {
         let resp: SessionsListResponse = list_sessions(&idx, &q1_filter, Sort::LastTsDesc, 50);
         let _json = serde_json::to_string(&resp).unwrap();
     });
-    q1_p50 = a;
-    q1_p95 = b;
-    q1_max = c;
 
     // Q2 — recent 50 one project
     let q2_filter = Filter::by_project(target_project.clone());
