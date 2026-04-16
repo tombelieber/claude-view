@@ -6,3 +6,9 @@
 .env.keys
 .env.local
 .env.*.local
+
+# Supabase Edge Function env (service role key)
+.env
+
+# Local seed data
+seed/local.sql
