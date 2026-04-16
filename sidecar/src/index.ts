@@ -8,6 +8,7 @@ import { createAdaptorServer } from '@hono/node-server'
 import { Hono } from 'hono'
 import { WebSocketServer } from 'ws'
 import { healthRouter } from './health.js'
+import { startMemoryMonitor } from './memory-monitor.js'
 import { startModelCacheRefresh, stopModelCacheRefresh } from './model-cache.js'
 import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
@@ -64,6 +65,8 @@ server.on('error', (err: NodeJS.ErrnoException) => {
   process.exit(1)
 })
 
+const memoryMonitor = startMemoryMonitor(() => registry.activeCount)
+
 server.listen(SIDECAR_PORT, () => {
   console.log(`[sidecar] Listening on :${SIDECAR_PORT}`)
   console.log(`[sidecar] PID: ${process.pid}`)
@@ -93,6 +96,7 @@ server.on('upgrade', (request, socket, head) => {
 })
 
 async function shutdown() {
+  memoryMonitor.stop()
   stopModelCacheRefresh()
   wss.close()
   await registry.closeAll()

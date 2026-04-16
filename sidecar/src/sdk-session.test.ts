@@ -54,6 +54,15 @@ function makeMockQuery(): MockQuery {
 }
 
 function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
+  // Default `lastSessionInit` to a non-null stub so `waitForSessionInit`'s
+  // dual-condition check (sessionId AND lastSessionInit) can be satisfied by
+  // tests that previously only populated sessionId. Individual tests that
+  // need `lastSessionInit: null` can still override it.
+  const defaultSessionInit = {
+    type: 'session_init',
+    sessionId: 'stub-session-id',
+    // biome-ignore lint/suspicious/noExplicitAny: minimal stub for test
+  } as any
   return {
     controlId: 'ctrl-test',
     sessionId: '',
@@ -72,7 +81,7 @@ function makeStubCs(overrides: Partial<ControlSession> = {}): ControlSession {
     permissions: { drainAll: vi.fn() } as any,
     permissionMode: 'default',
     wsClients: new Set(),
-    lastSessionInit: null,
+    lastSessionInit: defaultSessionInit,
     accumulator: new StreamAccumulator(),
     ...overrides,
   }

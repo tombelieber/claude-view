@@ -228,6 +228,45 @@ function genId(): string {
   return `block-${++_idCounter}`
 }
 
+/** Hard caps to prevent per-session memory from growing without bound — the
+ *  cause of the autonomous-recovery + OOM loop in #54. Long-running sessions
+ *  (thousands of tool calls) previously retained every block, every raw SDK
+ *  envelope, and every bash output in memory forever. These limits are
+ *  generous enough that normal UX sessions never hit them and small enough
+ *  that pathological runs can't exhaust 4-8 GiB of heap. */
+const MAX_BLOCKS = 10_000
+const MAX_PRE_INIT_BUFFER = 1_000
+const MAX_TOOL_OUTPUT_BYTES = 100_000
+const MAX_TOOL_SUMMARY_BYTES = 10_000
+const MAX_RAW_JSON_BYTES = 10_000
+
+/** Truncate a string to `maxBytes` counting UTF-8 bytes, appending a marker.
+ *  Oversized tool outputs (massive bash dumps, build logs) and SDK envelopes
+ *  are the #1 source of per-session heap bloat in long-running sessions. */
+function truncateString(s: string, maxBytes: number): string {
+  // Fast path for common case — most strings are small ASCII.
+  if (s.length <= maxBytes) return s
+  const marker = `\n[... truncated, original ${s.length} bytes ...]`
+  return s.slice(0, maxBytes - marker.length) + marker
+}
+
+/** Truncate any JSON-serializable value that exceeds `maxBytes` when encoded.
+ *  Returns the original value unchanged if it fits. */
+function truncateJson(value: Record<string, unknown>, maxBytes: number): Record<string, unknown> {
+  let encoded: string
+  try {
+    encoded = JSON.stringify(value)
+  } catch {
+    return { _truncated: 'not serializable' }
+  }
+  if (encoded.length <= maxBytes) return value
+  return {
+    _truncated: true,
+    _originalBytes: encoded.length,
+    _preview: encoded.slice(0, maxBytes - 100),
+  }
+}
+
 export class StreamAccumulator {
   private blocks: ConversationBlock[] = []
   private currentAssistant: AssistantBlock | null = null
@@ -236,6 +275,31 @@ export class StreamAccumulator {
   private buffer: { event: ServerEvent | SequencedEvent; raw?: Record<string, unknown> }[] = []
   /** Raw SDK message for the current push — available during handleEvent. */
   private currentRaw: Record<string, unknown> | undefined = undefined
+  /** True once we've logged a block-eviction warning for this session. Further
+   *  evictions are silent to avoid log spam, but the flag lets diagnostics
+   *  confirm eviction happened. */
+  private evictionWarned = false
+
+  /** Drop oldest non-anchor blocks when we cross MAX_BLOCKS. Turn boundaries
+   *  are kept as scroll anchors so the UI's conversation shape stays coherent;
+   *  text/tool/progress blocks are the expendable majority of the history. */
+  private enforceBlockCap(): void {
+    if (this.blocks.length <= MAX_BLOCKS) return
+    const excess = this.blocks.length - MAX_BLOCKS
+    let dropped = 0
+    while (dropped < excess && this.blocks.length > 0) {
+      const idx = this.blocks.findIndex((b) => b.type !== 'turn_boundary')
+      if (idx === -1) break
+      this.blocks.splice(idx, 1)
+      dropped++
+    }
+    if (!this.evictionWarned && dropped > 0) {
+      this.evictionWarned = true
+      console.warn(
+        `[accumulator] evicted ${dropped} blocks — session exceeded ${MAX_BLOCKS} blocks`,
+      )
+    }
+  }
 
   push(event: ServerEvent | SequencedEvent, rawSdkMessage?: Record<string, unknown>): void {
     this.pushCounter++
@@ -245,11 +309,16 @@ export class StreamAccumulator {
       this.currentRaw = rawSdkMessage
       this.handleEvent(event)
       this.currentRaw = undefined
+      this.enforceBlockCap()
       return
     }
 
-    // Buffer events before session_init
+    // Buffer events before session_init — hard cap to prevent runaway growth
+    // if session_init never arrives (SDK stall, auth failure, etc.).
     if (!this.initialized && event.type !== 'session_init') {
+      if (this.buffer.length >= MAX_PRE_INIT_BUFFER) {
+        this.buffer.shift() // drop oldest
+      }
       this.buffer.push({ event, raw: rawSdkMessage })
       return
     }
@@ -257,6 +326,7 @@ export class StreamAccumulator {
     this.currentRaw = rawSdkMessage
     this.handleEvent(event)
     this.currentRaw = undefined
+    this.enforceBlockCap()
   }
 
   getBlocks(): ConversationBlock[] {
@@ -469,7 +539,11 @@ export class StreamAccumulator {
   private handleToolUseResult(event: ToolUseResult): void {
     const execution = this.findToolExecution(event.toolUseId)
     if (execution) {
-      execution.result = { output: event.output, isError: event.isError, isReplay: event.isReplay }
+      execution.result = {
+        output: truncateString(event.output, MAX_TOOL_OUTPUT_BYTES),
+        isError: event.isError,
+        isReplay: event.isReplay,
+      }
       execution.status = event.isError ? 'error' : 'complete'
     }
   }
@@ -497,10 +571,11 @@ export class StreamAccumulator {
   }
 
   private handleToolSummary(event: ToolSummary): void {
+    const truncated = truncateString(event.summary, MAX_TOOL_SUMMARY_BYTES)
     for (const toolUseId of event.precedingToolUseIds) {
       const execution = this.findToolExecution(toolUseId)
       if (execution) {
-        execution.summary = event.summary
+        execution.summary = truncated
       }
     }
   }
@@ -673,11 +748,14 @@ export class StreamAccumulator {
   }
 
   /** Extract raw SDK message envelope, omitting the large `message.content`
-   *  payload that is already parsed into structured block fields. */
+   *  payload that is already parsed into structured block fields. Envelopes
+   *  exceeding MAX_RAW_JSON_BYTES are replaced with a truncation stub — the
+   *  metadata is debug-only and pathological SDK messages would otherwise
+   *  retain megabytes per block. */
   private extractRawJson(): Record<string, unknown> | undefined {
     if (!this.currentRaw) return undefined
     const { message, ...envelope } = this.currentRaw
-    // Keep envelope metadata, drop parsed content to avoid duplication
-    return Object.keys(envelope).length > 0 ? envelope : undefined
+    if (Object.keys(envelope).length === 0) return undefined
+    return truncateJson(envelope, MAX_RAW_JSON_BYTES)
   }
 }
