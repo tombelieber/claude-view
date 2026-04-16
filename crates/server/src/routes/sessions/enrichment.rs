@@ -14,6 +14,10 @@ use claude_view_db::{Database, DbResult, LinkedCommit};
 
 /// Fields that live only in the SQLite mirror. Everything else comes
 /// from the JSONL file via [`claude_view_core::session_stats`].
+#[expect(
+    dead_code,
+    reason = "scaffolding for the JSONL-first sessions path — consumer wiring in a follow-up PR per 0543809c"
+)]
 #[derive(Debug, Clone, Default)]
 pub struct SessionEnrichment {
     /// RFC-3339 timestamp set when the session was archived, or `None`.
@@ -33,6 +37,10 @@ pub struct SessionEnrichment {
 ///
 /// Ids with no row in the `sessions` table are simply absent from the map —
 /// callers should treat missing ids as [`SessionEnrichment::default()`].
+#[expect(
+    dead_code,
+    reason = "scaffolding for the JSONL-first sessions path — consumer wiring in a follow-up PR per 0543809c"
+)]
 pub async fn fetch_enrichments(
     db: &Database,
     session_ids: &[String],
