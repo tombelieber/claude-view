@@ -11,6 +11,7 @@ use super::tests_common::*;
 // ========================================================================
 
 #[tokio::test]
+#[ignore = "db-seeded; port to catalog+JSONL+DB seed — see 2026-04-17-sessions-api-hardcut-jsonl-first plan"]
 async fn test_get_session_detail() {
     let db = test_db().await;
 

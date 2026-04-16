@@ -1,23 +1,28 @@
-//! GET /api/sessions/:id — Extended session detail with commits and derived metrics.
+//! GET /api/sessions/:id — Extended session detail (JSONL-first + DB enrichment).
 
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::Json;
-use claude_view_core::task_files;
-use claude_view_core::todo_files;
+use claude_view_core::{session_stats, task_files, todo_files};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
+use super::enrichment::fetch_enrichments;
+use super::helpers::build_session_info;
 use super::types::{CommitWithTier, DerivedMetrics, SessionDetail};
 
-/// GET /api/sessions/:id - Get extended session detail (Step 21).
+/// GET /api/sessions/:id — extended session detail.
 ///
-/// Returns session with:
-/// - All atomic units (files_read, files_edited arrays)
-/// - Derived metrics (tokens_per_prompt, reedit_rate, etc.)
-/// - Linked commits with tier
+/// Pipeline (same shape as the list endpoint, scoped to one id):
+///   1. `SessionCatalog::get` — id → file metadata.
+///   2. `session_stats::extract_stats` — JSONL on-demand compute.
+///   3. `enrichment::fetch_enrichments` — bulk DB layer (archived, commits_count,
+///      skills, reedit_rate). Single-id call here; same layer as list path.
+///   4. `get_commits_for_session` — per-session linked commit detail (full tier +
+///      evidence), not derivable from JSONL so still DB-backed.
+///   5. Read task/todo/plan files from `~/.claude/{tasks,todos,plans}`.
 #[utoipa::path(get, path = "/api/sessions/{id}", tag = "sessions",
     params(("id" = String, Path, description = "Session ID")),
     responses(
@@ -29,22 +34,39 @@ pub async fn get_session_detail(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<SessionDetail>> {
-    // Find session across all projects
-    let projects = state.db.list_projects().await?;
-    let session = projects
-        .into_iter()
-        .flat_map(|p| p.sessions)
-        .find(|s| s.id == session_id)
+    // 1. Catalog — authoritative source of file path for any session on disk.
+    let row = state
+        .session_catalog
+        .get(&session_id)
         .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
 
-    // Get linked commits
+    // 2. JSONL stats — ~0.28ms p95.
+    let stats = session_stats::extract_stats(&row.file_path, row.is_compressed)
+        .map_err(|e| ApiError::Internal(format!("JSONL parse failed: {e}")))?;
+
+    // 3. DB enrichment — archived, commit_count, skills_used, reedit_rate.
+    //    `linked_commits` isn't populated here; we fetch tier/evidence via the
+    //    dedicated commits query below so the response preserves CommitWithTier.
+    let enrichment_map = fetch_enrichments(&state.db, std::slice::from_ref(&session_id))
+        .await
+        .map_err(ApiError::from)?;
+    let enrichment = enrichment_map.get(&session_id).cloned().unwrap_or_default();
+
+    // Build the base SessionInfo, then layer in the DB-sourced fields the
+    // list path also applies.
+    let mut info = build_session_info(&row, &stats, &state.pricing);
+    info.skills_used = enrichment.skills_used.clone();
+    info.commit_count = enrichment.commit_count as u32;
+    info.reedited_files_count =
+        (enrichment.reedit_rate * stats.files_edited_count as f32).round() as u32;
+
+    // 4. Linked commits with tier — DB-only, not derivable from JSONL.
     let commits_raw = state.db.get_commits_for_session(&session_id).await?;
     let commits: Vec<CommitWithTier> = commits_raw.into_iter().map(Into::into).collect();
 
-    // Calculate derived metrics
-    let derived_metrics = DerivedMetrics::from(&session);
+    let derived_metrics = DerivedMetrics::from(&info);
 
-    // Read persistent task files (if any)
+    // 5. Task / todo / plan sidecar files.
     let mut warnings: Vec<String> = Vec::new();
 
     let tasks = match task_files::claude_tasks_dir() {
@@ -57,28 +79,27 @@ pub async fn get_session_detail(
         }
     };
 
-    // Read agent-level todo checklists (if any, 96% are empty)
     let todos = match todo_files::claude_todos_dir() {
         Some(dir) => todo_files::parse_session_todos(&dir, &session_id),
         None => Vec::new(),
     };
 
-    // Check if plan files exist for this session's slug
-    let has_plans = session.slug.as_ref().is_some_and(|slug| {
-        match claude_view_core::plan_files::claude_plans_dir() {
-            Some(dir) => claude_view_core::plan_files::has_plan_files(&dir, slug),
-            None => {
-                warnings.push(
-                    "Failed to check plan files: could not resolve ~/.claude/plans directory"
-                        .into(),
-                );
-                false
-            }
-        }
-    });
+    let has_plans =
+        info.slug.as_ref().is_some_and(
+            |slug| match claude_view_core::plan_files::claude_plans_dir() {
+                Some(dir) => claude_view_core::plan_files::has_plan_files(&dir, slug),
+                None => {
+                    warnings.push(
+                        "Failed to check plan files: could not resolve ~/.claude/plans directory"
+                            .into(),
+                    );
+                    false
+                }
+            },
+        );
 
     Ok(Json(SessionDetail {
-        info: session,
+        info,
         commits,
         derived_metrics,
         tasks,
