@@ -26,6 +26,7 @@ import { CoachCard } from './CoachCard'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
 import { DashboardSkeleton, EmptyState, ErrorState } from './LoadingStates'
+import { TokenCostSummary } from './TokenCostSummary'
 import { DateRangePicker, TimeRangeSelector } from './ui'
 
 /** Format a timestamp to a human-readable date */
@@ -232,6 +233,13 @@ export function StatsDashboard() {
             {sessionBreakdown.totalObservedSessions.toLocaleString()} total.
           </p>
         </div>
+
+        {/* Tokens + Cost hero summary — sits directly under the usage header */}
+        <TokenCostSummary
+          timeRange={{ from: timeRange.fromTimestamp, to: timeRange.toTimestamp }}
+          project={projectFilter}
+          branch={branchFilter}
+        />
 
         {/* Phase 3: Week-over-week metrics grid */}
         {stats.trends && (

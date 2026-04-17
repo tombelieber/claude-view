@@ -6,8 +6,6 @@ import {
 } from '../hooks/use-ai-generation'
 import { useIsMobile } from '../hooks/use-media-query'
 import { formatModelName } from '../lib/format-model'
-import { CostBreakdownCard } from './CostBreakdownCard'
-import { TokenBreakdown } from './TokenBreakdown'
 import { ProgressBar } from './ui'
 
 type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
@@ -105,16 +103,17 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
     0,
   )
 
-  // Check if we have any meaningful data
-  const hasTokenData = stats.totalInputTokens > 0 || stats.totalOutputTokens > 0
-  const hasFileData = stats.filesCreated > 0
+  // Check if we have any meaningful data for the by-model / by-project breakdowns
+  const hasModelData = stats.tokensByModel.length > 0
+  const hasProjectData = stats.tokensByProject.length > 0
   const scopeMeta = stats.meta as ScopeMeta | undefined
   const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
   const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
   const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
 
-  // If no data at all, don't show the component
-  if (!hasTokenData && !hasFileData) {
+  // Headline tokens + cost now live in TokenCostSummary at the top of the dashboard.
+  // If there's nothing to show here (neither by-model nor by-project data), hide entirely.
+  if (!hasModelData && !hasProjectData) {
     return null
   }
 
@@ -181,19 +180,6 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
           </div>
         )}
       </div>
-
-      {/* Token Breakdown (stacked bar + 4 detail cards) */}
-      {hasTokenData && (
-        <TokenBreakdown
-          totalInputTokens={stats.totalInputTokens}
-          totalOutputTokens={stats.totalOutputTokens}
-          cacheReadTokens={stats.cacheReadTokens}
-          cacheCreationTokens={stats.cacheCreationTokens}
-        />
-      )}
-
-      {/* Cost Breakdown */}
-      {stats.cost && stats.cost.totalCostUsd > 0 && <CostBreakdownCard cost={stats.cost} />}
     </div>
   )
 }

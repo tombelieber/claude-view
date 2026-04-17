@@ -115,12 +115,9 @@ describe('AIGenerationStats', () => {
   })
 
   describe('no meaningful data state', () => {
-    it('should return null when all tokens and files are zero', () => {
+    it('should return null when tokensByModel and tokensByProject are both empty', () => {
       mockUseAIGenerationStats.mockReturnValue({
         data: makeStats({
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          filesCreated: 0,
           tokensByModel: [],
           tokensByProject: [],
         }),
@@ -160,26 +157,9 @@ describe('AIGenerationStats', () => {
       ).toBeInTheDocument()
     })
 
-    it('should render TokenBreakdown with total tokens processed', () => {
-      render(<AIGenerationStats />)
-      // Total: 50000 + 30000 + 10000 + 5000 = 95000 -> 95.0k
-      expect(screen.getByText('Total Tokens Processed')).toBeInTheDocument()
-      expect(screen.getByText('95.0k')).toBeInTheDocument()
-    })
-
-    it('should render TokenBreakdown detail cards', () => {
-      render(<AIGenerationStats />)
-      // The 4 detail cards: Cache Read, Cache Write, Output, Fresh Input
-      expect(screen.getAllByText('Cache Read').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Cache Write').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Output').length).toBeGreaterThanOrEqual(1)
-      expect(screen.getAllByText('Fresh Input').length).toBeGreaterThanOrEqual(1)
-    })
-
-    it('should render CostBreakdownCard when cost data is present', () => {
-      render(<AIGenerationStats />)
-      expect(screen.getByText('Total Cost')).toBeInTheDocument()
-    })
+    // TokenBreakdown + CostBreakdownCard were hoisted out of this component
+    // into TokenCostSummary (rendered at the top of StatsDashboard).
+    // Their assertions now live in TokenCostSummary.test.tsx.
   })
 
   describe('token usage by model', () => {
@@ -233,56 +213,6 @@ describe('AIGenerationStats', () => {
       render(<AIGenerationStats />)
 
       expect(screen.queryByText('Top Projects by Token Usage')).not.toBeInTheDocument()
-    })
-  })
-
-  describe('token breakdown visibility', () => {
-    it('should show TokenBreakdown when token data is present', () => {
-      mockUseAIGenerationStats.mockReturnValue({
-        data: makeStats(),
-        isLoading: false,
-        error: null,
-      })
-      render(<AIGenerationStats />)
-
-      expect(screen.getByText('Total Tokens Processed')).toBeInTheDocument()
-    })
-
-    it('should hide TokenBreakdown when all token values are zero', () => {
-      mockUseAIGenerationStats.mockReturnValue({
-        data: makeStats({
-          totalInputTokens: 0,
-          totalOutputTokens: 0,
-          cacheReadTokens: 0,
-          cacheCreationTokens: 0,
-          filesCreated: 1,
-        }),
-        isLoading: false,
-        error: null,
-      })
-      render(<AIGenerationStats />)
-
-      expect(screen.queryByText('Total Tokens Processed')).not.toBeInTheDocument()
-    })
-
-    it('should hide CostBreakdownCard when cost totalCostUsd is zero', () => {
-      mockUseAIGenerationStats.mockReturnValue({
-        data: makeStats({
-          cost: {
-            totalCostUsd: 0,
-            inputCostUsd: 0,
-            outputCostUsd: 0,
-            cacheReadCostUsd: 0,
-            cacheCreationCostUsd: 0,
-            cacheSavingsUsd: 0,
-          },
-        }),
-        isLoading: false,
-        error: null,
-      })
-      render(<AIGenerationStats />)
-
-      expect(screen.queryByText('Total Cost')).not.toBeInTheDocument()
     })
   })
 
