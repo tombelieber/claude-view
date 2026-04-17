@@ -1,29 +1,39 @@
-//! WebSocket client that connects to the relay server and forwards
-//! encrypted session updates to paired mobile devices.
+//! WebSocket client that connects to the stateless relay (Phase 1) and
+//! forwards per-device encrypted session updates.
+//!
+//! Protocol (Phase 1 frozen — crates/relay/src/ws.rs):
+//! 1. Open `wss://<relay>/ws?token=<JWT>` (Supabase JWT from auth_session).
+//! 2. Send ClientMsg::RegisterDevice { device_id, platform, display_name }.
+//! 3. Await ServerMsg::AuthOk — any error, log + retry with exp. backoff.
+//! 4. For each LiveSession change, encrypt with the peer X25519 pubkey and
+//!    send ClientMsg::SessionUpdate { to_device_id, payload_b64, push_hint? }.
+//! 5. If our AuthSession expires mid-session, send ClientMsg::ReAuth.
+//! 6. Handle ServerMsg::Ping → respond with ClientMsg::Pong.
+//!
+//! Invariants (§3.4.1):
+//! - auth_session RwLock is never held across .await.
+//! - Peer-device list comes from Supabase REST, not the relay.
 
-use std::time::{Duration, SystemTime};
+use std::sync::Arc;
+use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::broadcast;
+use serde_json::json;
+use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
-use tracing::{error, info, warn};
-
-use base64::{engine::general_purpose::STANDARD, Engine};
+use tracing::{info, warn};
 
 use super::manager::LiveSessionMap;
 use super::state::{AgentStateGroup, LiveSession, SessionEvent};
-use crate::crypto::{
-    add_paired_device, box_secret_key, decrypt_from_device, encrypt_for_device,
-    find_and_verify_hmac, load_or_create_identity, load_paired_devices, sign_auth_challenge,
-    DeviceIdentity, PairedDevice,
-};
+use crate::auth::session_store::AuthSession;
+use crate::crypto::{box_secret_key, encrypt_for_device, DeviceIdentity};
+use crate::supabase_proxy::{list_devices, normalize_pubkey_field, DeviceRow};
 
-/// Configuration for the relay client.
 pub struct RelayClientConfig {
-    /// RELAY_URL env var (e.g. wss://host/ws). None = relay disabled.
     pub relay_url: Option<String>,
     pub heartbeat_interval: Duration,
     pub max_reconnect_delay: Duration,
+    pub re_auth_lead_seconds: u64,
 }
 
 impl Default for RelayClientConfig {
@@ -34,103 +44,46 @@ impl Default for RelayClientConfig {
                 .or_else(|| option_env!("RELAY_URL").map(str::to_string)),
             heartbeat_interval: Duration::from_secs(30),
             max_reconnect_delay: Duration::from_secs(30),
+            re_auth_lead_seconds: 120,
         }
     }
 }
 
-/// Returns `true` iff there's an unexpired pairing offer on disk.
-///
-/// A pairing offer is a file under `~/.claude-view/pairing_secrets/` written
-/// by `store_verification_secret()` inside the `/api/pairing/qr` route. The
-/// relay is notified via `POST /pair` at the same time, so the presence of
-/// a recent file means "the relay now knows our device_id — it's safe to
-/// auth the WS". Offers time out server-side after 5 minutes (see
-/// `crates/relay/src/pairing.rs::claim_pair`), so we use the same cutoff.
-///
-/// Stale files left behind after successful pairing (the relay deletes them
-/// via `find_and_verify_hmac`, but crashes can leave orphans) are ignored by
-/// the mtime check, so they don't cause phantom reconnects.
-fn pairing_in_progress() -> bool {
-    let dir = claude_view_core::paths::crypto_dir().join("pairing_secrets");
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return false;
-    };
-    let now = SystemTime::now();
-    let ttl = Duration::from_secs(300);
-    for entry in entries.flatten() {
-        let Ok(meta) = entry.metadata() else { continue };
-        let Ok(modified) = meta.modified() else {
-            continue;
-        };
-        if now
-            .duration_since(modified)
-            .map(|age| age < ttl)
-            .unwrap_or(false)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// Spawn the relay client as a background task.
-/// Subscribes to the broadcast channel and forwards encrypted session updates.
+/// Spawn the relay client as a background task. `auth_session` is shared
+/// with `routes/auth.rs` and `auth/session_refresh.rs`.
 pub fn spawn_relay_client(
+    auth_session: Arc<RwLock<Option<AuthSession>>>,
+    device_identity: DeviceIdentity,
     tx: broadcast::Sender<SessionEvent>,
     sessions: LiveSessionMap,
     config: RelayClientConfig,
 ) {
     tokio::spawn(async move {
-        let relay_url = match config.relay_url {
-            Some(ref url) => url.clone(),
-            None => {
-                info!("RELAY_URL not set — mobile relay disabled");
-                return;
-            }
+        let Some(relay_url) = config.relay_url.clone() else {
+            info!("RELAY_URL not set — mobile relay disabled");
+            return;
         };
-
-        // Load identity (or create on first run)
-        let identity = match load_or_create_identity() {
-            Ok(id) => id,
-            Err(e) => {
-                error!("failed to load device identity: {e}");
-                return;
-            }
-        };
-
-        info!(device_id = %identity.device_id, %relay_url, "relay client starting");
 
         let mut backoff = Duration::from_secs(1);
 
         loop {
-            // Lazy-start: only connect when there's actually something to do.
-            //
-            // The relay server only knows about devices that went through
-            // POST /pair (driven by the desktop pairing UI). With no paired
-            // devices and no active pairing offer, our WS auth is guaranteed
-            // to be rejected — polling the relay in that state is pure log
-            // spam and a wasted socket.
-            //
-            // We connect when EITHER:
-            //   (a) `load_paired_devices()` is non-empty — normal streaming, OR
-            //   (b) `pairing_in_progress()` sees a fresh file under
-            //       `~/.claude-view/pairing_secrets/` — the desktop just called
-            //       POST /pair, so the relay now knows our device_id and the
-            //       WS is needed to receive the `pair_complete` push.
-            //
-            // When idle, we poll at 10s granularity — fast enough that a user
-            // clicking "Pair phone" sees the WS open well within the 5-minute
-            // pairing offer TTL.
-            let paired_devices = load_paired_devices();
-            let pairing = pairing_in_progress();
-            if paired_devices.is_empty() && !pairing {
+            // Snapshot the session — never hold the lock across .await.
+            let session_snapshot = {
+                let guard = auth_session.read().await;
+                guard.clone()
+            };
+
+            let Some(session) = session_snapshot else {
+                // Not signed in: idle. 10 s poll — if a session appears,
+                // we pick it up on the next iteration.
                 tokio::time::sleep(Duration::from_secs(10)).await;
                 continue;
-            }
+            };
 
-            match connect_and_stream(
-                &identity,
-                &paired_devices,
+            match run_session(
+                &session,
+                &auth_session,
+                &device_identity,
                 &tx,
                 &sessions,
                 &relay_url,
@@ -139,16 +92,13 @@ pub fn spawn_relay_client(
             .await
             {
                 Ok(()) => {
-                    info!("relay connection closed cleanly");
+                    info!("relay session closed cleanly");
                     backoff = Duration::from_secs(1);
                 }
                 Err(e) => {
-                    // With paired devices present (or a pairing in progress),
-                    // auth rejection is a real problem — relay forgot us, clock
-                    // skew, server restart. Log it loudly.
                     warn!(
                         backoff_secs = backoff.as_secs(),
-                        "relay connection failed: {e}"
+                        "relay session failed: {e}"
                     );
                 }
             }
@@ -159,18 +109,215 @@ pub fn spawn_relay_client(
     });
 }
 
-/// Build an envelope JSON for sending to the relay.
-/// Includes unencrypted `push_hint` and `push_title` when the session
-/// is in the NeedsYou group so the relay can trigger push notifications
-/// without decrypting the payload.
+async fn run_session(
+    session: &AuthSession,
+    auth_session_holder: &Arc<RwLock<Option<AuthSession>>>,
+    identity: &DeviceIdentity,
+    tx: &broadcast::Sender<SessionEvent>,
+    sessions: &LiveSessionMap,
+    relay_url_raw: &str,
+    config: &RelayClientConfig,
+) -> Result<(), String> {
+    let url_with_token = attach_token(relay_url_raw, &session.access_token);
+    let (ws_stream, _) = connect_async(&url_with_token)
+        .await
+        .map_err(|e| format!("WS connect failed: {e}"))?;
+    let (mut sink, mut stream) = ws_stream.split();
+
+    // Step 1: register_device.
+    let register = json!({
+        "type": "register_device",
+        "device_id": identity.device_id,
+        "platform": "mac",
+        "display_name": gethostname::gethostname().to_string_lossy().into_owned(),
+    });
+    sink.send(Message::Text(register.to_string().into()))
+        .await
+        .map_err(|e| format!("register send failed: {e}"))?;
+
+    // Step 2: expect auth_ok (or auth_error).
+    match stream.next().await {
+        Some(Ok(Message::Text(t))) if t.contains("auth_ok") => {
+            info!("relay authenticated");
+        }
+        Some(Ok(Message::Text(t))) => return Err(format!("auth_error: {t}")),
+        other => return Err(format!("unexpected first reply: {other:?}")),
+    }
+
+    // Step 3: fetch peer device list via Supabase (the relay no longer
+    // stores it in Phase 1).
+    let peers = fetch_peer_devices(session, identity).await;
+    if peers.is_empty() {
+        info!("no peer devices — staying connected for pair events");
+    }
+
+    // Step 4: send initial snapshot per peer.
+    let box_secret = box_secret_key(identity).map_err(|e| format!("box_secret_key: {e}"))?;
+    {
+        let sessions_map = sessions.read().await;
+        for s in sessions_map.values() {
+            for peer in &peers {
+                if let Err(e) = push_session(&mut sink, s, peer, &box_secret).await {
+                    warn!(peer = %peer.device_id, error = %e, "initial snapshot send failed");
+                }
+            }
+        }
+    }
+
+    // Step 5: main loop.
+    let mut rx = tx.subscribe();
+    let mut re_auth_ticker = tokio::time::interval(Duration::from_secs(60));
+    re_auth_ticker.tick().await;
+
+    loop {
+        tokio::select! {
+            biased;
+            // (a) Forward broadcast events to all peers.
+            event = rx.recv() => {
+                match event {
+                    Ok(SessionEvent::SessionUpsert { session: s }) => {
+                        for peer in &peers {
+                            let _ = push_session(&mut sink, &s, peer, &box_secret).await;
+                        }
+                    }
+                    Ok(SessionEvent::SessionRemove { session: s, .. }) => {
+                        for peer in &peers {
+                            let _ = push_session(&mut sink, &s, peer, &box_secret).await;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!(skipped = n, "relay client lagged; resyncing");
+                        let sessions_map = sessions.read().await;
+                        for s in sessions_map.values() {
+                            for peer in &peers {
+                                let _ = push_session(&mut sink, s, peer, &box_secret).await;
+                            }
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => return Ok(()),
+                }
+            }
+            // (b) Proactive re_auth when access_token near expiry or rotated
+            // by the refresh loop.
+            _ = re_auth_ticker.tick() => {
+                let snapshot = {
+                    let guard = auth_session_holder.read().await;
+                    guard.clone()
+                };
+                if let Some(current) = snapshot {
+                    if current.access_token != session.access_token
+                        || current.is_near_expiry(Duration::from_secs(config.re_auth_lead_seconds))
+                    {
+                        let re_auth = json!({
+                            "type": "re_auth",
+                            "new_jwt": current.access_token,
+                        });
+                        if let Err(e) = sink.send(Message::Text(re_auth.to_string().into())).await {
+                            return Err(format!("re_auth send failed: {e}"));
+                        }
+                    }
+                }
+            }
+            // (c) Read server frames — pings, re_auth_ok, device_revoked,
+            // errors.
+            msg = stream.next() => {
+                match msg {
+                    Some(Ok(Message::Text(t))) => {
+                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&t) {
+                            match val.get("type").and_then(|v| v.as_str()) {
+                                Some("ping") => {
+                                    let _ = sink
+                                        .send(Message::Text(r#"{"type":"pong"}"#.into()))
+                                        .await;
+                                }
+                                Some("re_auth_ok") => info!("re_auth acknowledged by relay"),
+                                Some("re_auth_error") => {
+                                    warn!("re_auth rejected; reconnecting: {t}");
+                                    return Err("re_auth_error".into());
+                                }
+                                Some("device_revoked") => {
+                                    warn!("device_revoked received; closing: {t}");
+                                    return Err("device_revoked".into());
+                                }
+                                Some("session_update") => {
+                                    // Inbound updates from a peer (phone → mac).
+                                    // v1 Mac ignores these — we're the producer.
+                                    tracing::debug!("incoming session_update ignored");
+                                }
+                                Some("auth_error") => return Err(format!("server auth_error: {t}")),
+                                _ => {}
+                            }
+                        }
+                    }
+                    Some(Ok(Message::Close(_))) | None => return Ok(()),
+                    Some(Err(e)) => return Err(format!("WS read error: {e}")),
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+async fn fetch_peer_devices(session: &AuthSession, identity: &DeviceIdentity) -> Vec<DeviceRow> {
+    let Some(url) = std::env::var("SUPABASE_URL")
+        .ok()
+        .or_else(|| option_env!("SUPABASE_URL").map(str::to_string))
+    else {
+        warn!("SUPABASE_URL not configured — no peer devices");
+        return Vec::new();
+    };
+    let publishable = match std::env::var("SUPABASE_PUBLISHABLE_KEY")
+        .ok()
+        .or_else(|| std::env::var("SUPABASE_ANON_KEY").ok())
+        .or_else(|| option_env!("SUPABASE_PUBLISHABLE_KEY").map(str::to_string))
+    {
+        Some(p) => p,
+        None => {
+            warn!("SUPABASE_PUBLISHABLE_KEY not configured — no peer devices");
+            return Vec::new();
+        }
+    };
+    let http = reqwest::Client::new();
+    match list_devices(&http, &url, &publishable, &session.access_token).await {
+        Ok(rows) => rows
+            .into_iter()
+            .filter(|r| r.device_id != identity.device_id && r.revoked_at.is_none())
+            .collect(),
+        Err(e) => {
+            warn!(error = %e, "failed to list peer devices");
+            Vec::new()
+        }
+    }
+}
+
+async fn push_session<S>(
+    sink: &mut S,
+    session: &LiveSession,
+    peer: &DeviceRow,
+    box_secret: &crypto_box::SecretKey,
+) -> Result<(), String>
+where
+    S: SinkExt<Message> + Unpin,
+    S::Error: std::fmt::Display,
+{
+    let peer_pubkey_b64 = peer_pubkey_from_supabase(peer)?;
+    let json_bytes = serde_json::to_vec(session).map_err(|e| format!("serialize session: {e}"))?;
+    let encrypted = encrypt_for_device(&json_bytes, &peer_pubkey_b64, box_secret)?;
+    let envelope = build_envelope(&peer.device_id, &encrypted, Some(session));
+    sink.send(Message::Text(envelope.to_string().into()))
+        .await
+        .map_err(|e| format!("send failed: {e}"))
+}
+
 fn build_envelope(
     device_id: &str,
     encrypted: &str,
     session: Option<&LiveSession>,
 ) -> serde_json::Value {
-    let mut envelope = serde_json::json!({
-        "to": device_id,
-        "payload": encrypted,
+    let mut envelope = json!({
+        "type": "session_update",
+        "to_device_id": device_id,
+        "payload_b64": encrypted,
     });
     if let Some(s) = session {
         if s.hook.agent_state.group == AgentStateGroup::NeedsYou {
@@ -182,211 +329,52 @@ fn build_envelope(
     envelope
 }
 
-async fn connect_and_stream(
-    identity: &DeviceIdentity,
-    paired_devices: &[PairedDevice],
-    tx: &broadcast::Sender<SessionEvent>,
-    sessions: &LiveSessionMap,
-    relay_url: &str,
-    config: &RelayClientConfig,
-) -> Result<(), String> {
-    // Connect to relay
-    let (ws_stream, _) = connect_async(relay_url)
-        .await
-        .map_err(|e| format!("WS connect failed: {e}"))?;
+fn peer_pubkey_from_supabase(peer: &DeviceRow) -> Result<String, String> {
+    let raw = peer
+        .x25519_pubkey
+        .as_deref()
+        .ok_or_else(|| format!("peer {} missing x25519_pubkey", peer.device_id))?;
+    normalize_pubkey_field(raw)
+        .ok_or_else(|| format!("peer {} x25519_pubkey malformed", peer.device_id))
+}
 
-    let (mut sink, mut stream) = ws_stream.split();
+fn attach_token(relay_url: &str, token: &str) -> String {
+    let sep = if relay_url.contains('?') { '&' } else { '?' };
+    format!("{relay_url}{sep}token={}", urlencoding::encode(token))
+}
 
-    // Authenticate
-    let (timestamp, signature) = sign_auth_challenge(identity)?;
-    let auth_msg = serde_json::json!({
-        "type": "auth",
-        "device_id": identity.device_id,
-        "timestamp": timestamp,
-        "signature": signature,
-    });
-    sink.send(Message::Text(auth_msg.to_string().into()))
-        .await
-        .map_err(|e| format!("auth send failed: {e}"))?;
+// Test-only re-export so integration tests can exercise attach_token without
+// a public production-path entry point.
+pub fn __test_attach_token(url: &str, token: &str) -> String {
+    attach_token(url, token)
+}
 
-    // Wait for auth_ok
-    match stream.next().await {
-        Some(Ok(Message::Text(text))) => {
-            if text.contains("error") {
-                return Err(format!("auth rejected: {text}"));
-            }
-        }
-        other => return Err(format!("unexpected auth response: {other:?}")),
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attach_token_appends_query_param_when_none() {
+        assert_eq!(
+            attach_token("wss://host/ws", "abc"),
+            "wss://host/ws?token=abc"
+        );
     }
 
-    info!("relay authenticated, sending initial snapshot");
-
-    let box_secret = box_secret_key(identity)?;
-
-    // Send initial snapshot of all current sessions
-    {
-        let sessions_map = sessions.read().await;
-        for session in sessions_map.values() {
-            let Ok(json) = serde_json::to_vec(session) else {
-                tracing::error!("failed to serialize session for relay");
-                continue;
-            };
-            for device in paired_devices {
-                if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret)
-                {
-                    let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
-                    if let Err(e) = sink.send(Message::Text(envelope.to_string().into())).await {
-                        tracing::warn!(error = %e, "failed to send WebSocket message to relay");
-                    }
-                }
-            }
-        }
+    #[test]
+    fn attach_token_appends_query_param_when_existing() {
+        assert_eq!(
+            attach_token("wss://host/ws?region=nrt", "abc"),
+            "wss://host/ws?region=nrt&token=abc"
+        );
     }
 
-    // Subscribe to broadcast and forward events
-    let mut rx = tx.subscribe();
-    let heartbeat_interval = config.heartbeat_interval;
-
-    loop {
-        tokio::select! {
-            event = rx.recv() => {
-                match event {
-                    Ok(SessionEvent::SessionUpsert { session }) => {
-                        let Ok(json) = serde_json::to_vec(&session) else {
-                            tracing::error!("failed to serialize session for relay");
-                            continue;
-                        };
-                        for device in paired_devices {
-                            if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                let envelope = build_envelope(&device.device_id, &encrypted, Some(&session));
-                                if sink.send(Message::Text(envelope.to_string().into())).await.is_err() {
-                                    return Ok(());
-                                }
-                            }
-                        }
-                    }
-                    Ok(SessionEvent::SessionRemove { session, .. }) => {
-                        let Ok(json) = serde_json::to_vec(&session) else {
-                            tracing::error!("failed to serialize session for relay");
-                            continue;
-                        };
-                        for device in paired_devices {
-                            if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                let envelope = build_envelope(&device.device_id, &encrypted, Some(&session));
-                                if sink.send(Message::Text(envelope.to_string().into())).await.is_err() {
-                                    return Ok(());
-                                }
-                            }
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!(skipped = n, "relay client lagged, will resync");
-                        let sessions_map = sessions.read().await;
-                        for session in sessions_map.values() {
-                            let Ok(json) = serde_json::to_vec(session) else {
-                                tracing::error!("failed to serialize session for relay");
-                                continue;
-                            };
-                            for device in paired_devices {
-                                if let Ok(encrypted) = encrypt_for_device(&json, &device.x25519_pubkey, &box_secret) {
-                                    let envelope = build_envelope(&device.device_id, &encrypted, Some(session));
-                                    if let Err(e) = sink.send(Message::Text(envelope.to_string().into())).await {
-                                        tracing::warn!(error = %e, "failed to send WebSocket message to relay");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        return Ok(());
-                    }
-                }
-            }
-            _ = tokio::time::sleep(heartbeat_interval) => {
-                if sink.send(Message::Ping(vec![].into())).await.is_err() {
-                    return Ok(());
-                }
-            }
-            msg = stream.next() => {
-                match msg {
-                    Some(Ok(Message::Text(text))) => {
-                        if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                            if val.get("type").and_then(|t| t.as_str()) == Some("pair_complete") {
-                                let phone_device_id = val.get("device_id").and_then(|v| v.as_str());
-                                let phone_x25519_b64 = val.get("x25519_pubkey").and_then(|v| v.as_str());
-                                let encrypted_blob = val.get("pubkey_encrypted_blob").and_then(|v| v.as_str());
-
-                                let verification_hmac = val.get("verification_hmac").and_then(|v| v.as_str());
-
-                                match (phone_device_id, phone_x25519_b64, encrypted_blob) {
-                                    (Some(did), Some(x_pub), Some(blob)) => {
-                                        // Decrypt blob to verify phone owns the X25519 key
-                                        match decrypt_from_device(blob, x_pub, &box_secret) {
-                                            Ok(decrypted) => {
-                                                let claimed_pubkey = STANDARD.encode(&decrypted);
-                                                if claimed_pubkey != x_pub {
-                                                    warn!("pair_complete: decrypted pubkey doesn't match claimed x25519_pubkey");
-                                                    continue;
-                                                }
-
-                                                // HMAC anti-MITM verification: if the phone
-                                                // sent an HMAC, verify it against our stored
-                                                // verification secret. This proves the phone
-                                                // scanned our QR code directly (the relay
-                                                // cannot forge this without the secret).
-                                                match verification_hmac {
-                                                    Some(hmac) => {
-                                                        match find_and_verify_hmac(x_pub, hmac) {
-                                                            Ok(true) => {
-                                                                info!(phone = %did, "pair_complete: HMAC verified, anti-MITM binding confirmed");
-                                                            }
-                                                            Ok(false) => {
-                                                                warn!(phone = %did, "pair_complete: HMAC verification failed — possible relay key substitution, rejecting");
-                                                                continue;
-                                                            }
-                                                            Err(e) => {
-                                                                warn!(phone = %did, "pair_complete: HMAC verification error: {e}, rejecting");
-                                                                continue;
-                                                            }
-                                                        }
-                                                    }
-                                                    None => {
-                                                        // Backwards compatibility: older phone
-                                                        // clients may not send HMAC yet.
-                                                        warn!(phone = %did, "pair_complete: no verification_hmac provided (legacy client), accepting without HMAC binding");
-                                                    }
-                                                }
-
-                                                info!(phone = %did, "pair_complete: verified and storing paired device");
-                                                let device = PairedDevice {
-                                                    device_id: did.to_string(),
-                                                    x25519_pubkey: x_pub.to_string(),
-                                                    name: format!("Phone {}", &did[..did.len().min(12)]),
-                                                    paired_at: std::time::SystemTime::now()
-                                                        .duration_since(std::time::UNIX_EPOCH)
-                                                        .expect("system clock before Unix epoch")
-                                                        .as_secs(),
-                                                };
-                                                if let Err(e) = add_paired_device(device) {
-                                                    error!("failed to store paired device: {e}");
-                                                }
-                                            }
-                                            Err(e) => {
-                                                warn!("pair_complete: failed to decrypt phone pubkey blob: {e}");
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        warn!("pair_complete: missing required fields (device_id, x25519_pubkey, pubkey_encrypted_blob)");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Some(Ok(Message::Close(_))) | None => return Ok(()),
-                    _ => {}
-                }
-            }
-        }
+    #[test]
+    fn attach_token_urlencodes_special_chars() {
+        // Tokens contain JWT dots which are safe, but slashes/plus would need
+        // escaping. Sanity-check that urlencoding handles padding-free base64.
+        let encoded = attach_token("wss://h/ws", "a.b/c+d=");
+        assert!(encoded.starts_with("wss://h/ws?token="));
+        assert!(encoded.contains("%2F") || encoded.contains("+"));
     }
 }

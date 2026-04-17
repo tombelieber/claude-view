@@ -369,61 +369,9 @@ pub fn create_app_full(
         tokio::sync::RwLock<std::collections::HashMap<String, claude_view_types::InteractionBlock>>,
     > = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
-    let (
-        manager,
-        live_sessions,
-        closed_ring,
-        transcript_to_session,
-        live_tx,
-        coordinator,
-        claude_session_id_index,
-    ) = live::manager::LiveSessionManager::start(
-        pricing.clone(),
-        db.clone(),
-        search_index.clone(),
-        registry.clone(),
-        Some(sidecar.clone()),
-        teams.clone(),
-        claude_dir,
-        claude_view_dir,
-        llm_status.clone(),
-        llm_config.clone(),
-        llm_client,
-        oracle_rx.clone(),
-        hook_event_channels.clone(),
-        interaction_data.clone(),
-        session_pids_tx,
-        tmux_index.clone(),
-        tmux.clone(),
-        born_waiters.clone(),
-    );
-
-    // Hook registration deferred — caller must invoke register_hooks()
-    // AFTER binding the actual port (which may auto-increment on conflict).
-
-    // Load API key store for webhook auth.
-    let api_key_store_path = claude_view_core::paths::config_dir().join("api-keys.json");
-    let api_key_store = Arc::new(tokio::sync::RwLock::new(crate::auth::api_key::load_store(
-        &api_key_store_path,
-    )));
-    let webhook_config_path = claude_view_core::paths::config_dir().join("notifications.json");
-    let webhook_secrets_path = claude_view_core::paths::config_dir().join("webhook-secrets.json");
-
-    // Detect installed IDEs (runs `which` for each known command).
-    let available_ides = routes::ide::detect_installed_ides();
-    if available_ides.is_empty() {
-        tracing::info!("No known IDEs detected on PATH");
-    } else {
-        let names: Vec<&str> = available_ides
-            .iter()
-            .map(|(info, _)| info.name.as_str())
-            .collect();
-        tracing::info!(ides = ?names, "Detected installed IDEs");
-    }
-
-    // Load persisted Supabase session (sync blocking read — create_app_full is
-    // not async and this runs exactly once at startup). Corrupt files surface
-    // as a warning; we proceed unauthenticated and let the user re-sign-in.
+    // Load the Supabase auth session and spawn the refresh loop BEFORE the
+    // live manager starts — the manager's relay_client subtask reads from
+    // the holder we create here.
     let session_store = Arc::new(crate::auth::SessionStore::new());
     let initial_session = match std::fs::read(session_store.path()) {
         Ok(bytes) => match serde_json::from_slice::<crate::auth::AuthSession>(&bytes) {
@@ -442,9 +390,9 @@ pub fn create_app_full(
             None
         }
     };
-    let auth_session_holder = Arc::new(tokio::sync::RwLock::new(initial_session.clone()));
+    let auth_session_holder: Arc<tokio::sync::RwLock<Option<crate::auth::AuthSession>>> =
+        Arc::new(tokio::sync::RwLock::new(initial_session.clone()));
 
-    // If we have a session, spawn the refresh loop.
     if initial_session.is_some() {
         if let Some(url) = std::env::var("SUPABASE_URL")
             .ok()
@@ -473,6 +421,62 @@ pub fn create_app_full(
             }
         }
     }
+
+    let (
+        manager,
+        live_sessions,
+        closed_ring,
+        transcript_to_session,
+        live_tx,
+        coordinator,
+        claude_session_id_index,
+    ) = live::manager::LiveSessionManager::start(
+        pricing.clone(),
+        db.clone(),
+        search_index.clone(),
+        registry.clone(),
+        Some(sidecar.clone()),
+        teams.clone(),
+        claude_dir,
+        claude_view_dir,
+        llm_status.clone(),
+        llm_config.clone(),
+        llm_client,
+        oracle_rx.clone(),
+        hook_event_channels.clone(),
+        interaction_data.clone(),
+        session_pids_tx,
+        tmux_index.clone(),
+        tmux.clone(),
+        born_waiters.clone(),
+        auth_session_holder.clone(),
+    );
+
+    // Hook registration deferred — caller must invoke register_hooks()
+    // AFTER binding the actual port (which may auto-increment on conflict).
+
+    // Load API key store for webhook auth.
+    let api_key_store_path = claude_view_core::paths::config_dir().join("api-keys.json");
+    let api_key_store = Arc::new(tokio::sync::RwLock::new(crate::auth::api_key::load_store(
+        &api_key_store_path,
+    )));
+    let webhook_config_path = claude_view_core::paths::config_dir().join("notifications.json");
+    let webhook_secrets_path = claude_view_core::paths::config_dir().join("webhook-secrets.json");
+
+    // Detect installed IDEs (runs `which` for each known command).
+    let available_ides = routes::ide::detect_installed_ides();
+    if available_ides.is_empty() {
+        tracing::info!("No known IDEs detected on PATH");
+    } else {
+        let names: Vec<&str> = available_ides
+            .iter()
+            .map(|(info, _)| info.name.as_str())
+            .collect();
+        tracing::info!(ides = ?names, "Detected installed IDEs");
+    }
+
+    // (auth_session_holder + refresh loop were already initialised above,
+    // before the LiveSessionManager start — see §3.4.1 for ordering.)
 
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
