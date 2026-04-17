@@ -54,9 +54,13 @@ if [ "${SKIP_TS:-0}" != "1" ]; then
 else echo "  SKIP (SKIP_TS=1)"; fi
 
 # ── 4. Rust lint (clippy) ──
+# -D deprecated fails CI immediately if a new caller of the legacy two-pass
+# pipeline (insert_session_from_index / write_results_sqlx /
+# update_session_deep_fields_tx) is added while those functions are being
+# migrated off.
 gate "Rust lint (clippy)"
 if [ "${SKIP_RUST:-0}" != "1" ]; then
-  S=$(date +%s); ./scripts/cq clippy --workspace -- -D warnings; elapsed $S
+  S=$(date +%s); ./scripts/cq clippy --workspace -- -D warnings -D deprecated; elapsed $S
 else echo "  SKIP (SKIP_RUST=1)"; fi
 
 # ── 5. Rust tests ──

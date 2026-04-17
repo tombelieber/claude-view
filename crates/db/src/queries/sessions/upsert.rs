@@ -354,7 +354,7 @@ impl Database {
     /// if they already have data.
     #[allow(clippy::too_many_arguments)]
     #[deprecated(
-        note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+        note = "use test_support::seed_session_via_upsert — scheduled for removal in Phase 0 step 5"
     )]
     pub async fn insert_session_from_index(
         &self,

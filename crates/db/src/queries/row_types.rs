@@ -178,7 +178,7 @@ impl IndexRunIntegrityCountersRow {
 /// provided transaction instead of acquiring a new connection from the pool.
 #[allow(clippy::too_many_arguments)]
 #[deprecated(
-    note = "Legacy two-pass pipeline. Use scan_and_index_all + upsert_parsed_session instead."
+    note = "use test_support::seed_session_via_upsert — scheduled for removal in Phase 0 step 5"
 )]
 pub async fn update_session_deep_fields_tx(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,

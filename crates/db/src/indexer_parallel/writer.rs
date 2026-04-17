@@ -9,6 +9,9 @@ use super::types::*;
 
 /// Write deep index results using sqlx async transactions.
 #[allow(deprecated)]
+#[deprecated(
+    note = "use test_support::seed_session_via_upsert — scheduled for removal in Phase 0 step 5"
+)]
 pub(crate) async fn write_results_sqlx(
     db: &Database,
     results: &[DeepIndexResult],
