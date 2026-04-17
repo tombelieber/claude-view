@@ -1,3 +1,11 @@
+# fly.toml — mobile connect revamp Phase 1
+#
+# Stateless relay: JWT-authenticated WebSocket message bus.
+# Zero DB, zero disk — all device truth lives in Supabase.
+# auto_stop_machines="off" + min_machines_running=1 eliminates cold starts
+# so the first client WS upgrade is fast; connection limits bumped from
+# the old 1000/800 to 10000/8000 to accommodate the full fleet.
+
 app = 'claude-view-relay'
 primary_region = 'nrt'
 
@@ -5,13 +13,30 @@ primary_region = 'nrt'
   dockerfile = 'Dockerfile'
   # Build context is repo root (workspace Cargo.toml lives there)
 
-[http_service]
+[env]
+  RUST_LOG = "info,claude_view_relay=debug,tower_http=info"
+
+[[services]]
   internal_port = 8080
-  force_https = true
-  auto_stop_machines = 'stop'
+  protocol = "tcp"
+  auto_stop_machines = "off"
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
+
+  [[services.ports]]
+    handlers = ["http"]
+    port = 80
+    force_https = true
+
+  [[services.ports]]
+    handlers = ["tls", "http"]
+    port = 443
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 10000
+    soft_limit = 8000
 
 [[vm]]
   size = 'shared-cpu-1x'
-  memory = '256mb'
+  memory = '512mb'
