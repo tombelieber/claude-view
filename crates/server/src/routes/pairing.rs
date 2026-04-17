@@ -1,174 +1,129 @@
-//! Desktop pairing API — QR code generation, device list, unpair.
+//! Desktop pairing API — thin proxy over Supabase Edge Functions.
+//!
+//! Pre-Phase-2 this file talked to the relay's /pair endpoint (deleted) and
+//! stored an HMAC verification secret on disk (deleted). The new flow:
+//!
+//! 1. User clicks "Pair phone" in the web UI.
+//! 2. Web UI (or Mac tray) hits GET /api/pairing/qr.
+//! 3. This handler reads the cached Supabase session, calls
+//!    `POST /functions/v1/pair-offer` with {issuing_device_id: <mac-device-id>}.
+//! 4. Supabase Edge Function creates a row in `public.pairing_offers`,
+//!    returns {token, relay_ws_url, expires_at}.
+//! 5. We wrap the response into a QrPayload that encodes the mobile URL
+//!    and hand it back to the client.
+//!
+//! See design spec §5.1.1 for the edge-function request/response shapes.
 
-use axum::{
-    extract::{Path, State},
-    http::StatusCode,
-    routing::{delete, get},
-    Json, Router,
-};
-use base64::{engine::general_purpose::STANDARD, Engine};
-use serde::Serialize;
 use std::sync::Arc;
 
-use crate::crypto::{
-    box_secret_key, load_or_create_identity, load_paired_devices, remove_paired_device,
-    store_verification_secret, verifying_key_bytes,
-};
+use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
+use serde::Serialize;
+
+use crate::auth::AuthSession;
+use crate::crypto::load_or_create_identity;
 use crate::state::AppState;
+use crate::supabase_proxy::{pair_offer, PairOfferRequest, SupabaseProxyError};
 
-/// Relay base URL for HTTP API calls (Mac server → relay).
-/// Derived from RELAY_URL env var (e.g. wss://host/ws → https://host).
-fn relay_http_url() -> Option<String> {
-    (std::env::var("RELAY_URL").ok())
-        .or_else(|| option_env!("RELAY_URL").map(str::to_string))
-        .map(|u| {
-            u.replace("wss://", "https://")
-                .replace("ws://", "http://")
-                .trim_end_matches("/ws")
-                .to_string()
-        })
-}
-
-/// Relay WebSocket URL for QR code (phone → relay). Read from RELAY_URL env var.
-fn relay_ws_url() -> Option<String> {
-    std::env::var("RELAY_URL")
-        .ok()
-        .or_else(|| option_env!("RELAY_URL").map(str::to_string))
-}
-
+/// QR payload served to the web UI. The `url` field is the QR-encoded value;
+/// the rest are duplicates for frontends that prefer named fields.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct QrPayload {
-    /// Mobile page URL — the QR code encodes this directly.
-    url: String,
-    /// Relay WebSocket URL.
-    r: String,
-    /// Mac X25519 public key (base64).
-    k: String,
-    /// One-time pairing token.
-    t: String,
-    /// Verification secret (base64, 32 bytes). Included in QR URL only,
-    /// never sent to the relay. Phone uses it to compute HMAC binding.
-    s: String,
-    /// Protocol version.
-    v: u8,
+    /// Mobile URL — what the QR encodes. Points at the claim page with `?token=...`.
+    pub url: String,
+    /// Relay WebSocket URL (so the phone knows where to connect after claim).
+    pub r: String,
+    /// One-time pairing token. Sent to `pair-claim` edge fn by the phone.
+    pub t: String,
+    /// ISO-8601 expiry timestamp — UI shows the countdown.
+    pub expires_at: String,
+    /// Protocol version (2 — HMAC removed in Phase 2).
+    pub v: u8,
 }
 
+/// Legacy schema kept for OpenAPI component compatibility. No routes emit it
+/// anymore — devices live at /api/devices after Phase 2.
 #[derive(Serialize, utoipa::ToSchema)]
 pub struct PairedDeviceResponse {
-    device_id: String,
-    name: String,
-    paired_at: u64,
+    pub device_id: String,
+    pub name: String,
+    pub paired_at: u64,
 }
 
-/// GET /pairing/qr — Generate QR payload for mobile pairing.
+async fn require_session(state: &AppState) -> Result<AuthSession, StatusCode> {
+    let snapshot = {
+        let guard = state.auth_session.read().await;
+        guard.clone()
+    };
+    snapshot.ok_or(StatusCode::UNAUTHORIZED)
+}
+
+fn supabase_env() -> Result<(String, String), StatusCode> {
+    let url = std::env::var("SUPABASE_URL")
+        .ok()
+        .or_else(|| option_env!("SUPABASE_URL").map(str::to_string))
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let publishable = std::env::var("SUPABASE_PUBLISHABLE_KEY")
+        .ok()
+        .or_else(|| std::env::var("SUPABASE_ANON_KEY").ok())
+        .or_else(|| option_env!("SUPABASE_PUBLISHABLE_KEY").map(str::to_string))
+        .or_else(|| option_env!("SUPABASE_ANON_KEY").map(str::to_string))
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    Ok((url, publishable))
+}
+
+fn map_err(err: SupabaseProxyError) -> StatusCode {
+    match err {
+        SupabaseProxyError::Unauthorized => StatusCode::UNAUTHORIZED,
+        SupabaseProxyError::Forbidden => StatusCode::FORBIDDEN,
+        SupabaseProxyError::Business { code, message } => {
+            tracing::warn!(code, message, "pair-offer business error");
+            StatusCode::BAD_REQUEST
+        }
+        SupabaseProxyError::MissingConfig => StatusCode::SERVICE_UNAVAILABLE,
+        _ => StatusCode::BAD_GATEWAY,
+    }
+}
+
+/// GET /api/pairing/qr — Generate a QR payload via Supabase pair-offer.
 #[utoipa::path(get, path = "/api/pairing/qr", tag = "pairing",
     responses(
-        (status = 200, description = "QR payload for mobile pairing", body = QrPayload),
-        (status = 503, description = "Relay not configured"),
+        (status = 200, description = "QR payload", body = QrPayload),
+        (status = 401, description = "Not signed in"),
+        (status = 503, description = "Supabase not configured"),
     )
 )]
 pub async fn generate_qr(
-    State(_state): State<Arc<AppState>>,
+    State(state): State<Arc<AppState>>,
 ) -> Result<Json<QrPayload>, StatusCode> {
-    use rand::Rng;
-
+    let session = require_session(&state).await?;
+    let (url, publishable) = supabase_env()?;
     let identity = load_or_create_identity().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let box_secret = box_secret_key(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let box_public = box_secret.public_key();
-
-    let token = uuid::Uuid::new_v4().to_string();
-
-    // Generate 32-byte verification secret for HMAC anti-MITM binding.
-    // This secret is embedded in the QR URL and NEVER sent to the relay.
-    let verification_secret: [u8; 32] = rand::thread_rng().gen();
-    store_verification_secret(&token, &verification_secret)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let s_b64 = STANDARD.encode(verification_secret);
-
-    let relay_ws = relay_ws_url().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-    let relay_http = relay_http_url().ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
-    let ed25519_pubkey =
-        verifying_key_bytes(&identity).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(format!("{relay_http}/pair"))
-        .json(&serde_json::json!({
-            "device_id": identity.device_id,
-            "pubkey": STANDARD.encode(&ed25519_pubkey),
-            "one_time_token": &token,
-        }))
-        .send()
+    let http = reqwest::Client::new();
+    let req = PairOfferRequest {
+        issuing_device_id: identity.device_id.clone(),
+    };
+    let resp = pair_offer(&http, &url, &publishable, &session.access_token, &req)
         .await
-        .map_err(|e| {
-            tracing::error!("Failed to register pairing offer with relay: {e}");
-            StatusCode::BAD_GATEWAY
-        })?;
-    if !resp.status().is_success() {
-        tracing::error!("Relay rejected pairing offer: HTTP {}", resp.status());
-        return Err(StatusCode::BAD_GATEWAY);
-    }
+        .map_err(map_err)?;
 
-    let k_b64 = STANDARD.encode(box_public.as_bytes());
-    // Include verification secret in QR URL so phone can compute HMAC binding.
-    // The relay never sees `s` — it's only in the direct QR scan.
+    // Build the mobile URL. The mobile app deep-links off `token` and
+    // `relay_ws_url`. No HMAC, no pubkey — the phone authenticates via
+    // Supabase (claimant holds their own JWT already).
     let mobile_url = format!(
-        "{}/mobile?k={}&t={}&r={}&s={}",
-        relay_http,
-        urlencoding::encode(&k_b64),
-        urlencoding::encode(&token),
-        urlencoding::encode(&relay_ws),
-        urlencoding::encode(&s_b64),
+        "https://claudeview.ai/pair?token={}",
+        urlencoding::encode(&resp.token),
     );
 
     Ok(Json(QrPayload {
         url: mobile_url,
-        r: relay_ws,
-        k: k_b64,
-        t: token,
-        s: s_b64,
-        v: 1,
+        r: resp.relay_ws_url,
+        t: resp.token,
+        expires_at: resp.expires_at,
+        v: 2,
     }))
 }
 
-/// GET /pairing/devices — List paired devices.
-#[utoipa::path(get, path = "/api/pairing/devices", tag = "pairing",
-    responses(
-        (status = 200, description = "All paired devices", body = Vec<PairedDeviceResponse>),
-    )
-)]
-pub async fn list_devices() -> Json<Vec<PairedDeviceResponse>> {
-    let devices = load_paired_devices();
-    Json(
-        devices
-            .into_iter()
-            .map(|d| PairedDeviceResponse {
-                device_id: d.device_id,
-                name: d.name,
-                paired_at: d.paired_at,
-            })
-            .collect(),
-    )
-}
-
-/// DELETE /pairing/devices/:id — Unpair a device.
-#[utoipa::path(delete, path = "/api/pairing/devices/{id}", tag = "pairing",
-    params(("id" = String, Path, description = "Device ID")),
-    responses(
-        (status = 204, description = "Device unpaired"),
-    )
-)]
-pub async fn unpair_device(Path(device_id): Path<String>) -> StatusCode {
-    match remove_paired_device(&device_id) {
-        Ok(()) => StatusCode::NO_CONTENT,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
-    }
-}
-
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new()
-        .route("/pairing/qr", get(generate_qr))
-        .route("/pairing/devices", get(list_devices))
-        .route("/pairing/devices/{id}", delete(unpair_device))
+    Router::new().route("/pairing/qr", get(generate_qr))
 }
