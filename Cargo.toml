@@ -107,6 +107,17 @@ pretty_assertions = "1"
 tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 
+# ── CQRS Phase 1 — session-parser / stats-rollup / stats-rollup-derive ──
+# Added 2026-04-18 per design doc §2.2 PR 1.0. No new crates in this PR —
+# just workspace dependencies. See private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md.
+blake3 = "1"                                                         # content-hash staleness (SOTA §4)
+proptest = { version = "1", default-features = false, features = ["std"] }  # property tests
+arbitrary = { version = "1", features = ["derive"] }                 # fuzz corpora
+trybuild = "1"                                                       # proc-macro UI tests
+syn = { version = "2", features = ["full"] }                         # proc-macro parser
+quote = "1"                                                          # proc-macro codegen
+proc-macro2 = "1"                                                    # proc-macro spans
+
 # OpenAPI documentation
 utoipa = { version = "5", features = ["axum_extras"] }
 utoipa-axum = "0.2"
