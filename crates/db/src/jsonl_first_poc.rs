@@ -1,16 +1,24 @@
 //! JSONL-first architecture POC — re-export shims + handlers.
 //!
+//! Historical note: this module scaffolded the JSONL-first hardcut
+//! before the canonical `/api/*` handlers adopted the same pipeline.
+//! The canonical production routes now live in `claude_view_server`:
+//!   - `GET /api/sessions` → `crates/server/src/routes/sessions/list.rs`
+//!   - `GET /api/sessions/:id` → `crates/server/src/routes/sessions/detail.rs`
+//!   - `GET /api/sessions/:id/turns` → `crates/server/src/routes/turns/handler.rs`
+//!   - `GET /api/insights/benchmarks` → `crates/server/src/routes/insights/handler_benchmarks.rs`
+//!
 //! All core types have been extracted to `claude_view_core`:
 //!   - `session_catalog` (step 1) — `SessionCatalog`, `CatalogRow`, `Filter`, `Sort`
 //!   - `jsonl_reader` (step 2) — `open_reader`, `read_all`, `count_parseable`
 //!   - `features` (step 3) — `Feature`, `FeatureRegistry`, `SessionEvent`, etc.
 //!
-//! This module contains:
-//!   - Re-export shims (so bench binaries keep their imports unchanged)
-//!   - The `handlers` module (pure handler functions for the new routes)
-//!
-//! The handlers module stays here until it too is extracted to the
-//! server crate (steps 6-9 of the implementation plan).
+//! This module retains:
+//!   - Re-export shims (so bench binaries keep their imports unchanged).
+//!   - The `handlers` module with pure handler functions that mirror
+//!     the canonical routes, used only by `bench_list_handler` and
+//!     `bench_session_index_memory` to measure the underlying JSONL
+//!     compute path in isolation from the Axum layer.
 
 /// Step 1 shim — maps POC names to core types.
 pub mod session_index {
@@ -99,8 +107,12 @@ pub mod handlers {
     // --- Step 7: session detail handler (reads JSONL on the fly) ---
 
     /// Derived session detail — computed from JSONL at read time.
-    /// Replaces the current SQL-backed `GET /api/sessions/:id` which
-    /// reads materialised `sessions.total_*` columns.
+    ///
+    /// Backs the canonical JSONL-first `GET /api/sessions/:id` handler
+    /// in `crates/server/src/routes/sessions/detail.rs`, which reads
+    /// the `SessionCatalog` + JSONL directly instead of materialised
+    /// `sessions.total_*` columns. This type remains here only to
+    /// support the `bench_list_handler` microbenchmark.
     #[derive(Debug, Clone, Serialize)]
     pub struct SessionDetail {
         pub id: String,
@@ -147,8 +159,12 @@ pub mod handlers {
         cache_creation_input_tokens: Option<u64>,
     }
 
-    /// `GET /api/v2/sessions/:id` — reads the JSONL and computes
-    /// token totals on the fly. No DB round-trip.
+    /// `GET /api/sessions/:id` (JSONL-first variant) — reads the JSONL
+    /// and computes token totals on the fly. No DB round-trip.
+    ///
+    /// The production route handler lives in
+    /// `crates/server/src/routes/sessions/detail.rs`. This function
+    /// is retained for benchmarks.
     pub fn get_session_detail(idx: &SessionIndex, session_id: &str) -> Option<SessionDetail> {
         let row = idx.get(session_id)?;
         let lines: Vec<MinLine> =
@@ -209,8 +225,12 @@ pub mod handlers {
         pub output_tokens: Option<u64>,
     }
 
-    /// `GET /api/v2/sessions/:id/turns` — reads assistant lines from
-    /// JSONL and returns them as typed turn items.
+    /// `GET /api/sessions/:id/turns` (JSONL-first variant) — reads
+    /// assistant lines from JSONL and returns them as typed turn items.
+    ///
+    /// The production route handler lives in
+    /// `crates/server/src/routes/turns/handler.rs`. This function
+    /// is retained for benchmarks.
     pub fn get_session_turns(idx: &SessionIndex, session_id: &str) -> Option<Vec<TurnItem>> {
         let row = idx.get(session_id)?;
         let lines: Vec<MinLine> =
@@ -251,8 +271,12 @@ pub mod handlers {
 
     // --- Step 9: insights/benchmarks handler (reads from rollup) ---
 
-    /// `GET /api/v2/insights/benchmarks` — reads from
-    /// `AnalyticsRollupFeature` instead of `SUM(sessions.total_*)`.
+    /// `GET /api/insights/benchmarks` (JSONL-first variant) — reads
+    /// from `AnalyticsRollupFeature` instead of `SUM(sessions.total_*)`.
+    ///
+    /// The production route handler lives in
+    /// `crates/server/src/routes/insights/handler_benchmarks.rs`. This
+    /// function is retained for benchmarks.
     pub fn get_insights_benchmarks(
         rollup: &claude_view_core::analytics_rollup::AnalyticsRollupFeature,
         project_id: Option<&str>,

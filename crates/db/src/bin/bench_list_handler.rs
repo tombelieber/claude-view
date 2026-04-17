@@ -1,13 +1,15 @@
 //! P2-G/H — Handler-level list latency benchmark.
 //!
 //! Loads the real `SessionIndex` from the live filesystem and
-//! measures the proposed `GET /api/v2/sessions` handler function as
+//! measures the JSONL-first `GET /api/sessions` handler pipeline as
 //! it would be called by axum — including the DTO mapping and
 //! `serde_json::to_string` serialisation step (axum's `Json<T>` does
 //! the same thing).
 //!
 //! This is the "handler level" proof that the session_index backed
 //! list route can serve sub-millisecond responses without a DB.
+//! The canonical Axum handler lives in
+//! `crates/server/src/routes/sessions/list.rs`.
 //!
 //! Run:
 //!   ./scripts/cq run --release -p claude-view-db --bin bench_list_handler
@@ -57,7 +59,7 @@ fn time_iter<F: FnMut()>(iters: usize, mut f: F) -> (u128, u128, u128) {
 
 fn main() {
     println!("\n=== P2-G/H — Handler-level list latency benchmark ===\n");
-    println!("Goal: prove that `GET /api/v2/sessions` handler can serve");
+    println!("Goal: prove that `GET /api/sessions` handler can serve");
     println!("sub-millisecond responses from the in-memory session_index,");
     println!("including DTO mapping + JSON serialisation cost.\n");
 
@@ -136,28 +138,28 @@ fn main() {
     println!("  {}", "-".repeat(78));
     println!(
         "  {:<40}  {}  {}  {}",
-        "Q1 /api/v2/sessions?limit=50 (all)",
+        "Q1 /api/sessions?limit=50 (all)",
         fmt_us(q1_p50),
         fmt_us(q1_p95),
         fmt_us(q1_max)
     );
     println!(
         "  {:<40}  {}  {}  {}",
-        "Q2 /api/v2/sessions?project=X (top)",
+        "Q2 /api/sessions?project=X (top)",
         fmt_us(q2_p50),
         fmt_us(q2_p95),
         fmt_us(q2_max)
     );
     println!(
         "  {:<40}  {}  {}  {}",
-        "Q3 /api/v2/projects",
+        "Q3 /api/projects",
         fmt_us(q3_p50),
         fmt_us(q3_p95),
         fmt_us(q3_max)
     );
     println!(
         "  {:<40}  {}  {}  {}",
-        "Q4 /api/v2/sessions?since=7d&limit=200",
+        "Q4 /api/sessions?since=7d&limit=200",
         fmt_us(q4_p50),
         fmt_us(q4_p95),
         fmt_us(q4_max)
