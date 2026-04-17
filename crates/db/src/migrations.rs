@@ -765,6 +765,37 @@ COMMIT;"#,
     // project dir at request time (see routes/projects.rs::project_dir_exists),
     // so the table + its backfill are dead weight.
     r#"DROP TABLE IF EXISTS project_dir_status;"#,
+    // Migration 63: CQRS Phase 0 Step 5 — IRREVERSIBLE drops.
+    //
+    // Drops 4 tables and 8 columns that were confirmed dead by the Wave 1/2
+    // audits (plan §1.1, §10 Phase 0):
+    //   - 4 tables with zero writers AND zero readers: turn_metrics,
+    //     api_errors, fluency_scores, pricing_cache.
+    //   - 7 sessions columns with zero writers AND zero readers: closed_at,
+    //     dismissed_at, session_kind, start_type, prompt_word_count,
+    //     correction_count, same_file_edit_count.
+    //   - 1 models column with zero live readers: sdk_supported.
+    //
+    // Important: `closed_at` and `dismissed_at` remain as IN-MEMORY fields on
+    // `ActiveSession` (server/live/manager/reaper.rs and server-live-state).
+    // Only the DB columns are dropped.
+    //
+    // Rollback: restore from `~/.claude-view/claude-view.db.pre-phase0` +
+    // `git checkout pre-phase0`. No forward rollback migration exists.
+    r#"BEGIN;
+DROP TABLE IF EXISTS turn_metrics;
+DROP TABLE IF EXISTS api_errors;
+DROP TABLE IF EXISTS fluency_scores;
+DROP TABLE IF EXISTS pricing_cache;
+ALTER TABLE sessions DROP COLUMN closed_at;
+ALTER TABLE sessions DROP COLUMN dismissed_at;
+ALTER TABLE sessions DROP COLUMN session_kind;
+ALTER TABLE sessions DROP COLUMN start_type;
+ALTER TABLE sessions DROP COLUMN prompt_word_count;
+ALTER TABLE sessions DROP COLUMN correction_count;
+ALTER TABLE sessions DROP COLUMN same_file_edit_count;
+ALTER TABLE models DROP COLUMN sdk_supported;
+COMMIT;"#,
 ];
 
 // ============================================================================
@@ -1113,17 +1144,19 @@ mod tests {
             column_names.contains(&"classified_at"),
             "Missing classified_at column"
         );
+        // prompt_word_count, correction_count, same_file_edit_count were dropped
+        // in Migration 63 (CQRS Phase 0 Step 5) — asserting absence instead.
         assert!(
-            column_names.contains(&"prompt_word_count"),
-            "Missing prompt_word_count column"
+            !column_names.contains(&"prompt_word_count"),
+            "prompt_word_count should be dropped by Migration 63"
         );
         assert!(
-            column_names.contains(&"correction_count"),
-            "Missing correction_count column"
+            !column_names.contains(&"correction_count"),
+            "correction_count should be dropped by Migration 63"
         );
         assert!(
-            column_names.contains(&"same_file_edit_count"),
-            "Missing same_file_edit_count column"
+            !column_names.contains(&"same_file_edit_count"),
+            "same_file_edit_count should be dropped by Migration 63"
         );
     }
 
@@ -1699,32 +1732,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_migration9_detail_tables_exist() {
+    async fn test_migration9_detail_tables_dropped() {
+        // Migration 9 created turn_metrics + api_errors. Migration 63 (CQRS
+        // Phase 0 Step 5) dropped them — zero writers + zero readers, dead
+        // weight. This test asserts the drops landed.
         let pool = setup_db().await;
 
-        // Verify turn_metrics table
-        let columns: Vec<(String,)> =
+        let turn_metrics_cols: Vec<(String,)> =
             sqlx::query_as("SELECT name FROM pragma_table_info('turn_metrics')")
                 .fetch_all(&pool)
                 .await
                 .unwrap();
-        let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
-        assert!(names.contains(&"session_id"));
-        assert!(names.contains(&"turn_seq"));
-        assert!(names.contains(&"duration_ms"));
-        assert!(names.contains(&"input_tokens"));
-        assert!(names.contains(&"model"));
+        assert!(
+            turn_metrics_cols.is_empty(),
+            "turn_metrics table should be dropped by Migration 63"
+        );
 
-        // Verify api_errors table
-        let columns: Vec<(String,)> =
+        let api_errors_cols: Vec<(String,)> =
             sqlx::query_as("SELECT name FROM pragma_table_info('api_errors')")
                 .fetch_all(&pool)
                 .await
                 .unwrap();
-        let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
-        assert!(names.contains(&"session_id"));
-        assert!(names.contains(&"timestamp_unix"));
-        assert!(names.contains(&"retry_attempt"));
+        assert!(
+            api_errors_cols.is_empty(),
+            "api_errors table should be dropped by Migration 63"
+        );
     }
 
     #[tokio::test]
@@ -2570,28 +2602,69 @@ mod tests {
     }
 
     // ========================================================================
-    // Migrations 55-56: Recently-closed persistence columns
+    // Migration 63: CQRS Phase 0 Step 5 — IRREVERSIBLE drops
     // ========================================================================
 
     #[tokio::test]
-    async fn test_migration_closed_at_dismissed_at_columns_exist() {
+    async fn test_migration63_dead_tables_dropped() {
         let pool = setup_db().await;
+        for tbl in [
+            "turn_metrics",
+            "api_errors",
+            "fluency_scores",
+            "pricing_cache",
+        ] {
+            let cols: Vec<(String,)> =
+                sqlx::query_as(&format!("SELECT name FROM pragma_table_info('{}')", tbl))
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap();
+            assert!(
+                cols.is_empty(),
+                "Migration 63 should have dropped table `{}`",
+                tbl
+            );
+        }
+    }
 
-        let columns: Vec<(String,)> =
-            sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-                .fetch_all(&pool)
-                .await
-                .unwrap();
+    #[tokio::test]
+    async fn test_migration63_dead_sessions_columns_dropped() {
+        // `closed_at` + `dismissed_at` in-memory fields on ActiveSession stay
+        // (see reaper.rs, server-live-state/core.rs). Only the DB columns drop.
+        let pool = setup_db().await;
+        let cols: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
+        for col in [
+            "closed_at",
+            "dismissed_at",
+            "session_kind",
+            "start_type",
+            "prompt_word_count",
+            "correction_count",
+            "same_file_edit_count",
+        ] {
+            assert!(
+                !names.contains(&col),
+                "Migration 63 should have dropped sessions.{}",
+                col
+            );
+        }
+    }
 
-        let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
-
+    #[tokio::test]
+    async fn test_migration63_sdk_supported_dropped() {
+        let pool = setup_db().await;
+        let cols: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('models')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+        let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
         assert!(
-            column_names.contains(&"closed_at"),
-            "Missing closed_at column"
-        );
-        assert!(
-            column_names.contains(&"dismissed_at"),
-            "Missing dismissed_at column"
+            !names.contains(&"sdk_supported"),
+            "Migration 63 should have dropped models.sdk_supported"
         );
     }
 }

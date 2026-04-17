@@ -43,8 +43,7 @@ impl Database {
                    m.max_input_tokens, m.max_output_tokens,
                    m.first_seen, m.last_seen,
                    COUNT(t.uuid) as total_turns,
-                   COUNT(DISTINCT t.session_id) as total_sessions,
-                   m.sdk_supported
+                   COUNT(DISTINCT t.session_id) as total_sessions
             FROM models m
             LEFT JOIN turns t ON t.model_id = m.id
             GROUP BY m.id

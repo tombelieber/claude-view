@@ -295,12 +295,6 @@ impl Database {
         sqlx::query("DELETE FROM session_commits")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM turn_metrics")
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM api_errors")
-            .execute(&mut *tx)
-            .await?;
         sqlx::query("DELETE FROM turns").execute(&mut *tx).await?;
         sqlx::query("DELETE FROM invocations")
             .execute(&mut *tx)

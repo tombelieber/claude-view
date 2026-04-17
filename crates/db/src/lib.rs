@@ -215,6 +215,10 @@ impl Database {
                         // Column already exists from a previous run without tracking.
                         // Safe to skip.
                     }
+                    Err(e) if e.to_string().contains("no such column") => {
+                        // Column already dropped (out-of-band cleanup or prior run).
+                        // DROP COLUMN is idempotent under this policy.
+                    }
                     Err(e) => return Err(e.into()),
                 }
                 sqlx::query("INSERT INTO _migrations (version) VALUES (?)")

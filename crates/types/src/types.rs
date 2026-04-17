@@ -418,13 +418,6 @@ pub struct SessionInfo {
     pub category_source: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub classified_at: Option<String>,
-    // Theme 4: Behavioral metrics
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prompt_word_count: Option<u32>,
-    #[serde(default)]
-    pub correction_count: u32,
-    #[serde(default)]
-    pub same_file_edit_count: u32,
     // Wall-clock task time metrics
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "number | null")]
@@ -1233,9 +1226,6 @@ mod tests {
             category_confidence: None,
             category_source: None,
             classified_at: None,
-            prompt_word_count: None,
-            correction_count: 0,
-            same_file_edit_count: 0,
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,
@@ -1412,9 +1402,6 @@ mod tests {
             category_confidence: None,
             category_source: None,
             classified_at: None,
-            prompt_word_count: None,
-            correction_count: 0,
-            same_file_edit_count: 0,
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,

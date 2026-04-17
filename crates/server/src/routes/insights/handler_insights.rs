@@ -96,8 +96,7 @@ pub async fn get_insights(
             s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
             s.total_input_tokens, s.total_output_tokens,
             s.git_branch, s.files_edited, s.files_read,
-            s.category_l1, s.prompt_word_count,
-            s.correction_count, s.same_file_edit_count, s.size_bytes,
+            s.category_l1, s.size_bytes,
             s.primary_model
         FROM valid_sessions s
         WHERE s.last_message_at >= ?1 AND s.last_message_at <= ?2

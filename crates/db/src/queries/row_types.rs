@@ -538,10 +538,6 @@ pub(crate) struct SessionRow {
     pub(crate) category_confidence: Option<f64>,
     pub(crate) category_source: Option<String>,
     pub(crate) classified_at: Option<String>,
-    // Theme 4: Behavioral metrics (only populated by classifier job, not standard indexing)
-    pub(crate) prompt_word_count: Option<i32>,
-    pub(crate) correction_count: i32,
-    pub(crate) same_file_edit_count: i32,
     // Wall-clock task time metrics
     pub(crate) total_task_time_seconds: Option<i32>,
     pub(crate) longest_task_seconds: Option<i32>,
@@ -619,10 +615,6 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             category_confidence: row.try_get("category_confidence").ok().flatten(),
             category_source: row.try_get("category_source").ok().flatten(),
             classified_at: row.try_get("classified_at").ok().flatten(),
-            // Theme 4: Behavioral metrics
-            prompt_word_count: row.try_get("prompt_word_count").ok().flatten(),
-            correction_count: row.try_get("correction_count").unwrap_or(0),
-            same_file_edit_count: row.try_get("same_file_edit_count").unwrap_or(0),
             // Wall-clock task time metrics
             total_task_time_seconds: row.try_get("total_task_time_seconds").ok().flatten(),
             longest_task_seconds: row.try_get("longest_task_seconds").ok().flatten(),
@@ -734,10 +726,6 @@ impl SessionRow {
             category_confidence: self.category_confidence,
             category_source: self.category_source,
             classified_at: self.classified_at,
-            // Theme 4: Behavioral metrics
-            prompt_word_count: self.prompt_word_count.map(|v| v as u32),
-            correction_count: self.correction_count as u32,
-            same_file_edit_count: self.same_file_edit_count as u32,
             // Wall-clock task time metrics
             total_task_time_seconds: self.total_task_time_seconds.map(|v| v as u32),
             longest_task_seconds: self.longest_task_seconds.map(|v| v as u32),

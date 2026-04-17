@@ -40,9 +40,6 @@ pub(super) struct LightSession {
     pub files_edited: String,
     pub files_read: String,
     pub category_l1: Option<String>,
-    pub prompt_word_count: Option<i32>,
-    pub correction_count: i32,
-    pub same_file_edit_count: i32,
     pub size_bytes: i64,
 }
 
@@ -76,9 +73,6 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for LightSession {
             files_edited: row.try_get("files_edited")?,
             files_read: row.try_get("files_read")?,
             category_l1: row.try_get("category_l1").ok().flatten(),
-            prompt_word_count: row.try_get("prompt_word_count").ok().flatten(),
-            correction_count: row.try_get("correction_count").unwrap_or(0),
-            same_file_edit_count: row.try_get("same_file_edit_count").unwrap_or(0),
             size_bytes: row.try_get("size_bytes")?,
         })
     }
@@ -162,9 +156,6 @@ impl LightSession {
             category_confidence: None,
             category_source: None,
             classified_at: None,
-            prompt_word_count: self.prompt_word_count.map(|v| v as u32),
-            correction_count: self.correction_count as u32,
-            same_file_edit_count: self.same_file_edit_count as u32,
             total_task_time_seconds: None,
             longest_task_seconds: None,
             longest_task_preview: None,

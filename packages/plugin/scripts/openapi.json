@@ -10323,8 +10323,7 @@
         "required": [
           "id",
           "totalTurns",
-          "totalSessions",
-          "sdkSupported"
+          "totalSessions"
         ],
         "properties": {
           "description": {
@@ -10381,10 +10380,6 @@
               "string",
               "null"
             ]
-          },
-          "sdkSupported": {
-            "type": "boolean",
-            "description": "True if this model is reported by the Agent SDK as usable.\nChat model selector filters on this — only SDK-supported models are selectable."
           },
           "totalSessions": {
             "type": "integer",
@@ -12270,11 +12265,6 @@
             "format": "int32",
             "minimum": 0
           },
-          "correctionCount": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
           "deepIndexed": {
             "type": "boolean"
           },
@@ -12420,20 +12410,7 @@
           "projectPath": {
             "type": "string"
           },
-          "promptWordCount": {
-            "type": [
-              "integer",
-              "null"
-            ],
-            "format": "int32",
-            "minimum": 0
-          },
           "reeditedFilesCount": {
-            "type": "integer",
-            "format": "int32",
-            "minimum": 0
-          },
-          "sameFileEditCount": {
             "type": "integer",
             "format": "int32",
             "minimum": 0

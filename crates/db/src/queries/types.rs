@@ -76,9 +76,6 @@ pub struct ModelWithStats {
     pub total_turns: i64,
     #[ts(type = "number")]
     pub total_sessions: i64,
-    /// True if this model is reported by the Agent SDK as usable.
-    /// Chat model selector filters on this — only SDK-supported models are selectable.
-    pub sdk_supported: bool,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
@@ -96,7 +93,6 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for ModelWithStats {
             last_seen: row.try_get("last_seen")?,
             total_turns: row.try_get("total_turns")?,
             total_sessions: row.try_get("total_sessions")?,
-            sdk_supported: row.try_get::<i32, _>("sdk_supported").unwrap_or(0) != 0,
         })
     }
 }
