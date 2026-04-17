@@ -325,8 +325,20 @@ mod tests {
         let session = test_live_session("integration-test");
         tx.send(SessionEvent::SessionUpsert { session }).unwrap();
 
-        // Wait for delivery (500ms — 200ms was flaky under concurrent test load).
-        tokio::time::sleep(Duration::from_millis(500)).await;
+        // Poll for delivery instead of sleeping a fixed interval. Under
+        // heavy parallel nextest load (2 800+ tests) a fixed sleep is
+        // fundamentally brittle — the previous 500 ms bump from 200 ms
+        // masked but did not fix the race.
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            if received.lock().unwrap().len() >= 1 {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
 
         shutdown_tx.send(true).unwrap();
         tokio::time::timeout(Duration::from_secs(2), handle)
