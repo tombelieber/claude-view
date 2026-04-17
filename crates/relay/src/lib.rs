@@ -1,5 +1,4 @@
 pub mod auth;
-pub mod pairing;
 pub mod posthog;
 pub mod push;
 pub mod rate_limit;
@@ -16,21 +15,8 @@ use std::time::Duration;
 use tower::ServiceBuilder;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::limit::RequestBodyLimitLayer;
-use tracing::debug;
 
 pub fn app(state: RelayState) -> Router {
-    // Spawn background cleanup for expired pairing offers
-    let cleanup_state = state.clone();
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_secs(60)).await;
-            cleanup_state
-                .pairing_offers
-                .retain(|_, offer| offer.created_at.elapsed().as_secs() < 300);
-            debug!("cleaned expired pairing offers");
-        }
-    });
-
     // CORS: allowlist production + dev origins
     let allowed_origins: Vec<HeaderValue> = vec![
         "https://claudeview.ai".parse().unwrap(),
@@ -45,8 +31,6 @@ pub fn app(state: RelayState) -> Router {
 
     // HTTP routes get a 30s timeout via HandleErrorLayer (NOT applied to WS — connections are long-lived)
     let http_routes = Router::new()
-        .route("/pair", post(pairing::create_pair))
-        .route("/pair/claim", post(pairing::claim_pair))
         .route("/push-tokens", post(push::register_push_token))
         .route("/health", get(|| async { "ok" }))
         .layer(
