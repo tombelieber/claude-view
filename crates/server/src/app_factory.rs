@@ -565,6 +565,35 @@ pub fn create_app_full(
         });
     }
 
+    // Boot-time pricing drift audit: scan the 50 most-recently-active sessions
+    // for model IDs not in data/anthropic-pricing.json. Runs once, non-blocking.
+    // Catches new model releases (e.g. Opus 4.8) landing in JSONL before the
+    // pricing table is updated — which otherwise shows as "Unavailable" cost in UI.
+    {
+        let catalog = state.session_catalog.clone();
+        let pricing = state.pricing.clone();
+        tokio::spawn(async move {
+            let rows = catalog.list(
+                &claude_view_core::session_catalog::Filter::default(),
+                claude_view_core::session_catalog::Sort::LastTsDesc,
+                50,
+            );
+            let paths: Vec<(&std::path::Path, bool)> = rows
+                .iter()
+                .map(|r| (r.file_path.as_path(), r.is_compressed))
+                .collect();
+            let unpriced = claude_view_core::pricing::scan_unpriced_models(&paths, &pricing);
+            if !unpriced.is_empty() {
+                tracing::warn!(
+                    unpriced_models = ?unpriced,
+                    sampled_sessions = rows.len(),
+                    "Pricing table drift: JSONL contains model IDs not in data/anthropic-pricing.json — \
+                     cost will show as Unavailable for these sessions. Fix: add entries to data/anthropic-pricing.json."
+                );
+            }
+        });
+    }
+
     // Seed official workflow YAMLs to ~/.claude-view/workflows/official/ (idempotent, fast)
     crate::routes::workflows::seed_official_workflows();
 

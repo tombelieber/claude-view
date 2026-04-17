@@ -96,8 +96,58 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 15 models + 3 aliases = 18 entries
-        assert_eq!(pricing.len(), 18);
+        // 16 models + 3 aliases = 19 entries
+        assert_eq!(pricing.len(), 19);
+    }
+
+    /// Models known to appear in real JSONL sessions right now.
+    ///
+    /// When a new model ships and starts landing in `~/.claude/projects/`, add
+    /// its full ID here AND add an entry to `data/anthropic-pricing.json`. This
+    /// list is the CI gate: if a dev forgets the pricing update, the test below
+    /// fails with a pointer to the fix.
+    const ACTIVE_MODELS: &[&str] = &[
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-sonnet-4-5-20250929",
+        "claude-haiku-4-5-20251001",
+    ];
+
+    #[test]
+    fn test_all_active_models_priced() {
+        use super::super::lookup::lookup_pricing;
+        let pricing = load_pricing();
+        for model_id in ACTIVE_MODELS {
+            assert!(
+                lookup_pricing(model_id, &pricing).is_some(),
+                "Active model `{}` not in pricing table. Fix: add entry to \
+                 data/anthropic-pricing.json, then bump `last_verified`.",
+                model_id
+            );
+        }
+    }
+
+    #[test]
+    fn test_opus_47_priced_and_matches_opus_46() {
+        let pricing = load_pricing();
+        let opus47 = pricing.get("claude-opus-4-7").expect(
+            "Opus 4.7 must be in pricing table — JSONL files already contain this model ID",
+        );
+        let opus46 = pricing.get("claude-opus-4-6").unwrap();
+        assert_eq!(
+            opus47.input_cost_per_token, opus46.input_cost_per_token,
+            "Opus 4.7 base input rate should match 4.6 ($5/MTok)"
+        );
+        assert_eq!(opus47.output_cost_per_token, opus46.output_cost_per_token);
+        assert_eq!(
+            opus47.cache_creation_cost_per_token,
+            opus46.cache_creation_cost_per_token
+        );
+        assert_eq!(
+            opus47.cache_read_cost_per_token,
+            opus46.cache_read_cost_per_token
+        );
     }
 
     #[test]

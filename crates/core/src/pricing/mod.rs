@@ -3,12 +3,14 @@
 //! Single source of truth: `data/anthropic-pricing.json` (embedded at compile time).
 //! No network dependency, no SQLite cache, no runtime merge.
 
+mod audit;
 mod calculate;
 mod extract;
 mod loader;
 mod lookup;
 mod types;
 
+pub use audit::scan_unpriced_models;
 pub use calculate::{calculate_cost, calculate_cost_usd, finalize_cost_breakdown};
 pub use extract::extract_usage_tokens;
 pub use loader::load_pricing;

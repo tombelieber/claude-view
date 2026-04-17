@@ -1,8 +1,20 @@
 {
   "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
-  "last_verified": "2026-04-14",
+  "last_verified": "2026-04-17",
   "unit": "usd_per_million_tokens",
   "models": {
+    "claude-opus-4-7": {
+      "display_name": "Claude Opus 4.7",
+      "input": 5.0,
+      "output": 25.0,
+      "cache_write_5m": 6.25,
+      "cache_write_1hr": 10.0,
+      "cache_read": 0.5,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "long_context_pricing": null,
+      "tokenizer_note": "Opus 4.7 uses a new tokenizer and may use up to 35% more tokens for the same text vs prior models."
+    },
     "claude-opus-4-6": {
       "display_name": "Claude Opus 4.6",
       "input": 5.0,
@@ -233,6 +245,7 @@
         "auto_or_none": 346,
         "any_or_tool": 313,
         "applies_to": [
+          "claude-opus-4-7",
           "claude-opus-4-6",
           "claude-opus-4-5-20251101",
           "claude-opus-4-1-20250805",
