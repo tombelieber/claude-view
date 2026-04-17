@@ -1,46 +1,14 @@
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+//! JWT validation for the relay.
+//!
+//! Phase 1 stripped out the Ed25519 challenge-response auth (that was for the
+//! pre-Supabase pairing model, now replaced by JWT + device ownership via
+//! Supabase). The Ed25519 helpers remain exported for the ws/client path, but
+//! the live WS handshake uses Supabase JWTs validated against the JWKS.
+
+use std::sync::Arc;
+
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::Deserialize;
-use std::time::{SystemTime, UNIX_EPOCH};
-
-#[derive(Deserialize)]
-pub struct AuthMessage {
-    #[serde(rename = "type")]
-    pub msg_type: String,
-    pub device_id: String,
-    pub timestamp: u64,
-    #[serde(with = "base64_bytes")]
-    pub signature: Vec<u8>,
-}
-
-/// Verify an Ed25519 auth challenge. Returns true if valid.
-pub fn verify_auth(msg: &AuthMessage, verifying_key: &VerifyingKey) -> bool {
-    // Check timestamp freshness (60s window)
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    if now.abs_diff(msg.timestamp) > 60 {
-        return false;
-    }
-
-    // Verify signature over "timestamp:device_id"
-    let payload = format!("{}:{}", msg.timestamp, msg.device_id);
-    let Ok(signature) = Signature::from_slice(&msg.signature) else {
-        return false;
-    };
-    verifying_key.verify(payload.as_bytes(), &signature).is_ok()
-}
-
-mod base64_bytes {
-    use base64::{engine::general_purpose::STANDARD, Engine};
-    use serde::{Deserialize, Deserializer};
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Vec<u8>, D::Error> {
-        let s = String::deserialize(d)?;
-        STANDARD.decode(s).map_err(serde::de::Error::custom)
-    }
-}
 
 // --- Supabase JWT validation ---
 
@@ -51,11 +19,25 @@ pub struct SupabaseClaims {
     pub iss: String,
 }
 
+/// Supabase JWT validator. In tests we substitute a no-verify mock — see
+/// `SupabaseAuth::mock_for_test()`.
 pub struct SupabaseAuth {
-    pub decoding_key: DecodingKey,
-    pub algorithm: Algorithm,
-    pub issuer: String,
-    pub supabase_url: String,
+    pub kind: SupabaseAuthKind,
+}
+
+pub enum SupabaseAuthKind {
+    /// Real validator with a JWKS-provided decoding key.
+    Real {
+        decoding_key: DecodingKey,
+        algorithm: Algorithm,
+        issuer: String,
+        supabase_url: String,
+    },
+    /// Test mock — base64-decodes the payload and trusts the `sub` field
+    /// without verifying the signature. Only used in unit/integration tests.
+    /// Only constructed via `mock_for_test()` — safe to keep in prod builds
+    /// since nothing constructs it there.
+    Mock,
 }
 
 /// Parse the `alg` field from a JWK JSON value into a `jsonwebtoken::Algorithm`.
@@ -94,19 +76,57 @@ impl SupabaseAuth {
         tracing::info!("Relay JWKS loaded: algorithm={algorithm:?}");
 
         Ok(Self {
-            decoding_key,
-            algorithm,
-            issuer: format!("{}/auth/v1", supabase_url),
-            supabase_url: supabase_url.to_string(),
+            kind: SupabaseAuthKind::Real {
+                decoding_key,
+                algorithm,
+                issuer: format!("{}/auth/v1", supabase_url),
+                supabase_url: supabase_url.to_string(),
+            },
         })
     }
 
+    /// Test-only mock: trusts any JWT whose payload decodes to `{"sub": "..."}`.
+    /// Always available (no feature gate) so integration tests in `tests/`
+    /// can wire it without a crate-self dev-dependency dance.
+    pub fn mock_for_test() -> Self {
+        Self {
+            kind: SupabaseAuthKind::Mock,
+        }
+    }
+
     pub fn validate(&self, token: &str) -> anyhow::Result<String> {
-        let mut v = Validation::new(self.algorithm);
-        v.set_issuer(&[&self.issuer]);
-        v.set_audience(&["authenticated"]);
-        let data = decode::<SupabaseClaims>(token, &self.decoding_key, &v)?;
-        Ok(data.claims.sub)
+        match &self.kind {
+            SupabaseAuthKind::Real {
+                decoding_key,
+                algorithm,
+                issuer,
+                ..
+            } => {
+                let mut v = Validation::new(*algorithm);
+                v.set_issuer(&[issuer]);
+                v.set_audience(&["authenticated"]);
+                let data = decode::<SupabaseClaims>(token, decoding_key, &v)?;
+                Ok(data.claims.sub)
+            }
+            SupabaseAuthKind::Mock => {
+                // Parse the JWT payload manually, no signature verification.
+                use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+                let mut parts = token.split('.');
+                let _ = parts.next().ok_or_else(|| anyhow::anyhow!("no header"))?;
+                let payload_b64 = parts.next().ok_or_else(|| anyhow::anyhow!("no payload"))?;
+                let payload_bytes = URL_SAFE_NO_PAD
+                    .decode(payload_b64)
+                    .map_err(|e| anyhow::anyhow!("bad payload b64: {e}"))?;
+                let payload: serde_json::Value = serde_json::from_slice(&payload_bytes)
+                    .map_err(|e| anyhow::anyhow!("bad payload json: {e}"))?;
+                let sub = payload
+                    .get("sub")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("no sub claim"))?
+                    .to_string();
+                Ok(sub)
+            }
+        }
     }
 
     /// Validate JWT with automatic JWKS rotation on failure.
@@ -118,10 +138,14 @@ impl SupabaseAuth {
         match self.validate(token) {
             Ok(sub) => Ok((sub, None)),
             Err(first_err) => {
+                let supabase_url = match &self.kind {
+                    SupabaseAuthKind::Real { supabase_url, .. } => supabase_url.clone(),
+                    SupabaseAuthKind::Mock => return Err(first_err),
+                };
                 tracing::info!(
                     "Relay JWT validation failed, re-fetching JWKS (possible key rotation)"
                 );
-                match Self::from_supabase_url(&self.supabase_url).await {
+                match Self::from_supabase_url(&supabase_url).await {
                     Ok(new_auth) => {
                         let sub = new_auth.validate(token)?;
                         Ok((sub, Some(new_auth)))
@@ -134,4 +158,16 @@ impl SupabaseAuth {
             }
         }
     }
+}
+
+/// Free-function wrapper: validate a JWT and return the user_id (sub claim).
+///
+/// Returns Err if `supabase_auth` is None (auth required but not configured)
+/// or if the JWT fails validation.
+pub fn validate_jwt(
+    jwt: &str,
+    supabase_auth: Option<&Arc<SupabaseAuth>>,
+) -> Result<String, String> {
+    let auth = supabase_auth.ok_or_else(|| "Supabase auth not configured".to_string())?;
+    auth.validate(jwt).map_err(|e| e.to_string())
 }

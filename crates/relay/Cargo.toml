@@ -24,6 +24,8 @@ rand = "0.8"
 reqwest = { version = "0.12", features = ["json"] }
 jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 anyhow = { workspace = true }
+async-trait = "0.1"
+thiserror = { workspace = true }
 rustls = { workspace = true }
 sentry = { workspace = true }
 sentry-tracing = { workspace = true }

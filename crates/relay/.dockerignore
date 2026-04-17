@@ -2,4 +2,14 @@ target/
 node_modules/
 dist/
 .git/
+.github/
+.worktrees/
 *.md
+apps/web/
+apps/landing/
+private/
+docs/
+scripts/
+supabase/
+packages/shared/src/types/*.generated.ts
+.turbo/

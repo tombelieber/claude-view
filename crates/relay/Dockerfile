@@ -1,28 +1,18 @@
 FROM rust:1.85-slim AS builder
 
+RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
-# Copy workspace root
-COPY Cargo.toml Cargo.lock ./
+# Copy the full workspace. The relay depends on transitively-compiled crates
+# (observability, core, types, workspace-hack) and the cargo-hakari workspace-hack
+# shim — pre-Phase-1 we tried to hand-select individual manifests but that
+# broke on every workspace change. Simpler and correct: ship everything.
+COPY . .
 
-# Copy all crate manifests for workspace resolution
-COPY crates/relay/Cargo.toml crates/relay/Cargo.toml
-COPY crates/core/Cargo.toml crates/core/Cargo.toml
-COPY crates/db/Cargo.toml crates/db/Cargo.toml
-COPY crates/search/Cargo.toml crates/search/Cargo.toml
-COPY crates/server/Cargo.toml crates/server/Cargo.toml
-
-# Create dummy lib.rs for workspace members (so cargo can resolve deps)
-RUN mkdir -p crates/core/src && echo "" > crates/core/src/lib.rs && \
-    mkdir -p crates/db/src && echo "" > crates/db/src/lib.rs && \
-    mkdir -p crates/search/src && echo "" > crates/search/src/lib.rs && \
-    mkdir -p crates/server/src && echo "" > crates/server/src/lib.rs
-
-# Copy relay source and static assets
-COPY crates/relay/src crates/relay/src
-COPY crates/relay/static crates/relay/static
-
-# Build only the relay binary
+# Build only the relay binary in release mode. Workspace-hack unifies deps
+# so the first build is a one-shot compile of everything; incremental rebuilds
+# stay cheap via docker BuildKit layer caching on this COPY.
 RUN cargo build -p claude-view-relay --release
 
 # --- Runtime ---
