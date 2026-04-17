@@ -100,159 +100,67 @@ async fn test_get_dashboard_stats_with_range() {
 async fn test_get_all_time_metrics() {
     let db = Database::new_in_memory().await.unwrap();
 
-    // Insert 2 sessions with known files_edited_count
-    db.insert_session_from_index(
-        "metrics-1",
-        "proj-m",
-        "Project M",
-        "/tmp/proj-m",
-        "/tmp/m1.jsonl",
-        "Preview 1",
-        None,
-        10,
-        1000,
-        None,
-        false,
-        2000,
-    )
-    .await
-    .unwrap();
+    // Insert + deep-index 2 sessions with known files_edited_count (single UPSERT each)
+    claude_view_db::test_support::SessionSeedBuilder::new("metrics-1")
+        .project_id("proj-m")
+        .project_display_name("Project M")
+        .project_path("/tmp/proj-m")
+        .file_path("/tmp/m1.jsonl")
+        .preview("Preview 1")
+        .message_count(10)
+        .modified_at(1000)
+        .size_bytes(2000)
+        .turn_count(3)
+        .total_cost_usd(0.0)
+        .with_parsed(|s| {
+            s.last_message = "Last msg 1".to_string();
+            s.tool_counts_edit = 2;
+            s.tool_counts_read = 4;
+            s.tool_counts_bash = 1;
+            s.user_prompt_count = 5;
+            s.api_call_count = 8;
+            s.tool_call_count = 15;
+            s.files_edited_count = 3;
+            s.duration_seconds = 120;
+            s.commit_count = 1;
+            s.first_message_at = 900;
+            s.parse_version = 1;
+            s.file_size_at_index = 2000;
+            s.file_mtime_at_index = 1706200000;
+        })
+        .seed(&db)
+        .await
+        .unwrap();
 
-    db.insert_session_from_index(
-        "metrics-2",
-        "proj-m",
-        "Project M",
-        "/tmp/proj-m",
-        "/tmp/m2.jsonl",
-        "Preview 2",
-        None,
-        5,
-        2000,
-        None,
-        false,
-        1000,
-    )
-    .await
-    .unwrap();
-
-    // Update deep fields to set files_edited_count
-    db.update_session_deep_fields(
-        "metrics-1",
-        "Last msg 1",
-        3,
-        2,
-        4,
-        1,
-        0,
-        "[]",
-        "[]",
-        5,
-        8,
-        15,
-        "[]",
-        "[]",
-        0,
-        3,
-        0,
-        120,
-        1,
-        Some(900),
-        0,
-        0,
-        0,
-        0,
-        0,
-        None,
-        None,
-        None,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        None,
-        1,
-        2000,
-        1706200000,
-        0,
-        0,
-        0, // lines_added, lines_removed, loc_source
-        0,
-        0,         // ai_lines_added, ai_lines_removed
-        None,      // work_type
-        None,      // git_branch
-        None,      // primary_model
-        None,      // last_message_at
-        None,      // first_user_prompt
-        0,         // total_task_time_seconds
-        None,      // longest_task_seconds
-        None,      // longest_task_preview
-        Some(0.0), // total_cost_usd
-    )
-    .await
-    .unwrap();
-
-    db.update_session_deep_fields(
-        "metrics-2",
-        "Last msg 2",
-        2,
-        1,
-        2,
-        0,
-        1,
-        "[]",
-        "[]",
-        3,
-        5,
-        10,
-        "[]",
-        "[]",
-        0,
-        2,
-        0,
-        60,
-        0,
-        Some(1900),
-        0,
-        0,
-        0,
-        0,
-        0,
-        None,
-        None,
-        None,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        None,
-        1,
-        1000,
-        1706200000,
-        0,
-        0,
-        0, // lines_added, lines_removed, loc_source
-        0,
-        0,         // ai_lines_added, ai_lines_removed
-        None,      // work_type
-        None,      // git_branch
-        None,      // primary_model
-        None,      // last_message_at
-        None,      // first_user_prompt
-        0,         // total_task_time_seconds
-        None,      // longest_task_seconds
-        None,      // longest_task_preview
-        Some(0.0), // total_cost_usd
-    )
-    .await
-    .unwrap();
+    claude_view_db::test_support::SessionSeedBuilder::new("metrics-2")
+        .project_id("proj-m")
+        .project_display_name("Project M")
+        .project_path("/tmp/proj-m")
+        .file_path("/tmp/m2.jsonl")
+        .preview("Preview 2")
+        .message_count(5)
+        .modified_at(2000)
+        .size_bytes(1000)
+        .turn_count(2)
+        .total_cost_usd(0.0)
+        .with_parsed(|s| {
+            s.last_message = "Last msg 2".to_string();
+            s.tool_counts_edit = 1;
+            s.tool_counts_read = 2;
+            s.tool_counts_write = 1;
+            s.user_prompt_count = 3;
+            s.api_call_count = 5;
+            s.tool_call_count = 10;
+            s.files_edited_count = 2;
+            s.duration_seconds = 60;
+            s.first_message_at = 1900;
+            s.parse_version = 1;
+            s.file_size_at_index = 1000;
+            s.file_mtime_at_index = 1706200000;
+        })
+        .seed(&db)
+        .await
+        .unwrap();
 
     let (session_count, total_tokens, total_files_edited, commit_count) =
         db.get_all_time_metrics(None, None).await.unwrap();

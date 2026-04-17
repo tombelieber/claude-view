@@ -165,84 +165,40 @@ async fn test_get_week_trends_with_data() {
     // Insert sessions in current week
     let (curr_start, _) = current_week_bounds();
 
-    // Insert a session in current week
-    db.insert_session_from_index(
-        "sess-curr-1",
-        "project-a",
-        "Project A",
-        "/tmp/project-a",
-        "/tmp/curr1.jsonl",
-        "Current week session",
-        None,
-        5,
-        curr_start + 3600, // 1 hour into current week
-        None,
-        false,
-        1000,
-    )
-    .await
-    .unwrap();
-
-    // Update with Phase 3 metrics
-    db.update_session_deep_fields(
-        "sess-curr-1",
-        "Last message",
-        3, // turn_count
-        2, // tool_edit
-        5, // tool_read
-        1, // tool_bash
-        1, // tool_write
-        "[]",
-        "[]",
-        10, // user_prompt_count
-        8,  // api_call_count
-        15, // tool_call_count
-        r#"["/a.rs"]"#,
-        r#"["/b.rs", "/c.rs"]"#,
-        1, // files_read_count
-        2, // files_edited_count
-        0, // reedited_files_count
-        600,
-        1,
-        None, // first_message_at
-        // Phase 3.5: Full parser metrics
-        0,
-        0,
-        0,
-        0, // token counts
-        0, // thinking_block_count
-        None,
-        None,
-        None, // turn durations
-        0,
-        0,
-        0,
-        0, // error/retry/compaction/hook_blocked
-        0,
-        0,
-        0,
-        0,          // progress counts
-        None,       // summary_text
-        1,          // parse_version
-        1000,       // file_size
-        1706200000, // file_mtime
-        0,
-        0,
-        0, // lines_added, lines_removed, loc_source
-        0,
-        0,         // ai_lines_added, ai_lines_removed
-        None,      // work_type
-        None,      // git_branch
-        None,      // primary_model
-        None,      // last_message_at
-        None,      // first_user_prompt
-        0,         // total_task_time_seconds
-        None,      // longest_task_seconds
-        None,      // longest_task_preview
-        Some(0.0), // total_cost_usd
-    )
-    .await
-    .unwrap();
+    // Insert + deep-index a session in current week via single UPSERT
+    crate::test_support::SessionSeedBuilder::new("sess-curr-1")
+        .project_id("project-a")
+        .project_display_name("Project A")
+        .project_path("/tmp/project-a")
+        .file_path("/tmp/curr1.jsonl")
+        .preview("Current week session")
+        .message_count(5)
+        .modified_at(curr_start + 3600) // 1 hour into current week
+        .size_bytes(1000)
+        .turn_count(3)
+        .total_cost_usd(0.0)
+        .with_parsed(|s| {
+            s.last_message = "Last message".to_string();
+            s.tool_counts_edit = 2;
+            s.tool_counts_read = 5;
+            s.tool_counts_bash = 1;
+            s.tool_counts_write = 1;
+            s.user_prompt_count = 10;
+            s.api_call_count = 8;
+            s.tool_call_count = 15;
+            s.files_read = r#"["/a.rs"]"#.to_string();
+            s.files_edited = r#"["/b.rs", "/c.rs"]"#.to_string();
+            s.files_read_count = 1;
+            s.files_edited_count = 2;
+            s.duration_seconds = 600;
+            s.commit_count = 1;
+            s.parse_version = 1;
+            s.file_size_at_index = 1000;
+            s.file_mtime_at_index = 1706200000;
+        })
+        .seed(&db)
+        .await
+        .unwrap();
 
     let trends = db.get_week_trends().await.unwrap();
 

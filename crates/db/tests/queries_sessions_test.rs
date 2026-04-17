@@ -264,88 +264,59 @@ async fn test_list_projects_returns_camelcase_json() {
 async fn test_update_session_deep_fields_phase3() {
     let db = Database::new_in_memory().await.unwrap();
 
-    // First insert a session via Pass 1 (from index)
-    db.insert_session_from_index(
-        "test-sess-deep",
-        "project-deep",
-        "Project Deep",
-        "/tmp/project-deep",
-        "/tmp/test-deep.jsonl",
-        "Test preview",
-        None,
-        10,
-        1000,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
-
-    // Update with Pass 2 deep fields including Phase 3 metrics
-    let files_read = r#"["/path/to/file1.rs", "/path/to/file2.rs"]"#;
-    let files_edited = r#"["/path/to/file1.rs", "/path/to/file1.rs", "/path/to/file3.rs"]"#;
-
-    db.update_session_deep_fields(
-        "test-sess-deep",
-        "Last message content",
-        5,                                                                    // turn_count
-        10,                                                                   // tool_edit
-        15,                                                                   // tool_read
-        3,                                                                    // tool_bash
-        2,                                                                    // tool_write
-        r#"["/path/to/file1.rs", "/path/to/file2.rs", "/path/to/file3.rs"]"#, // files_touched
-        r#"["/commit", "/review"]"#,                                          // skills_used
-        // Phase 3: Atomic unit metrics
-        8,  // user_prompt_count
-        12, // api_call_count
-        25, // tool_call_count
-        files_read,
-        files_edited,
-        2,          // files_read_count
-        2,          // files_edited_count (unique: file1.rs, file3.rs)
-        1,          // reedited_files_count (file1.rs edited twice)
-        600,        // duration_seconds (10 minutes)
-        3,          // commit_count
-        Some(1000), // first_message_at
-        // Phase 3.5: Full parser metrics
-        5000,                         // total_input_tokens
-        3000,                         // total_output_tokens
-        1000,                         // cache_read_tokens
-        500,                          // cache_creation_tokens
-        2,                            // thinking_block_count
-        Some(150),                    // turn_duration_avg_ms
-        Some(300),                    // turn_duration_max_ms
-        Some(750),                    // turn_duration_total_ms
-        1,                            // api_error_count
-        0,                            // api_retry_count
-        0,                            // compaction_count
-        0,                            // hook_blocked_count
-        1,                            // agent_spawn_count
-        2,                            // bash_progress_count
-        0,                            // hook_progress_count
-        1,                            // mcp_progress_count
-        Some("Session summary text"), // summary_text
-        1,                            // parse_version
-        5000,                         // file_size
-        1706200000,                   // file_mtime
-        0,                            // lines_added
-        0,                            // lines_removed
-        0,                            // loc_source
-        0,                            // ai_lines_added
-        0,                            // ai_lines_removed
-        None,                         // work_type
-        None,                         // git_branch
-        None,                         // primary_model
-        None,                         // last_message_at
-        None,                         // first_user_prompt
-        0,                            // total_task_time_seconds
-        None,                         // longest_task_seconds
-        None,                         // longest_task_preview
-        Some(0.0),                    // total_cost_usd
-    )
-    .await
-    .unwrap();
+    // Single UPSERT: identity fields + full Phase 3 deep fields.
+    claude_view_db::test_support::SessionSeedBuilder::new("test-sess-deep")
+        .project_id("project-deep")
+        .project_display_name("Project Deep")
+        .project_path("/tmp/project-deep")
+        .file_path("/tmp/test-deep.jsonl")
+        .preview("Test preview")
+        .message_count(10)
+        .modified_at(1000)
+        .size_bytes(5000)
+        .turn_count(5)
+        .total_input_tokens(5000)
+        .total_output_tokens(3000)
+        .total_cost_usd(0.0)
+        .with_parsed(|s| {
+            s.last_message = "Last message content".to_string();
+            s.tool_counts_edit = 10;
+            s.tool_counts_read = 15;
+            s.tool_counts_bash = 3;
+            s.tool_counts_write = 2;
+            s.files_touched =
+                r#"["/path/to/file1.rs", "/path/to/file2.rs", "/path/to/file3.rs"]"#.to_string();
+            s.skills_used = r#"["/commit", "/review"]"#.to_string();
+            s.user_prompt_count = 8;
+            s.api_call_count = 12;
+            s.tool_call_count = 25;
+            s.files_read = r#"["/path/to/file1.rs", "/path/to/file2.rs"]"#.to_string();
+            s.files_edited =
+                r#"["/path/to/file1.rs", "/path/to/file1.rs", "/path/to/file3.rs"]"#.to_string();
+            s.files_read_count = 2;
+            s.files_edited_count = 2;
+            s.reedited_files_count = 1;
+            s.duration_seconds = 600;
+            s.commit_count = 3;
+            s.first_message_at = 1000;
+            s.cache_read_tokens = 1000;
+            s.cache_creation_tokens = 500;
+            s.thinking_block_count = 2;
+            s.turn_duration_avg_ms = Some(150);
+            s.turn_duration_max_ms = Some(300);
+            s.turn_duration_total_ms = Some(750);
+            s.api_error_count = 1;
+            s.agent_spawn_count = 1;
+            s.bash_progress_count = 2;
+            s.mcp_progress_count = 1;
+            s.summary_text = Some("Session summary text".to_string());
+            s.parse_version = 1;
+            s.file_size_at_index = 5000;
+            s.file_mtime_at_index = 1706200000;
+        })
+        .seed(&db)
+        .await
+        .unwrap();
 
     // Retrieve session and verify all Phase 3 fields
     let projects = db.list_projects().await.unwrap();
@@ -411,32 +382,28 @@ async fn test_get_session_file_path() {
 async fn test_phase3_fields_default_to_zero() {
     let db = Database::new_in_memory().await.unwrap();
 
-    // Insert a session but don't run Pass 2
-    db.insert_session_from_index(
-        "no-deep-index",
-        "proj-no-deep",
-        "Project No Deep",
-        "/tmp/proj",
-        "/tmp/no-deep.jsonl",
-        "Preview",
-        None,
-        5,
-        1000,
-        None,
-        false,
-        500,
-    )
-    .await
-    .unwrap();
+    // Seed a session with ONLY identity fields — deep fields default to zero.
+    claude_view_db::test_support::SessionSeedBuilder::new("no-deep-index")
+        .project_id("proj-no-deep")
+        .project_display_name("Project No Deep")
+        .project_path("/tmp/proj")
+        .file_path("/tmp/no-deep.jsonl")
+        .preview("Preview")
+        .message_count(5)
+        .modified_at(1000)
+        .size_bytes(500)
+        .seed(&db)
+        .await
+        .unwrap();
 
-    // Retrieve and verify Phase 3 fields default to 0/empty
+    // Retrieve and verify Phase 3 fields default to 0/empty.
+    // (Note: `deep_indexed` is now always true under the unified UPSERT path —
+    //  the Pass-1-vs-Pass-2 split that the original assertion depended on no
+    //  longer exists. The real invariant the test name refers to — deep count
+    //  fields defaulting to zero when unset — is preserved below.)
     let projects = db.list_projects().await.unwrap();
     let session = &projects[0].sessions[0];
 
-    assert!(
-        !session.deep_indexed,
-        "Session should not be deep_indexed yet"
-    );
     assert_eq!(session.user_prompt_count, 0);
     assert_eq!(session.api_call_count, 0);
     assert_eq!(session.tool_call_count, 0);
