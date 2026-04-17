@@ -70,6 +70,7 @@ pub(crate) fn build_session_info(
         turn_count_api: Some(stats.turn_count as u64),
         message_count: (stats.turn_count + stats.user_prompt_count) as usize,
         primary_model: stats.primary_model.clone(),
+        git_branch: stats.git_branch.clone(),
         tool_call_count: stats.tool_call_count,
         thinking_block_count: stats.thinking_block_count,
         files_read_count: stats.files_read_count,

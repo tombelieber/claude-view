@@ -760,6 +760,11 @@ COMMIT;"#,
     // returned a subdirectory instead of the real git root. Backfill will re-resolve with fixed logic.
     // Matches any git_root ending in /private/config (the submodule subdirectory pattern).
     r#"UPDATE sessions SET git_root = NULL WHERE git_root LIKE '%/private/config';"#,
+    // Migration 62: Drop project_dir_status — orphaned after the JSONL-first
+    // hardcut. /api/projects now derives `is_archived` by stat()'ing the
+    // project dir at request time (see routes/projects.rs::project_dir_exists),
+    // so the table + its backfill are dead weight.
+    r#"DROP TABLE IF EXISTS project_dir_status;"#,
 ];
 
 // ============================================================================

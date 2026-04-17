@@ -56,6 +56,13 @@ pub struct SessionStats {
     // ── Model ──
     pub primary_model: Option<String>,
 
+    // ── Git metadata (from JSONL first line `gitBranch` field) ──
+    /// Branch recorded by Claude Code when the session started. Populated
+    /// by the first JSONL line that carries a non-empty `gitBranch`
+    /// attribute. Sessions with no git context return `None`, which maps
+    /// to the `NO_BRANCH_SENTINEL = "~"` semantics used by the branch filter.
+    pub git_branch: Option<String>,
+
     // ── Text content (truncated) ──
     pub preview: String,
     pub last_message: String,
@@ -76,6 +83,8 @@ struct StatsLine {
     timestamp: Option<String>,
     #[serde(default)]
     message: Option<StatsMessage>,
+    #[serde(default, rename = "gitBranch")]
+    git_branch: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -155,6 +164,17 @@ fn compute_stats(lines: &[StatsLine]) -> SessionStats {
                 first_ts = Some(ts);
             }
             last_ts = Some(ts);
+        }
+
+        // First non-empty gitBranch wins. JSONL writes this on every line but
+        // it only changes across resumes; the first occurrence is authoritative
+        // for the session's branch at start.
+        if stats.git_branch.is_none() {
+            if let Some(ref b) = line.git_branch {
+                if !b.is_empty() {
+                    stats.git_branch = Some(b.clone());
+                }
+            }
         }
 
         let Some(ref msg) = line.message else {
@@ -572,5 +592,39 @@ mod tests {
         let opus = stats.per_model_tokens.get("claude-opus-4-6").unwrap();
         assert_eq!(opus.cache_creation_5m_tokens, 2000);
         assert_eq!(opus.cache_creation_1hr_tokens, 3000);
+    }
+
+    #[test]
+    fn extracts_git_branch_from_first_occurrence() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("test.jsonl");
+        // Real JSONL puts gitBranch at the top of every line; session_stats
+        // must take the first non-empty value.
+        make_jsonl(
+            &path,
+            &[
+                r#"{"type":"user","timestamp":"2026-04-17T00:00:00Z","gitBranch":"","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}"#,
+                r#"{"type":"assistant","timestamp":"2026-04-17T00:00:01Z","gitBranch":"feature/hardcut","message":{"id":"m1","model":"claude-opus-4-7","role":"assistant","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":10,"output_tokens":5}}}"#,
+                r#"{"type":"user","timestamp":"2026-04-17T00:00:02Z","gitBranch":"main","message":{"role":"user","content":[{"type":"text","text":"later branch, should be ignored"}]}}"#,
+            ],
+        );
+
+        let stats = extract_stats(&path, false).unwrap();
+        assert_eq!(stats.git_branch.as_deref(), Some("feature/hardcut"));
+    }
+
+    #[test]
+    fn git_branch_missing_stays_none() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("test.jsonl");
+        make_jsonl(
+            &path,
+            &[
+                r#"{"type":"user","timestamp":"2026-04-17T00:00:00Z","message":{"role":"user","content":[{"type":"text","text":"hi"}]}}"#,
+            ],
+        );
+
+        let stats = extract_stats(&path, false).unwrap();
+        assert!(stats.git_branch.is_none());
     }
 }

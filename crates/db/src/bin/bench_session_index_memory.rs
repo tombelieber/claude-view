@@ -1,14 +1,14 @@
-//! P2-I — Session index memory footprint benchmark.
+//! P2-I — Session catalog memory footprint benchmark.
 //!
-//! Loads the real `SessionIndex` from `~/.claude/projects` +
+//! Loads the real `SessionCatalog` from `~/.claude/projects` +
 //! `~/.claude-backup/machines/*/projects`, then computes an
 //! approximate memory footprint:
 //!
-//!   struct bytes:   rows × sizeof(SessionIndexRow)
+//!   struct bytes:   rows × sizeof(CatalogRow)
 //!   string heap:    Σ (id.len + file_path.len + project_id.len)
 //!
-//! Also reads macOS `task_info` via `libc::mach_task_self()` to get
-//! an approximate peak RSS (best-effort — skipped if unavailable).
+//! Also reads process RSS (Linux `/proc/self/status`, macOS `ps -o rss=`)
+//! for a best-effort comparison.
 //!
 //! Run:
 //!   ./scripts/cq run --release -p claude-view-db --bin bench_session_index_memory
@@ -17,7 +17,7 @@ use std::mem::size_of;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use claude_view_db::jsonl_first_poc::session_index::{SessionIndex, SessionIndexRow};
+use claude_view_core::session_catalog::{CatalogRow, SessionCatalog, Sort};
 
 fn fmt_bytes(n: u64) -> String {
     if n < 1024 {
@@ -61,8 +61,8 @@ fn main() {
 
     let rss_before = rss_bytes();
 
-    println!("Phase 1 — rebuild session_index from filesystem");
-    let idx = SessionIndex::new();
+    println!("Phase 1 — rebuild SessionCatalog from filesystem");
+    let idx = SessionCatalog::new();
     let start = Instant::now();
     let stats = idx
         .rebuild_from_filesystem(&live_root, &backup_machines)
@@ -77,15 +77,11 @@ fn main() {
     println!();
 
     // Snapshot the rows for measurement
-    let all_rows: Vec<SessionIndexRow> = idx.list(
-        &Default::default(),
-        claude_view_db::jsonl_first_poc::session_index::Sort::LastTsDesc,
-        usize::MAX,
-    );
+    let all_rows: Vec<CatalogRow> = idx.list(&Default::default(), Sort::LastTsDesc, usize::MAX);
     assert_eq!(all_rows.len(), stats.total_after_dedup);
 
     // Struct bytes
-    let row_size = size_of::<SessionIndexRow>();
+    let row_size = size_of::<CatalogRow>();
     let struct_bytes = (all_rows.len() * row_size) as u64;
 
     // String heap cost — sum of every String / PathBuf byte

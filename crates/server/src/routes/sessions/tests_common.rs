@@ -142,13 +142,23 @@ impl CatalogFixture {
             format!("[{}]", tool_blocks.join(","))
         };
 
+        // git_branch is serialized as `gitBranch` (camelCase) in JSONL to match
+        // the real Claude Code transcript shape. `session_stats::extract_stats`
+        // reads the first non-empty occurrence as the session branch.
+        let git_branch_frag = match &session.git_branch {
+            Some(b) if !b.is_empty() => format!(r#","gitBranch":"{}""#, b),
+            _ => String::new(),
+        };
+
         let jsonl_body = format!(
             "{user}\n{assistant}\n",
             user = format!(
-                r#"{{"type":"user","timestamp":"{first_ts}","message":{{"role":"user","content":[{{"type":"text","text":"Seed prompt"}}]}}}}"#
+                r#"{{"type":"user","timestamp":"{first_ts}"{branch},"message":{{"role":"user","content":[{{"type":"text","text":"Seed prompt"}}]}}}}"#,
+                branch = git_branch_frag,
             ),
             assistant = format!(
-                r#"{{"type":"assistant","timestamp":"{last_ts}","message":{{"id":"msg_{id}","model":"{model}","role":"assistant","content":{content},"usage":{{"input_tokens":{input},"output_tokens":{output}}},"stop_reason":"end_turn"}}}}"#,
+                r#"{{"type":"assistant","timestamp":"{last_ts}"{branch},"message":{{"id":"msg_{id}","model":"{model}","role":"assistant","content":{content},"usage":{{"input_tokens":{input},"output_tokens":{output}}},"stop_reason":"end_turn"}}}}"#,
+                branch = git_branch_frag,
                 id = session.id,
                 model = primary_model,
                 content = assistant_content,

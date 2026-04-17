@@ -1,15 +1,16 @@
 //! P2-G/H — Handler-level list latency benchmark.
 //!
-//! Loads the real `SessionIndex` from the live filesystem and
-//! measures the JSONL-first `GET /api/sessions` handler pipeline as
-//! it would be called by axum — including the DTO mapping and
-//! `serde_json::to_string` serialisation step (axum's `Json<T>` does
-//! the same thing).
+//! Loads the real `SessionCatalog` from the live filesystem and
+//! measures the JSONL-first `GET /api/sessions` pipeline at the
+//! function-call layer — including DTO mapping and
+//! `serde_json::to_string` serialisation (axum's `Json<T>` does
+//! the same work).
 //!
-//! This is the "handler level" proof that the session_index backed
-//! list route can serve sub-millisecond responses without a DB.
-//! The canonical Axum handler lives in
-//! `crates/server/src/routes/sessions/list.rs`.
+//! Goal: prove the in-memory catalog list path can serve
+//! sub-millisecond responses without a DB round-trip. The canonical
+//! Axum handler lives in `crates/server/src/routes/sessions/list.rs`;
+//! this bench keeps a skinny pure-function mirror of that pipeline so
+//! the JSONL compute cost can be measured in isolation from axum.
 //!
 //! Run:
 //!   ./scripts/cq run --release -p claude-view-db --bin bench_list_handler
@@ -17,12 +18,74 @@
 use std::path::PathBuf;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use claude_view_db::jsonl_first_poc::handlers::{
-    list_projects, list_sessions, SessionsListResponse,
-};
-use claude_view_db::jsonl_first_poc::session_index::{Filter, SessionIndex, Sort};
+use claude_view_core::session_catalog::{CatalogRow, Filter, SessionCatalog, Sort};
+use serde::Serialize;
 
 const ITERS: usize = 1_000;
+
+// Bench-local DTOs — intentionally mirror the shape of the axum
+// response so `serde_json::to_string` pays the real cost.
+
+#[derive(Debug, Clone, Serialize)]
+struct SessionListItem {
+    id: String,
+    project_id: String,
+    file_path: String,
+    is_compressed: bool,
+    bytes: u64,
+    mtime: i64,
+}
+
+impl From<CatalogRow> for SessionListItem {
+    fn from(r: CatalogRow) -> Self {
+        Self {
+            id: r.id,
+            project_id: r.project_id,
+            file_path: r.file_path.to_string_lossy().into_owned(),
+            is_compressed: r.is_compressed,
+            bytes: r.bytes,
+            mtime: r.mtime,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct SessionsListResponse {
+    total: usize,
+    items: Vec<SessionListItem>,
+}
+
+fn list_sessions(
+    idx: &SessionCatalog,
+    filter: &Filter,
+    sort: Sort,
+    limit: usize,
+) -> SessionsListResponse {
+    let rows = idx.list(filter, sort, limit);
+    SessionsListResponse {
+        total: idx.len(),
+        items: rows.into_iter().map(Into::into).collect(),
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ProjectSummary {
+    project_id: String,
+    session_count: usize,
+}
+
+fn list_projects(idx: &SessionCatalog) -> Vec<ProjectSummary> {
+    let mut out: Vec<ProjectSummary> = idx
+        .projects()
+        .into_iter()
+        .map(|(project_id, session_count)| ProjectSummary {
+            project_id,
+            session_count,
+        })
+        .collect();
+    out.sort_unstable_by(|a, b| b.session_count.cmp(&a.session_count));
+    out
+}
 
 fn pct(sorted: &[u128], p: u32) -> u128 {
     if sorted.is_empty() {
@@ -59,16 +122,16 @@ fn time_iter<F: FnMut()>(iters: usize, mut f: F) -> (u128, u128, u128) {
 
 fn main() {
     println!("\n=== P2-G/H — Handler-level list latency benchmark ===\n");
-    println!("Goal: prove that `GET /api/sessions` handler can serve");
-    println!("sub-millisecond responses from the in-memory session_index,");
-    println!("including DTO mapping + JSON serialisation cost.\n");
+    println!("Goal: prove that `GET /api/sessions` can serve sub-millisecond");
+    println!("responses from the in-memory SessionCatalog, including DTO");
+    println!("mapping + JSON serialisation cost.\n");
 
-    // Load the full session index from the real filesystem
+    // Load the full catalog from the real filesystem
     let home = std::env::var("HOME").expect("HOME unset");
     let live_root = PathBuf::from(&home).join(".claude").join("projects");
     let backup = PathBuf::from(&home).join(".claude-backup").join("machines");
 
-    let idx = SessionIndex::new();
+    let idx = SessionCatalog::new();
     let load_start = Instant::now();
     let stats = idx
         .rebuild_from_filesystem(&live_root, &backup)
@@ -100,18 +163,16 @@ fn main() {
 
     // Q2 — recent 50 one project
     let q2_filter = Filter::by_project(target_project.clone());
-    let (d, e, f) = time_iter(ITERS, || {
+    let (q2_p50, q2_p95, q2_max) = time_iter(ITERS, || {
         let resp = list_sessions(&idx, &q2_filter, Sort::LastTsDesc, 50);
         let _json = serde_json::to_string(&resp).unwrap();
     });
-    let (q2_p50, q2_p95, q2_max) = (d, e, f);
 
     // Q3 — projects summary
-    let (g, h, i) = time_iter(ITERS, || {
+    let (q3_p50, q3_p95, q3_max) = time_iter(ITERS, || {
         let resp = list_projects(&idx);
         let _json = serde_json::to_string(&resp).unwrap();
     });
-    let (q3_p50, q3_p95, q3_max) = (g, h, i);
 
     // Q4 — recent 200 last 7 days
     let now = SystemTime::now()
@@ -123,11 +184,10 @@ fn main() {
         min_last_ts: Some(now - 7 * 24 * 3600),
         max_last_ts: None,
     };
-    let (j, k, l) = time_iter(ITERS, || {
+    let (q4_p50, q4_p95, q4_max) = time_iter(ITERS, || {
         let resp = list_sessions(&idx, &q4_filter, Sort::LastTsDesc, 200);
         let _json = serde_json::to_string(&resp).unwrap();
     });
-    let (q4_p50, q4_p95, q4_max) = (j, k, l);
 
     // Print table
     println!("Phase 2 — handler bench ({} iterations per query)\n", ITERS);

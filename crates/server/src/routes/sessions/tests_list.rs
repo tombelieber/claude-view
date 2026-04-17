@@ -199,7 +199,6 @@ async fn test_list_sessions_pagination() {
 // ========================================================================
 
 #[tokio::test]
-#[ignore = "branches filter not yet wired into JSONL-first list handler (see list.rs:235 TODO re: CatalogRow branch field)"]
 async fn test_list_sessions_filter_by_branches() {
     let fx = CatalogFixture::new().await;
 
@@ -396,7 +395,6 @@ async fn test_list_sessions_filter_time_range() {
 }
 
 #[tokio::test]
-#[ignore = "branches filter not yet wired into JSONL-first list handler (see list.rs:235 TODO re: CatalogRow branch field)"]
 async fn test_list_sessions_multiple_filters_combined() {
     let fx = CatalogFixture::new().await;
 

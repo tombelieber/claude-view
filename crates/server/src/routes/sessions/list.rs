@@ -163,6 +163,28 @@ pub async fn list_sessions(
                 .collect()
         })
         .unwrap_or_default();
+    // Branches filter splits the `~` NO_BRANCH_SENTINEL out of the named list:
+    // matches sessions whose git_branch is NULL. Named entries match the
+    // stored branch string exactly. Mixed ("~,main") means NULL OR main.
+    let branches_filter_raw: Vec<String> = query
+        .branches
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(|b| b.trim().to_string())
+                .filter(|b| !b.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let branches_include_none = branches_filter_raw
+        .iter()
+        .any(|b| b == claude_view_core::NO_BRANCH_SENTINEL);
+    let branches_named: Vec<String> = branches_filter_raw
+        .iter()
+        .filter(|b| b.as_str() != claude_view_core::NO_BRANCH_SENTINEL)
+        .cloned()
+        .collect();
+    let branches_filter_active = !branches_filter_raw.is_empty();
     let show_archived = query.show_archived.unwrap_or(false);
     let has_skills_param = query.has_skills;
     let min_files_param = query.min_files;
@@ -232,9 +254,15 @@ pub async fn list_sessions(
                     return false;
                 }
             }
-            // NOTE: `branches` filter currently requires per-session git derivation
-            // (not stored on CatalogRow yet). Deferred — frontend branch pill still
-            // renders but the filter no-ops until the catalog gains a branch field.
+            if branches_filter_active {
+                let matched = match &info.git_branch {
+                    None => branches_include_none,
+                    Some(b) => branches_named.iter().any(|n| n == b),
+                };
+                if !matched {
+                    return false;
+                }
+            }
 
             true
         })
