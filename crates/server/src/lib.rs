@@ -27,6 +27,7 @@ pub mod search_service;
 pub mod share_serializer;
 pub use claude_view_server_sidecar as sidecar;
 pub mod state;
+pub mod supabase_proxy;
 pub use claude_view_server_teams as teams;
 pub mod telemetry;
 pub use claude_view_server_types::terminal_state;
