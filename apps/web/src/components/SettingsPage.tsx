@@ -50,6 +50,7 @@ const APP_BUILD_DATE = __APP_BUILD_DATE__
 
 const GITHUB_REPO = 'tombelieber/claude-view'
 const GITHUB_URL = `https://github.com/${GITHUB_REPO}`
+const PRIVACY_POLICY_URL = 'https://claudeview.ai/privacy'
 
 interface SettingsSectionProps {
   icon: React.ReactNode
@@ -796,6 +797,17 @@ export function SettingsPage() {
                   onEnable={enableTelemetry}
                   onDisable={disableTelemetry}
                 />
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <a
+                    href={PRIVACY_POLICY_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 hover:underline"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    View Privacy Policy
+                  </a>
+                </div>
               </SettingsSection>
 
               {/* ABOUT */}
