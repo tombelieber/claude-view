@@ -1,0 +1,40 @@
+# fuzz/Cargo.toml
+#
+# Standalone cargo-fuzz crate. NOT a workspace member — cargo-fuzz requires
+# nightly Rust, and isolating this from the main workspace lets `cargo build`
+# continue to work on stable for the app + tests.
+#
+# The empty [workspace] table below signals to cargo that this crate is its
+# OWN workspace root, not a member of the parent workspace defined in the
+# repo-root Cargo.toml. Required by cargo-fuzz convention (cargo-fuzz init
+# emits the same line).
+#
+# Usage:
+#   cd fuzz
+#   cargo +nightly fuzz run session_parser -- -max_total_time=60  # quick smoke
+#   cargo +nightly fuzz run session_parser -- -max_total_time=3600 # full hour
+
+[workspace]
+
+[package]
+name = "claude-view-fuzz"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+claude-view-session-parser = { path = "../crates/session-parser" }
+
+[[bin]]
+name = "session_parser"
+path = "fuzz_targets/session_parser.rs"
+test = false
+doc = false
+bench = false
+
+[profile.release]
+debug = 1

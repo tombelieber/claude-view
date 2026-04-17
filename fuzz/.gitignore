@@ -1,0 +1,10 @@
+# cargo-fuzz outputs
+target/
+corpus/
+artifacts/
+
+# Standalone-crate lockfile: not load-bearing for a fuzz harness, and
+# committing it here would be a 4th file outside the PR 1.5 scope spec.
+# Phase 7 ops polish can revisit if deterministic fuzz builds become
+# necessary (they typically are not).
+Cargo.lock
