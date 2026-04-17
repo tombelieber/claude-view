@@ -13,6 +13,7 @@ mod migrations;
 pub mod pricing;
 mod queries;
 pub mod snapshots;
+pub mod test_support;
 pub mod trends;
 
 pub use queries::facets::{FacetAggregateStats, FacetRow};
