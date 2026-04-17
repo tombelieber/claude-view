@@ -23,3 +23,4 @@ Landing page built with Astro 5 (zero client-side JS).
 - [Blog](/blog/): Technical deep dives and release announcements
 - [Changelog](/changelog/): Version history
 - [Claude Code Plugin](/docs/guides/plugin/): Native plugin — 8 tools, 3 skills, auto-start hook
+- [Privacy Policy](/privacy/): Data collection, third-party services, user rights
