@@ -25,11 +25,19 @@ bash scripts/dev-cleanup.sh --quiet
 
 # 2. Shared env for all three processes. Kept here (not duplicated per-script)
 #    so there's ONE source of truth for dev-mode behaviour.
+
+# Load .env.local (gitignored) for optional dev-only config such as
+# SHARE_WORKER_URL. See .env.example at repo root for the template.
+if [ -f "$ROOT/.env.local" ]; then
+  set -a; source "$ROOT/.env.local"; set +a
+fi
+
 export RUST_LOG="${RUST_LOG:-warn,claude_view_server=info,claude_view_core=info}"
 export VITE_PORT="${VITE_PORT:-5173}"
 export SUPABASE_URL="${SUPABASE_URL:-https://iebjyftoadahqptmfcio.supabase.co}"
-export SHARE_WORKER_URL="${SHARE_WORKER_URL:-https://claude-view-share-worker-dev.vickyai-tech.workers.dev}"
-export SHARE_VIEWER_URL="${SHARE_VIEWER_URL:-https://claude-view-share-viewer-dev.pages.dev}"
+# Optional: share feature. Empty value disables sharing. Populate in .env.local.
+export SHARE_WORKER_URL="${SHARE_WORKER_URL:-}"
+export SHARE_VIEWER_URL="${SHARE_VIEWER_URL:-}"
 
 # CLAUDE.md hard rule: strip these before anything spawns SDK child processes.
 unset CLAUDECODE CLAUDE_CODE_SSE_PORT CLAUDE_CODE_ENTRYPOINT
