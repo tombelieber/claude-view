@@ -12,6 +12,7 @@ license.workspace = true
 [dependencies]
 serde = { workspace = true }
 claude-view-core = { workspace = true }
+claude-view-session-parser = { workspace = true }
 claude-view-stats-rollup-derive = { path = "../stats-rollup-derive" }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
