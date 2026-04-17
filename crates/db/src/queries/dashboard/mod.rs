@@ -7,7 +7,4 @@ mod session_queries;
 mod stats;
 mod types;
 
-pub use types::{
-    ActivityPoint, ActivitySummaryRow, ProjectActivityRow, RichActivityResponse,
-    SessionFilterParams,
-};
+pub use types::{ActivityPoint, ActivitySummaryRow, ProjectActivityRow, RichActivityResponse};

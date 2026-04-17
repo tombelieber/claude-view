@@ -20,7 +20,6 @@ mod system;
 mod types;
 
 pub use dashboard::ActivityPoint;
-pub use dashboard::SessionFilterParams;
 pub use dashboard::{ActivitySummaryRow, ProjectActivityRow, RichActivityResponse};
 pub use search_prefilter::SearchPrefilter;
 pub use types::*;

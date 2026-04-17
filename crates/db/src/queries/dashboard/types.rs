@@ -1,27 +1,5 @@
 // crates/db/src/queries/dashboard/types.rs
-// Public types for dashboard queries — filter params, activity aggregation structs.
-
-/// Parameters for filtered, paginated session queries.
-/// All fields are optional — omitted fields apply no filter.
-pub struct SessionFilterParams {
-    pub q: Option<String>,
-    pub search_session_ids: Option<Vec<String>>, // pre-resolved from Tantivy
-    pub branches: Option<Vec<String>>,
-    pub models: Option<Vec<String>>,
-    pub has_commits: Option<bool>,
-    pub has_skills: Option<bool>,
-    pub min_duration: Option<i64>,
-    pub min_files: Option<i64>,
-    pub min_tokens: Option<i64>,
-    pub high_reedit: Option<bool>,
-    pub time_after: Option<i64>,
-    pub time_before: Option<i64>,
-    pub project: Option<String>,
-    pub show_archived: Option<bool>,
-    pub sort: String, // "recent", "tokens", "prompts", "files_edited", "duration"
-    pub limit: i64,   // default 30
-    pub offset: i64,  // default 0
-}
+// Public types for dashboard queries — activity aggregation structs.
 
 /// A single point in the activity histogram.
 #[derive(Debug, Clone, serde::Serialize, utoipa::ToSchema)]
