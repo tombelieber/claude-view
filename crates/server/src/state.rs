@@ -141,6 +141,11 @@ pub struct AppState {
     /// Supabase JWKS cache for JWT validation (sharing feature).
     /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).
     pub jwks: Option<Arc<tokio::sync::RwLock<JwksCache>>>,
+    /// Persisted Supabase session for the current Mac user. `None` when not
+    /// signed in. Written by `routes/auth.rs`, refreshed by
+    /// `auth::session_refresh`, read by `routes/pairing.rs`, `routes/devices.rs`,
+    /// `live::relay_client`.
+    pub auth_session: Arc<tokio::sync::RwLock<Option<crate::auth::AuthSession>>>,
     /// Sharing configuration (Worker URL, viewer URL, HTTP client).
     /// `None` when SHARE_WORKER_URL / SHARE_VIEWER_URL are not set.
     pub share: Option<ShareConfig>,
@@ -314,6 +319,7 @@ impl AppStateBuilder {
                 catalog
             },
             jwks: None,
+            auth_session: Arc::new(tokio::sync::RwLock::new(None)),
             share: None,
             auth_identity: OnceCell::new(),
             oauth_usage_cache: CachedUpstream::new(std::time::Duration::from_secs(300)),
