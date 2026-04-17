@@ -1,8 +1,10 @@
 pub mod auth;
+pub mod device_cache;
 pub mod posthog;
 pub mod push;
 pub mod rate_limit;
 pub mod state;
+pub mod supabase;
 pub mod ws;
 
 use axum::{
