@@ -146,8 +146,24 @@ mod tests {
 
     #[tokio::test]
     async fn returns_none_for_non_git_dir() {
-        let root = resolve_git_root("/tmp").await;
-        assert!(root.is_none());
+        // Force the tempdir into `/tmp` — NOT `tempfile::tempdir()` which
+        // follows `$TMPDIR`. In this repo, developer shells can have
+        // `TMPDIR=.tmp/` (a project-local dir inside the git tree), and
+        // when `git -C <that-path> rev-parse --git-common-dir` runs there,
+        // it walks up and finds the REPO'S `.git`, falsely returning Some.
+        // That was the root cause of the pre-push flake seen under lefthook.
+        // `/tmp` on macOS (`/private/tmp`) has no git ancestor, so the
+        // tempdir created here is guaranteed hermetic.
+        let tmp = tempfile::Builder::new()
+            .prefix("claude-view-git-test-")
+            .tempdir_in("/tmp")
+            .expect("mktemp in /tmp");
+        let path = tmp.path().to_str().expect("tempdir path must be utf8");
+        let root = resolve_git_root(path).await;
+        assert!(
+            root.is_none(),
+            "expected None for non-git tempdir {path}, got {root:?}"
+        );
     }
 
     // ========================================================================
