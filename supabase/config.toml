@@ -397,3 +397,6 @@ verify_jwt = true
 
 [functions.devices-list]
 verify_jwt = true
+
+[functions.devices-register-self]
+verify_jwt = true
