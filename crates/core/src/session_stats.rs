@@ -71,8 +71,15 @@ pub struct SessionStats {
     pub per_model_tokens: HashMap<String, TokenUsage>,
 }
 
-// ── Internal deserialization types ──
-// Richer than MinLine but still skip unknown fields.
+// ── JSONL deserialization types ──
+//
+// These are `pub` because `claude_view_session_parser::SessionDoc` exposes
+// `Vec<StatsLine>`, and downstream consumers (Phase 4 rollup writers,
+// endpoint handlers in Phase 3) must introspect line.message, .timestamp,
+// .usage, etc. Treat the shape as the parser contract — it mirrors the
+// Claude CLI JSONL event layout exactly. Add-only evolution (new fields with
+// `#[serde(default)]`); never remove or rename a field without bumping
+// `PARSER_VERSION`. Richer than MinLine; still skips unknown fields.
 
 #[derive(Deserialize, Clone)]
 pub struct StatsLine {
