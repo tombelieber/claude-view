@@ -114,6 +114,7 @@ mod tests {
             ),
             session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
             jwks: None,
+            auth_session: Arc::new(tokio::sync::RwLock::new(None)),
             share: None,
             auth_identity: tokio::sync::OnceCell::new(),
             oauth_usage_cache: crate::cache::CachedUpstream::new(std::time::Duration::from_secs(

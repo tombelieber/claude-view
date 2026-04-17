@@ -101,6 +101,7 @@ hex = { workspace = true }
 uuid = { version = "1", features = ["v4"] }
 hmac = "0.12"
 sha2 = "0.10"
+gethostname = "0.5"
 hyper = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
@@ -125,6 +126,7 @@ tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 sysinfo = { workspace = true }
 mockito = { workspace = true }
+wiremock = "0.6"
 serial_test = "3"
 
 [target.'cfg(target_os = "macos")'.dependencies]

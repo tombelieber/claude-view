@@ -33,6 +33,76 @@
         }
       }
     },
+    "/api/auth/session": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "post_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostSessionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body"
+          },
+          "500": {
+            "description": "Disk write error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "delete_session",
+        "responses": {
+          "204": {
+            "description": "Session cleared"
+          },
+          "500": {
+            "description": "Disk error"
+          }
+        }
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "get_status",
+        "responses": {
+          "200": {
+            "description": "Current auth state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/branches": {
       "get": {
         "tags": [
@@ -680,6 +750,76 @@
           },
           "404": {
             "description": "Session not found"
+          }
+        }
+      }
+    },
+    "/api/devices": {
+      "get": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "list_devices_handler",
+        "responses": {
+          "200": {
+            "description": "List of devices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceListItem"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not signed in"
+          }
+        }
+      }
+    },
+    "/api/devices/terminate-others": {
+      "post": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "terminate_others_handler",
+        "responses": {
+          "200": {
+            "description": "Others revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TerminateOthersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/devices/{device_id}": {
+      "delete": {
+        "tags": [
+          "devices"
+        ],
+        "operationId": "delete_device_handler",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "description": "Device ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Device revoked"
           }
         }
       }
@@ -1927,65 +2067,16 @@
         }
       }
     },
-    "/api/pairing/devices": {
-      "get": {
-        "tags": [
-          "pairing"
-        ],
-        "summary": "GET /pairing/devices — List paired devices.",
-        "operationId": "list_devices",
-        "responses": {
-          "200": {
-            "description": "All paired devices",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/PairedDeviceResponse"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/pairing/devices/{id}": {
-      "delete": {
-        "tags": [
-          "pairing"
-        ],
-        "summary": "DELETE /pairing/devices/:id — Unpair a device.",
-        "operationId": "unpair_device",
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "description": "Device ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Device unpaired"
-          }
-        }
-      }
-    },
     "/api/pairing/qr": {
       "get": {
         "tags": [
           "pairing"
         ],
-        "summary": "GET /pairing/qr — Generate QR payload for mobile pairing.",
+        "summary": "GET /api/pairing/qr — Generate a QR payload via Supabase pair-offer.",
         "operationId": "generate_qr",
         "responses": {
           "200": {
-            "description": "QR payload for mobile pairing",
+            "description": "QR payload",
             "content": {
               "application/json": {
                 "schema": {
@@ -1994,8 +2085,11 @@
               }
             }
           },
+          "401": {
+            "description": "Not signed in"
+          },
           "503": {
-            "description": "Relay not configured"
+            "description": "Supabase not configured"
           }
         }
       }
@@ -5610,6 +5704,37 @@
           }
         }
       },
+      "AuthStatusResponse": {
+        "type": "object",
+        "required": [
+          "authenticated"
+        ],
+        "properties": {
+          "authenticated": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at_unix": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AvailablePlugin": {
         "type": "object",
         "description": "A plugin available for installation (not yet installed).",
@@ -7546,6 +7671,98 @@
             ],
             "format": "double",
             "description": "Tool density: tool_call_count / api_call_count"
+          }
+        }
+      },
+      "DeviceListItem": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "user_id",
+          "platform",
+          "display_name",
+          "created_at",
+          "last_seen_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "last_seen_at": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": "string"
+          }
+        }
+      },
+      "DeviceRow": {
+        "type": "object",
+        "description": "Minimal device row shape the Mac daemon needs. Fields align 1:1 with\n`public.devices`.\n\nPer feedback_external_data_serde_default.md every field is `#[serde(default)]`.",
+        "properties": {
+          "created_at": {
+            "type": "string"
+          },
+          "device_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "ed25519_pubkey": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Phase 2 Task 8: widened so relay_client can encrypt for the peer.\nPostgREST default emits `\\x<hex>` for BYTEA; callers normalise."
+          },
+          "last_seen_at": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "revoked_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "revoked_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": "string"
+          },
+          "x25519_pubkey": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -10338,6 +10555,7 @@
       },
       "PairedDeviceResponse": {
         "type": "object",
+        "description": "Legacy schema kept for OpenAPI component compatibility. No routes emit it\nanymore — devices live at /api/devices after Phase 2.",
         "required": [
           "device_id",
           "name",
@@ -10940,6 +11158,52 @@
           }
         }
       },
+      "PostSessionBody": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "Supabase JWT (short-lived access token)."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until `access_token` expires (Supabase returns `expires_in`).",
+            "minimum": 0
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "Supabase opaque refresh token (long-lived)."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "UUID from the JWT's `sub` claim. Web UI reads this from\nsupabase.auth.getUser() and forwards it so we don't double-parse."
+          }
+        }
+      },
+      "PostSessionResponse": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": "string"
+          }
+        }
+      },
       "ProcessGroup": {
         "type": "object",
         "description": "A single process group — aggregated by normalized process name.",
@@ -11283,39 +11547,35 @@
       },
       "QrPayload": {
         "type": "object",
+        "description": "QR payload served to the web UI. The `url` field is the QR-encoded value;\nthe rest are duplicates for frontends that prefer named fields.",
         "required": [
           "url",
           "r",
-          "k",
           "t",
-          "s",
+          "expires_at",
           "v"
         ],
         "properties": {
-          "k": {
+          "expires_at": {
             "type": "string",
-            "description": "Mac X25519 public key (base64)."
+            "description": "ISO-8601 expiry timestamp — UI shows the countdown."
           },
           "r": {
             "type": "string",
-            "description": "Relay WebSocket URL."
-          },
-          "s": {
-            "type": "string",
-            "description": "Verification secret (base64, 32 bytes). Included in QR URL only,\nnever sent to the relay. Phone uses it to compute HMAC binding."
+            "description": "Relay WebSocket URL (so the phone knows where to connect after claim)."
           },
           "t": {
             "type": "string",
-            "description": "One-time pairing token."
+            "description": "One-time pairing token. Sent to `pair-claim` edge fn by the phone."
           },
           "url": {
             "type": "string",
-            "description": "Mobile page URL — the QR code encodes this directly."
+            "description": "Mobile URL — what the QR encodes. Points at the claim page with `?token=...`."
           },
           "v": {
             "type": "integer",
             "format": "int32",
-            "description": "Protocol version.",
+            "description": "Protocol version (2 — HMAC removed in Phase 2).",
             "minimum": 0
           }
         }
@@ -13546,6 +13806,19 @@
           "disabled"
         ]
       },
+      "TerminateOthersResponse": {
+        "type": "object",
+        "required": [
+          "revoked_count"
+        ],
+        "properties": {
+          "revoked_count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
       "TestSendResponse": {
         "type": "object",
         "required": [
@@ -14573,6 +14846,14 @@
     {
       "name": "pairing",
       "description": "Device pairing"
+    },
+    {
+      "name": "auth",
+      "description": "Supabase auth session bootstrap"
+    },
+    {
+      "name": "devices",
+      "description": "Paired device registry"
     },
     {
       "name": "jobs",

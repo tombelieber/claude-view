@@ -158,6 +158,7 @@ impl LiveSessionManager {
         tmux_index: Arc<crate::routes::cli_sessions::TmuxSessionIndex>,
         tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
         born_waiters: crate::routes::cli_sessions::BornWaiters,
+        auth_session_holder: Arc<tokio::sync::RwLock<Option<crate::auth::AuthSession>>>,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -314,8 +315,28 @@ impl LiveSessionManager {
             });
         }
 
-        // Spawn relay client for mobile remote access
+        // Spawn relay client for mobile remote access (Phase 2).
+        // Relay is authenticated via Supabase JWT; peer device list comes from
+        // Supabase REST, not from the relay.
+        let identity = match crate::crypto::load_or_create_identity() {
+            Ok(id) => id,
+            Err(e) => {
+                tracing::error!("failed to load device identity: {e}");
+                // Return without spawning — no identity, no WS.
+                return (
+                    manager,
+                    sessions,
+                    closed_ring,
+                    transcript_to_session,
+                    tx,
+                    coordinator,
+                    claude_session_id_index,
+                );
+            }
+        };
         super::relay_client::spawn_relay_client(
+            auth_session_holder.clone(),
+            identity,
             tx.clone(),
             sessions.clone(),
             super::relay_client::RelayClientConfig::default(),

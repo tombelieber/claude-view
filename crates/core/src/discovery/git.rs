@@ -13,8 +13,24 @@
 ///
 /// Requires git >= 2.31 (March 2021) for `--path-format=absolute`.
 pub async fn resolve_git_root(cwd: &str) -> Option<String> {
+    // Hermetic pre-check: walk up from `cwd` looking for a `.git`. If no
+    // ancestor has one, bail out *without* shelling out to git. Reason:
+    // `git rev-parse -C <path>` is non-hermetic when the caller has
+    // `GIT_DIR` / `GIT_WORK_TREE` set (hooks, `git worktree`, `git commit`
+    // subprocesses, lefthook pre-push). Git honors those env vars over
+    // `-C`. Clearing them on the spawned child is correct in principle
+    // but, under tokio on macOS, has been observed to not always propagate
+    // early enough — the FS pre-check eliminates the race entirely by
+    // making the answer deterministic from filesystem state alone.
+    if !has_git_ancestor(cwd) {
+        return None;
+    }
     use tokio::process::Command;
     let out = Command::new("git")
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_COMMON_DIR")
+        .env_remove("GIT_INDEX_FILE")
         .args([
             "-C",
             cwd,
@@ -35,6 +51,23 @@ pub async fn resolve_git_root(cwd: &str) -> Option<String> {
         .parent()?
         .to_str()
         .map(|s| s.to_string())
+}
+
+/// Pure FS walk — no subprocess, no env dependency. Returns true iff `path`
+/// or any ancestor contains a `.git` entry (directory for main repo, file
+/// for linked worktrees; both are named `.git`). Bounded to 64 levels to
+/// avoid pathological symlink loops.
+fn has_git_ancestor(path: &str) -> bool {
+    let mut current = std::path::PathBuf::from(path);
+    for _ in 0..64 {
+        if current.join(".git").exists() {
+            return true;
+        }
+        if !current.pop() {
+            return false;
+        }
+    }
+    false
 }
 
 /// Extract the parent repository root from a worktree `cwd` path.

@@ -106,8 +106,14 @@ use utoipa::OpenApi;
         crate::routes::oauth::post_oauth_usage_refresh,
         crate::routes::oauth::get_auth_identity,
         crate::routes::pairing::generate_qr,
-        crate::routes::pairing::list_devices,
-        crate::routes::pairing::unpair_device,
+        // Mobile connect Phase 2: auth session bootstrap
+        crate::routes::auth::post_session,
+        crate::routes::auth::delete_session,
+        crate::routes::auth::get_status,
+        // Mobile connect Phase 2: devices
+        crate::routes::devices::list_devices_handler,
+        crate::routes::devices::delete_device_handler,
+        crate::routes::devices::terminate_others_handler,
         crate::routes::plugins::list_plugins,
         crate::routes::plugins::list_marketplaces,
         crate::routes::plugins::marketplace_action,
@@ -283,6 +289,13 @@ use utoipa::OpenApi;
         // Batch 5: Pairing
         crate::routes::pairing::QrPayload,
         crate::routes::pairing::PairedDeviceResponse,
+        // Mobile connect Phase 2 schemas
+        crate::routes::auth::PostSessionBody,
+        crate::routes::auth::PostSessionResponse,
+        crate::routes::auth::AuthStatusResponse,
+        crate::routes::devices::DeviceListItem,
+        crate::routes::devices::TerminateOthersResponse,
+        crate::supabase_proxy::DeviceRow,
         // Batch 5: CLI Sessions
         crate::routes::cli_sessions::CreateRequest,
         crate::routes::cli_sessions::CreateResponse,
@@ -416,6 +429,8 @@ use utoipa::OpenApi;
         (name = "workflows", description = "Workflow management"),
         (name = "ide", description = "IDE integration"),
         (name = "pairing", description = "Device pairing"),
+        (name = "auth", description = "Supabase auth session bootstrap"),
+        (name = "devices", description = "Paired device registry"),
         (name = "jobs", description = "Background job tracking"),
         (name = "telemetry", description = "Telemetry consent"),
         (name = "cli", description = "CLI session management"),

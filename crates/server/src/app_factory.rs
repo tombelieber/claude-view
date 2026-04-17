@@ -98,6 +98,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
         session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
         jwks: None,
+        auth_session: Arc::new(tokio::sync::RwLock::new(None)),
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
@@ -218,6 +219,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
         session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
         jwks: None,
+        auth_session: Arc::new(tokio::sync::RwLock::new(None)),
         share: None,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: cache::CachedUpstream::new(std::time::Duration::from_secs(300)),
@@ -367,6 +369,59 @@ pub fn create_app_full(
         tokio::sync::RwLock<std::collections::HashMap<String, claude_view_types::InteractionBlock>>,
     > = Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new()));
 
+    // Load the Supabase auth session and spawn the refresh loop BEFORE the
+    // live manager starts — the manager's relay_client subtask reads from
+    // the holder we create here.
+    let session_store = Arc::new(crate::auth::SessionStore::new());
+    let initial_session = match std::fs::read(session_store.path()) {
+        Ok(bytes) => match serde_json::from_slice::<crate::auth::AuthSession>(&bytes) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                tracing::warn!(
+                    path = %session_store.path().display(),
+                    "auth-session.json corrupt — proceeding unauthenticated: {e}"
+                );
+                None
+            }
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => {
+            tracing::warn!("failed to read auth-session.json: {e}");
+            None
+        }
+    };
+    let auth_session_holder: Arc<tokio::sync::RwLock<Option<crate::auth::AuthSession>>> =
+        Arc::new(tokio::sync::RwLock::new(initial_session.clone()));
+
+    if initial_session.is_some() {
+        if let Some(url) = std::env::var("SUPABASE_URL")
+            .ok()
+            .or_else(|| option_env!("SUPABASE_URL").map(str::to_string))
+        {
+            let publishable = std::env::var("SUPABASE_PUBLISHABLE_KEY")
+                .ok()
+                .or_else(|| std::env::var("SUPABASE_ANON_KEY").ok())
+                .or_else(|| option_env!("SUPABASE_PUBLISHABLE_KEY").map(str::to_string))
+                .or_else(|| option_env!("SUPABASE_ANON_KEY").map(str::to_string));
+            if let Some(publishable) = publishable {
+                let http = reqwest::Client::builder()
+                    .timeout(std::time::Duration::from_secs(10))
+                    .build()
+                    .expect("build http client");
+                crate::auth::session_refresh::spawn(
+                    auth_session_holder.clone(),
+                    session_store.clone(),
+                    http,
+                    url,
+                    publishable,
+                );
+                tracing::info!("Supabase session refresh loop spawned");
+            } else {
+                tracing::warn!("SUPABASE_PUBLISHABLE_KEY not set — refresh loop disabled");
+            }
+        }
+    }
+
     let (
         manager,
         live_sessions,
@@ -394,6 +449,7 @@ pub fn create_app_full(
         tmux_index.clone(),
         tmux.clone(),
         born_waiters.clone(),
+        auth_session_holder.clone(),
     );
 
     // Hook registration deferred — caller must invoke register_hooks()
@@ -418,6 +474,9 @@ pub fn create_app_full(
             .collect();
         tracing::info!(ides = ?names, "Detected installed IDEs");
     }
+
+    // (auth_session_holder + refresh loop were already initialised above,
+    // before the LiveSessionManager start — see §3.4.1 for ordering.)
 
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
@@ -457,6 +516,7 @@ pub fn create_app_full(
             catalog
         },
         jwks,
+        auth_session: auth_session_holder.clone(),
         share,
         auth_identity: tokio::sync::OnceCell::new(),
         oauth_usage_cache: cache::CachedUpstream::new(std::time::Duration::from_secs(300)),

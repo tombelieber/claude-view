@@ -71,6 +71,18 @@ pre-push:
         fi
         cargo deny check
     rust-test:
-      run: ./scripts/cq test --workspace
+      # Unset GIT_* vars that `git push` exports to its hooks. Many tests
+      # in this workspace shell out to git (crates/db/src/git_correlation/*,
+      # crates/core/src/discovery/git.rs) and construct synthetic git repos
+      # in tempdirs. When GIT_DIR / GIT_WORK_TREE / GIT_COMMON_DIR /
+      # GIT_INDEX_FILE are inherited from `git push`, those tests' git
+      # subprocesses see the parent repo instead of the tempdir, and the
+      # assertions flake. Each call site should also scrub these (we do in
+      # resolve_git_root as of 2026-04-17), but scrubbing at the hook level
+      # is the belt-and-braces default — tests added tomorrow won't have
+      # to remember.
+      run: |
+        unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+        ./scripts/cq test --workspace
     cq-nextest-routing:
       run: bash test/cq-nextest-routing.sh

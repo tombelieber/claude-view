@@ -345,6 +345,11 @@ async fn main() -> Result<()> {
         );
         std::process::exit(1);
     }
+
+    // One-shot best-effort cleanup of Phase-1 legacy pairing artifacts
+    // (paired-devices.json + pairing_secrets/). Supabase is the authority for
+    // device list post-Phase-2. Failures are logged and ignored.
+    claude_view_server::crypto::cleanup_legacy_pairing_artifacts();
     let probe = data_dir.join(".write-test");
     if std::fs::write(&probe, b"ok").is_err() {
         eprintln!(
