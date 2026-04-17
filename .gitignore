@@ -160,4 +160,5 @@ apps/landing/.astro/
 
 # Compile benchmark results (machine-specific)
 bench/results/
+bench-api-*.json
 
