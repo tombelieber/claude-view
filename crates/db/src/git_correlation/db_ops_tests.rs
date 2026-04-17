@@ -90,22 +90,18 @@ async fn test_batch_upsert_commits_updates_existing() {
 async fn test_batch_insert_session_commits() {
     let db = Database::new_in_memory().await.unwrap();
 
-    db.insert_session_from_index(
-        "sess-1",
-        "project-1",
-        "Project 1",
-        "/repo/path",
-        "/path/to/sess-1.jsonl",
-        "Test session",
-        None,
-        10,
-        1706400100,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
+    crate::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-1")
+        .project_display_name("Project 1")
+        .project_path("/repo/path")
+        .file_path("/path/to/sess-1.jsonl")
+        .preview("Test session")
+        .message_count(10)
+        .modified_at(1706400100)
+        .size_bytes(5000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let commits = vec![GitCommit {
         hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
@@ -148,22 +144,18 @@ async fn test_batch_insert_session_commits() {
 async fn test_tier_priority_tier1_preferred() {
     let db = Database::new_in_memory().await.unwrap();
 
-    db.insert_session_from_index(
-        "sess-1",
-        "project-1",
-        "Project 1",
-        "/repo/path",
-        "/path/to/sess-1.jsonl",
-        "Test session",
-        None,
-        10,
-        1706400100,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
+    crate::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-1")
+        .project_display_name("Project 1")
+        .project_path("/repo/path")
+        .file_path("/path/to/sess-1.jsonl")
+        .preview("Test session")
+        .message_count(10)
+        .modified_at(1706400100)
+        .size_bytes(5000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let commits = vec![GitCommit {
         hash: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string(),
@@ -220,22 +212,18 @@ async fn test_tier_priority_tier1_preferred() {
 async fn test_count_and_update_commit_count() {
     let db = Database::new_in_memory().await.unwrap();
 
-    db.insert_session_from_index(
-        "sess-1",
-        "project-1",
-        "Project 1",
-        "/repo/path",
-        "/path/to/sess-1.jsonl",
-        "Test session",
-        None,
-        10,
-        1706400100,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
+    crate::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-1")
+        .project_display_name("Project 1")
+        .project_path("/repo/path")
+        .file_path("/path/to/sess-1.jsonl")
+        .preview("Test session")
+        .message_count(10)
+        .modified_at(1706400100)
+        .size_bytes(5000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let commits = vec![
         GitCommit {
@@ -309,22 +297,18 @@ async fn test_count_and_update_commit_count() {
 async fn test_update_session_loc_from_git() {
     let db = Database::new_in_memory().await.unwrap();
 
-    db.insert_session_from_index(
-        "sess-1",
-        "project-1",
-        "Project 1",
-        "/repo/path",
-        "/path/to/sess-1.jsonl",
-        "Test session",
-        None,
-        10,
-        1706400100,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
+    crate::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-1")
+        .project_display_name("Project 1")
+        .project_path("/repo/path")
+        .file_path("/path/to/sess-1.jsonl")
+        .preview("Test session")
+        .message_count(10)
+        .modified_at(1706400100)
+        .size_bytes(5000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let stats = DiffStats {
         files_changed: 2,
@@ -351,22 +335,18 @@ async fn test_update_session_loc_from_git() {
 async fn test_update_session_loc_from_git_zero_stats() {
     let db = Database::new_in_memory().await.unwrap();
 
-    db.insert_session_from_index(
-        "sess-1",
-        "project-1",
-        "Project 1",
-        "/repo/path",
-        "/path/to/sess-1.jsonl",
-        "Test session",
-        None,
-        10,
-        1706400100,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
+    crate::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-1")
+        .project_display_name("Project 1")
+        .project_path("/repo/path")
+        .file_path("/path/to/sess-1.jsonl")
+        .preview("Test session")
+        .message_count(10)
+        .modified_at(1706400100)
+        .size_bytes(5000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let stats = DiffStats {
         files_changed: 0,

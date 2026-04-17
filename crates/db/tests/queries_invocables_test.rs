@@ -48,22 +48,15 @@ async fn test_batch_insert_invocations() {
 
     // Must insert sessions first (FK constraint on invocations.session_id)
     for sid in &["sess-1", "sess-2"] {
-        db.insert_session_from_index(
-            sid,
-            "proj-a",
-            "proj-a",
-            "/tmp",
-            &format!("/tmp/{}.jsonl", sid),
-            "",
-            None,
-            0,
-            1000,
-            None,
-            false,
-            0,
-        )
-        .await
-        .unwrap();
+        claude_view_db::test_support::SessionSeedBuilder::new(*sid)
+            .project_id("proj-a")
+            .project_display_name("proj-a")
+            .project_path("/tmp")
+            .file_path(format!("/tmp/{}.jsonl", sid))
+            .modified_at(1000)
+            .seed(&db)
+            .await
+            .unwrap();
     }
 
     let invocations = vec![
@@ -106,22 +99,15 @@ async fn test_batch_insert_invocations_ignores_duplicates() {
         .unwrap();
 
     // Must insert session first (FK constraint on invocations.session_id)
-    db.insert_session_from_index(
-        "sess-1",
-        "proj-a",
-        "proj-a",
-        "/tmp",
-        "/tmp/f.jsonl",
-        "",
-        None,
-        0,
-        1000,
-        None,
-        false,
-        0,
-    )
-    .await
-    .unwrap();
+    claude_view_db::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("proj-a")
+        .project_display_name("proj-a")
+        .project_path("/tmp")
+        .file_path("/tmp/f.jsonl")
+        .modified_at(1000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let invocations = vec![(
         "file1.jsonl".to_string(),
@@ -159,22 +145,15 @@ async fn test_list_invocables_with_counts() {
 
     // Must insert sessions first (FK constraint on invocations.session_id)
     for sid in &["s1", "s2"] {
-        db.insert_session_from_index(
-            sid,
-            "p",
-            "p",
-            "/tmp",
-            &format!("/tmp/{}.jsonl", sid),
-            "",
-            None,
-            0,
-            1000,
-            None,
-            false,
-            0,
-        )
-        .await
-        .unwrap();
+        claude_view_db::test_support::SessionSeedBuilder::new(*sid)
+            .project_id("p")
+            .project_display_name("p")
+            .project_path("/tmp")
+            .file_path(format!("/tmp/{}.jsonl", sid))
+            .modified_at(1000)
+            .seed(&db)
+            .await
+            .unwrap();
     }
 
     // Add invocations: Read x3, Edit x1, Bash x0
