@@ -35,6 +35,20 @@ export * from './utils/thread-map'
 export * from './utils/format-number'
 export * from './types/message'
 export * from './types/hook-event'
+export type {
+  Database,
+  Device,
+  DeviceEvent,
+  DeviceEventType,
+  DeviceInsert,
+  DevicePlatform,
+  DeviceUpdate,
+  InsertTables,
+  PairingOffer,
+  RevokeReason,
+  Tables,
+  UpdateTables,
+} from './types'
 export * from './contexts/CodeRenderContext'
 export * from './contexts/ExpandContext'
 export * from './contexts/ThreadHighlightContext'
