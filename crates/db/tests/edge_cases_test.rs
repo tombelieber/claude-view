@@ -500,22 +500,18 @@ async fn a10_5_session_deleted_cascades_session_commits() {
     let db = Database::new_in_memory().await.unwrap();
 
     // Insert a session
-    db.insert_session_from_index(
-        "sess-1",
-        "project-1",
-        "Project",
-        "/repo",
-        "/tmp/sess-1.jsonl",
-        "Test",
-        None,
-        10,
-        1706400000,
-        None,
-        false,
-        5000,
-    )
-    .await
-    .unwrap();
+    claude_view_db::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-1")
+        .project_display_name("Project")
+        .project_path("/repo")
+        .file_path("/tmp/sess-1.jsonl")
+        .preview("Test")
+        .message_count(10)
+        .modified_at(1706400000)
+        .size_bytes(5000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     // Insert a commit and link it
     let commit = claude_view_db::git_correlation::GitCommit {
