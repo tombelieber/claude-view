@@ -74,56 +74,54 @@ pub struct SessionStats {
 // ── Internal deserialization types ──
 // Richer than MinLine but still skip unknown fields.
 
-#[derive(Deserialize)]
-#[allow(dead_code)] // serde reads these fields during deserialization
-struct StatsLine {
+#[derive(Deserialize, Clone)]
+pub struct StatsLine {
     #[serde(rename = "type")]
-    line_type: Option<String>,
+    pub line_type: Option<String>,
     #[serde(default)]
-    timestamp: Option<String>,
+    pub timestamp: Option<String>,
     #[serde(default)]
-    message: Option<StatsMessage>,
+    pub message: Option<StatsMessage>,
     #[serde(default, rename = "gitBranch")]
-    git_branch: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct StatsMessage {
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    model: Option<String>,
-    #[serde(default)]
-    role: Option<String>,
-    #[serde(default)]
-    usage: Option<StatsUsage>,
-    #[serde(default)]
-    content: serde_json::Value,
-    #[serde(default)]
-    stop_reason: Option<String>,
+    pub git_branch: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]
-struct StatsUsage {
+pub struct StatsMessage {
     #[serde(default)]
-    input_tokens: u64,
+    pub id: Option<String>,
     #[serde(default)]
-    output_tokens: u64,
+    pub model: Option<String>,
     #[serde(default)]
-    cache_read_input_tokens: u64,
+    pub role: Option<String>,
     #[serde(default)]
-    cache_creation_input_tokens: u64,
+    pub usage: Option<StatsUsage>,
     #[serde(default)]
-    cache_creation: Option<CacheCreationSplit>,
+    pub content: serde_json::Value,
+    #[serde(default)]
+    pub stop_reason: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]
-struct CacheCreationSplit {
+pub struct StatsUsage {
     #[serde(default)]
-    ephemeral_5m_input_tokens: u64,
+    pub input_tokens: u64,
     #[serde(default)]
-    ephemeral_1h_input_tokens: u64,
+    pub output_tokens: u64,
+    #[serde(default)]
+    pub cache_read_input_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_input_tokens: u64,
+    #[serde(default)]
+    pub cache_creation: Option<CacheCreationSplit>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct CacheCreationSplit {
+    #[serde(default)]
+    pub ephemeral_5m_input_tokens: u64,
+    #[serde(default)]
+    pub ephemeral_1h_input_tokens: u64,
 }
 
 /// Snapshot of one assistant message (last occurrence wins).
@@ -140,7 +138,7 @@ pub fn extract_stats(path: &Path, is_compressed: bool) -> std::io::Result<Sessio
     Ok(compute_stats(&lines))
 }
 
-fn compute_stats(lines: &[StatsLine]) -> SessionStats {
+pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
     let mut stats = SessionStats {
         line_count: lines.len() as u32,
         ..Default::default()
