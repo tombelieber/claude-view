@@ -1,10 +1,15 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+
+use dashmap::DashMap;
 use tracing::info;
 
 use claude_view_relay::auth::SupabaseAuth;
+use claude_view_relay::device_cache::DeviceCache;
 use claude_view_relay::rate_limit::RateLimiter;
+use claude_view_relay::state::RelayState;
+use claude_view_relay::supabase::{HttpSupabaseClient, SupabaseClient};
 
 #[tokio::main]
 async fn main() {
@@ -39,31 +44,61 @@ async fn main() {
         }
     };
 
-    // Rate limiters: 5 req/min burst 5 for /pair, 10 req/min burst 10 for /pair/claim,
-    // 10 req/min burst 10 for /push-tokens
-    let pair_rl = Arc::new(RateLimiter::new(5.0 / 60.0, 5.0));
-    let claim_rl = Arc::new(RateLimiter::new(10.0 / 60.0, 10.0));
+    // Shared HTTP client — 10s timeout, reused for Supabase + OneSignal + PostHog
+    let http_client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .expect("build http client");
+
+    // Supabase REST client for device lookups (behind the cache).
+    let supabase_client: Arc<dyn SupabaseClient> = Arc::new(
+        HttpSupabaseClient::from_env(http_client.clone())
+            .expect("SUPABASE_URL and SUPABASE_SECRET_KEY must be set for the relay"),
+    );
+    let device_cache = Arc::new(DeviceCache::new(supabase_client, Duration::from_secs(60)));
+
+    // Rate limiters: WS per-message (60/min = 1/s) and /push-tokens (10/min)
+    let ws_rl = Arc::new(RateLimiter::new(1.0, 60.0));
     let push_rl = Arc::new(RateLimiter::new(10.0 / 60.0, 10.0));
 
-    let state = claude_view_relay::state::RelayState::new(
+    let onesignal_app_id = std::env::var("ONESIGNAL_APP_ID").ok();
+    let onesignal_rest_api_key = std::env::var("ONESIGNAL_REST_API_KEY").ok();
+    let onesignal_http = if onesignal_app_id.is_some() && onesignal_rest_api_key.is_some() {
+        Some(http_client.clone())
+    } else {
+        None
+    };
+
+    let posthog_api_key = std::env::var("POSTHOG_API_KEY")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let posthog_http = posthog_api_key.as_ref().map(|_| http_client.clone());
+
+    let state = RelayState {
+        connections: Arc::new(DashMap::new()),
         supabase_auth,
-        pair_rl.clone(),
-        claim_rl.clone(),
-        push_rl.clone(),
-    );
+        http: http_client.clone(),
+        device_cache,
+        onesignal_app_id,
+        onesignal_rest_api_key,
+        onesignal_http,
+        posthog_api_key,
+        posthog_http,
+        ws_rate_limiter: ws_rl.clone(),
+        push_rate_limiter: push_rl.clone(),
+    };
+
     let app = claude_view_relay::app(state);
 
     // Spawn periodic rate-limiter bucket eviction (every 5 min, stale after 10 min)
-    let pair_rl_clone = pair_rl.clone();
-    let claim_rl_clone = claim_rl.clone();
-    let push_rl_clone = push_rl.clone();
+    let ws_rl_evict = ws_rl.clone();
+    let push_rl_evict = push_rl.clone();
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(300));
         loop {
             interval.tick().await;
-            pair_rl_clone.evict_stale(Duration::from_secs(600)).await;
-            claim_rl_clone.evict_stale(Duration::from_secs(600)).await;
-            push_rl_clone.evict_stale(Duration::from_secs(600)).await;
+            ws_rl_evict.evict_stale(Duration::from_secs(600)).await;
+            push_rl_evict.evict_stale(Duration::from_secs(600)).await;
         }
     });
 

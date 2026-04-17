@@ -35,7 +35,8 @@ pub enum SupabaseAuthKind {
     },
     /// Test mock — base64-decodes the payload and trusts the `sub` field
     /// without verifying the signature. Only used in unit/integration tests.
-    #[cfg(any(test, feature = "test-utils"))]
+    /// Only constructed via `mock_for_test()` — safe to keep in prod builds
+    /// since nothing constructs it there.
     Mock,
 }
 
@@ -85,9 +86,8 @@ impl SupabaseAuth {
     }
 
     /// Test-only mock: trusts any JWT whose payload decodes to `{"sub": "..."}`.
-    /// Uses the `test-utils` feature so integration tests outside the crate
-    /// can build and wire the mock too.
-    #[cfg(any(test, feature = "test-utils"))]
+    /// Always available (no feature gate) so integration tests in `tests/`
+    /// can wire it without a crate-self dev-dependency dance.
     pub fn mock_for_test() -> Self {
         Self {
             kind: SupabaseAuthKind::Mock,
@@ -108,7 +108,6 @@ impl SupabaseAuth {
                 let data = decode::<SupabaseClaims>(token, decoding_key, &v)?;
                 Ok(data.claims.sub)
             }
-            #[cfg(any(test, feature = "test-utils"))]
             SupabaseAuthKind::Mock => {
                 // Parse the JWT payload manually, no signature verification.
                 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -141,7 +140,6 @@ impl SupabaseAuth {
             Err(first_err) => {
                 let supabase_url = match &self.kind {
                     SupabaseAuthKind::Real { supabase_url, .. } => supabase_url.clone(),
-                    #[cfg(any(test, feature = "test-utils"))]
                     SupabaseAuthKind::Mock => return Err(first_err),
                 };
                 tracing::info!(

@@ -785,6 +785,7 @@ name = "claude-view-relay"
 version = "0.38.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum 0.8.9",
  "axum-extra",
  "base64",
@@ -800,6 +801,7 @@ dependencies = [
  "sentry-tracing",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite 0.28.0",
  "tower",
