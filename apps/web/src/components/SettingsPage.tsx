@@ -40,6 +40,7 @@ import { LocalAiCard } from './LocalAiCard'
 import { ProviderSettings } from './ProviderSettings'
 import { StorageOverview } from './StorageOverview'
 import { TelemetrySection } from './TelemetrySection'
+import { DevicesTab } from './settings/DevicesTab'
 import { SegmentedControl } from './ui/SegmentedControl'
 
 declare const __APP_VERSION__: string
@@ -505,7 +506,9 @@ export function SettingsPage() {
   const [isSavingInterval, setIsSavingInterval] = useState(false)
   const [intervalSaveStatus, setIntervalSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [searchParams, setSearchParams] = useSearchParams()
-  const activeTab = searchParams.get('tab') === 'claude-code' ? 'claude-code' : 'app'
+  const tabParam = searchParams.get('tab')
+  const activeTab: 'app' | 'claude-code' | 'devices' =
+    tabParam === 'claude-code' ? 'claude-code' : tabParam === 'devices' ? 'devices' : 'app'
   const trackEvent = useTrackEvent()
 
   const handleIntervalChange = useCallback(
@@ -565,6 +568,7 @@ export function SettingsPage() {
             options={[
               { value: 'app', label: 'App' },
               { value: 'claude-code', label: 'Claude Code' },
+              { value: 'devices', label: 'Devices' },
             ]}
             ariaLabel="Settings tab"
           />
@@ -572,6 +576,8 @@ export function SettingsPage() {
 
         {activeTab === 'claude-code' ? (
           <ClaudeCodeSettingsGroup />
+        ) : activeTab === 'devices' ? (
+          <DevicesTab />
         ) : (
           <div className="space-y-8">
             {/* ── Account & AI ─────────────────────────────────── */}
@@ -756,19 +762,23 @@ export function SettingsPage() {
 
             {/* ── Connections ───────────────────────────────────── */}
             <SectionGroup label="Connections">
-              <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Mobile Pairing">
+              <SettingsSection icon={<Smartphone className="w-4 h-4" />} title="Linked Devices">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-gray-700 dark:text-gray-300">
-                      Pair your phone with Claude View for on-the-go access.
+                      Manage phones and other devices paired with your account.
                     </p>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Scan a QR code to securely connect the mobile app.
+                      Pair, rename, or sign out linked devices.
                     </p>
                   </div>
-                  <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                    Coming Soon
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSearchParams({ tab: 'devices' }, { replace: true })}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    Manage devices
+                  </button>
                 </div>
               </SettingsSection>
 

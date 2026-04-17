@@ -1,93 +1,173 @@
+import { CheckCircle2, Loader2, RefreshCw, XCircle } from 'lucide-react'
 import { QRCodeSVG } from 'qrcode.react'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
+import type { PairingState } from '../hooks/use-pairing-flow'
 
-interface QrPayload {
-  url: string
-  r: string
-  k: string
-  t: string
-  s: string
-  v: number
+interface PairingQrCodeProps {
+  state: PairingState
+  onStart: () => void
+  onReset: () => void
 }
 
 /**
- * PairingQrCode — displays a QR code for mobile pairing.
- *
- * Calls GET /pairing/qr on the Rust server to obtain a one-time QR payload,
- * then renders the URL as a scannable QR code. The phone scans this to
- * initiate the NaCl + HMAC pairing flow.
+ * Build the `claude-view-pair://` deep link encoded in the QR code. The
+ * mobile app scans this URL and extracts the token, then calls the
+ * `pair-claim` Edge Function to complete pairing.
  */
-export function PairingQrCode() {
-  const [payload, setPayload] = useState<QrPayload | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+function buildPairingUrl(token: string): string {
+  return `claude-view-pair://${token}`
+}
 
-  const fetchQr = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/pairing/qr')
-      if (!res.ok) {
-        if (res.status === 503) {
-          throw new Error('Relay server not configured. Set RELAY_URL to enable mobile pairing.')
-        }
-        throw new Error(`Failed to generate QR code (${res.status})`)
-      }
-      const data: QrPayload = await res.json()
-      setPayload(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchQr()
-  }, [fetchQr])
-
-  if (loading) {
+/**
+ * Pure presentational component: renders the current pairing-flow state.
+ *
+ * - `idle`       → "Pair a new device" button
+ * - `creating`   → spinner + "Generating code…"
+ * - `showing-qr` → QR code + countdown + cancel
+ * - `success`    → green checkmark + "Device paired"
+ * - `expired`    → "Code expired — try again"
+ * - `error`      → plain-language error + retry button
+ */
+export function PairingQrCode({ state, onStart, onReset }: PairingQrCodeProps) {
+  if (state.kind === 'idle') {
     return (
-      <div className="flex flex-col items-center gap-3 p-6">
-        <div className="h-48 w-48 animate-pulse rounded-lg bg-zinc-200 dark:bg-zinc-700" />
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">Generating pairing code...</p>
+      <button
+        type="button"
+        onClick={onStart}
+        className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200 transition-colors"
+      >
+        Pair a new device
+      </button>
+    )
+  }
+
+  if (state.kind === 'creating') {
+    return (
+      <div className="flex flex-col items-center gap-3 p-6" aria-live="polite">
+        <div className="h-48 w-48 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
+        <div className="inline-flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <Loader2 className="w-4 h-4 animate-spin" /> Generating pairing code…
+        </div>
       </div>
     )
   }
 
-  if (error) {
+  if (state.kind === 'showing-qr') {
+    return <ShowingQr token={state.token} expiresAt={state.expiresAt} onReset={onReset} />
+  }
+
+  if (state.kind === 'success') {
     return (
-      <div className="flex flex-col items-center gap-3 p-6">
-        <div className="flex h-48 w-48 items-center justify-center rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
-          <p className="px-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>
-        </div>
+      <div className="flex flex-col items-center gap-3 p-6" aria-live="polite">
+        <CheckCircle2 className="w-12 h-12 text-green-500" />
+        <p className="text-sm text-gray-700 dark:text-gray-200 font-medium">
+          Device paired successfully
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono break-all max-w-xs text-center">
+          {state.deviceId}
+        </p>
         <button
           type="button"
-          onClick={fetchQr}
-          className="rounded-md bg-zinc-800 px-3 py-1.5 text-sm text-white hover:bg-zinc-700 dark:bg-zinc-200 dark:text-zinc-900 dark:hover:bg-zinc-300"
+          onClick={onReset}
+          className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
         >
-          Retry
+          Done
         </button>
       </div>
     )
   }
 
-  if (!payload) return null
+  if (state.kind === 'expired') {
+    return (
+      <div className="flex flex-col items-center gap-3 p-6" aria-live="polite">
+        <div className="flex h-48 w-48 items-center justify-center rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950">
+          <p className="px-4 text-center text-sm text-amber-700 dark:text-amber-300">
+            This pairing code expired. Ask for a new one.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onStart}
+          className="inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+        >
+          <RefreshCw className="w-4 h-4" /> Generate new code
+        </button>
+      </div>
+    )
+  }
+
+  // error state
+  return (
+    <div className="flex flex-col items-center gap-3 p-6" aria-live="polite">
+      <div className="flex h-48 w-48 items-center justify-center rounded-lg border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950">
+        <div className="flex flex-col items-center gap-2 px-4 text-center">
+          <XCircle className="w-6 h-6 text-red-500" />
+          <p className="text-sm text-red-600 dark:text-red-300">{state.message}</p>
+          {state.code && (
+            <p className="text-[11px] font-mono text-red-500 dark:text-red-400/80">{state.code}</p>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={onStart}
+        className="rounded-md bg-gray-900 dark:bg-gray-100 px-3 py-1.5 text-sm text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-200"
+      >
+        Try again
+      </button>
+    </div>
+  )
+}
+
+function ShowingQr({
+  token,
+  expiresAt,
+  onReset,
+}: {
+  token: string
+  expiresAt: Date
+  onReset: () => void
+}) {
+  const [remainingMs, setRemainingMs] = useState(() =>
+    Math.max(0, expiresAt.getTime() - Date.now()),
+  )
+
+  useEffect(() => {
+    const tick = () => setRemainingMs(Math.max(0, expiresAt.getTime() - Date.now()))
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [expiresAt])
+
+  const totalSeconds = Math.ceil(remainingMs / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  const countdown = `${minutes}:${seconds.toString().padStart(2, '0')}`
+  const urgent = totalSeconds <= 30
 
   return (
-    <div className="flex flex-col items-center gap-3 p-6">
-      <div className="rounded-lg bg-white p-3">
-        <QRCodeSVG value={payload.url} size={192} level="M" />
+    <div className="flex flex-col items-center gap-3 p-6" aria-live="polite">
+      <div className="rounded-lg bg-white p-3 border border-gray-200 dark:border-gray-700">
+        <QRCodeSVG value={buildPairingUrl(token)} size={192} level="M" />
       </div>
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Scan with the Claude View mobile app to pair
+      <p className="text-sm text-gray-600 dark:text-gray-400 text-center max-w-xs">
+        Open the Claude View mobile app and scan this code to pair.
+      </p>
+      <p
+        className={
+          urgent
+            ? 'text-xs font-mono tabular-nums text-red-600 dark:text-red-400'
+            : 'text-xs font-mono tabular-nums text-gray-500 dark:text-gray-400'
+        }
+      >
+        Expires in {countdown}
       </p>
       <button
         type="button"
-        onClick={fetchQr}
-        className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+        onClick={onReset}
+        className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
       >
-        Generate new code
+        Cancel
       </button>
     </div>
   )
