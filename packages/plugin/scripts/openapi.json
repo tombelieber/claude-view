@@ -33,6 +33,76 @@
         }
       }
     },
+    "/api/auth/session": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "post_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostSessionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed body"
+          },
+          "500": {
+            "description": "Disk write error"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "delete_session",
+        "responses": {
+          "204": {
+            "description": "Session cleared"
+          },
+          "500": {
+            "description": "Disk error"
+          }
+        }
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "operationId": "get_status",
+        "responses": {
+          "200": {
+            "description": "Current auth state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatusResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/branches": {
       "get": {
         "tags": [
@@ -5610,6 +5680,37 @@
           }
         }
       },
+      "AuthStatusResponse": {
+        "type": "object",
+        "required": [
+          "authenticated"
+        ],
+        "properties": {
+          "authenticated": {
+            "type": "boolean"
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at_unix": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "user_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AvailablePlugin": {
         "type": "object",
         "description": "A plugin available for installation (not yet installed).",
@@ -10940,6 +11041,52 @@
           }
         }
       },
+      "PostSessionBody": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "description": "Supabase JWT (short-lived access token)."
+          },
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until `access_token` expires (Supabase returns `expires_in`).",
+            "minimum": 0
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "Supabase opaque refresh token (long-lived)."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "UUID from the JWT's `sub` claim. Web UI reads this from\nsupabase.auth.getUser() and forwards it so we don't double-parse."
+          }
+        }
+      },
+      "PostSessionResponse": {
+        "type": "object",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "email": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "user_id": {
+            "type": "string"
+          }
+        }
+      },
       "ProcessGroup": {
         "type": "object",
         "description": "A single process group — aggregated by normalized process name.",
@@ -14573,6 +14720,10 @@
     {
       "name": "pairing",
       "description": "Device pairing"
+    },
+    {
+      "name": "auth",
+      "description": "Supabase auth session bootstrap"
     },
     {
       "name": "jobs",
