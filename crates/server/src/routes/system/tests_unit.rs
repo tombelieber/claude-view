@@ -1,6 +1,7 @@
 //! Unit and database-level tests for system module.
 
 use super::*;
+use claude_view_db::test_support::SessionSeedBuilder;
 use claude_view_db::{Database, HealthStatus};
 
 async fn test_db() -> Database {
@@ -168,22 +169,18 @@ async fn test_classification_status_with_active_job() {
     let db = test_db().await;
 
     // Insert a session
-    db.insert_session_from_index(
-        "sess-1",
-        "project-a",
-        "Project A",
-        "/tmp/project-a",
-        "/tmp/sess1.jsonl",
-        "Test session",
-        None,
-        5,
-        chrono::Utc::now().timestamp(),
-        None,
-        false,
-        1000,
-    )
-    .await
-    .unwrap();
+    SessionSeedBuilder::new("sess-1")
+        .project_id("project-a")
+        .project_display_name("Project A")
+        .project_path("/tmp/project-a")
+        .file_path("/tmp/sess1.jsonl")
+        .preview("Test session")
+        .message_count(5)
+        .modified_at(chrono::Utc::now().timestamp())
+        .size_bytes(1000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     // Create a running classification job
     let _job_id = db
@@ -205,22 +202,18 @@ async fn test_reset_all_data() {
     let db = test_db().await;
 
     // Insert data
-    db.insert_session_from_index(
-        "sess-1",
-        "project-a",
-        "Project A",
-        "/tmp/project-a",
-        "/tmp/sess1.jsonl",
-        "Test",
-        None,
-        5,
-        chrono::Utc::now().timestamp(),
-        None,
-        false,
-        1000,
-    )
-    .await
-    .unwrap();
+    SessionSeedBuilder::new("sess-1")
+        .project_id("project-a")
+        .project_display_name("Project A")
+        .project_path("/tmp/project-a")
+        .file_path("/tmp/sess1.jsonl")
+        .preview("Test")
+        .message_count(5)
+        .modified_at(chrono::Utc::now().timestamp())
+        .size_bytes(1000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     // Create an index run
     let run_id = db.create_index_run("full", Some(0), None).await.unwrap();

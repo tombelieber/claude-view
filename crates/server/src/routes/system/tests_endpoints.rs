@@ -1,6 +1,5 @@
 //! Integration tests for system HTTP endpoints.
 
-#[allow(deprecated)]
 use super::*;
 use axum::{
     body::Body,
@@ -160,22 +159,18 @@ async fn test_system_endpoint_with_sessions() {
     let db = test_db().await;
 
     // Insert a session
-    db.insert_session_from_index(
-        "sess-1",
-        "project-a",
-        "Project A",
-        "/tmp/project-a",
-        "/tmp/sess1.jsonl",
-        "Test session",
-        None,
-        5,
-        chrono::Utc::now().timestamp(),
-        None,
-        false,
-        1000,
-    )
-    .await
-    .unwrap();
+    claude_view_db::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-a")
+        .project_display_name("Project A")
+        .project_path("/tmp/project-a")
+        .file_path("/tmp/sess1.jsonl")
+        .preview("Test session")
+        .message_count(5)
+        .modified_at(chrono::Utc::now().timestamp())
+        .size_bytes(1000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     let app = build_app(db);
     let (status, body) = do_get(app, "/api/system").await;
@@ -313,22 +308,18 @@ async fn test_reset_with_correct_confirmation() {
     let db = test_db().await;
 
     // Insert some data first
-    db.insert_session_from_index(
-        "sess-1",
-        "project-a",
-        "Project A",
-        "/tmp/project-a",
-        "/tmp/sess1.jsonl",
-        "Test session",
-        None,
-        5,
-        chrono::Utc::now().timestamp(),
-        None,
-        false,
-        1000,
-    )
-    .await
-    .unwrap();
+    claude_view_db::test_support::SessionSeedBuilder::new("sess-1")
+        .project_id("project-a")
+        .project_display_name("Project A")
+        .project_path("/tmp/project-a")
+        .file_path("/tmp/sess1.jsonl")
+        .preview("Test session")
+        .message_count(5)
+        .modified_at(chrono::Utc::now().timestamp())
+        .size_bytes(1000)
+        .seed(&db)
+        .await
+        .unwrap();
 
     // Verify data exists
     let health = db.get_health_stats().await.unwrap();

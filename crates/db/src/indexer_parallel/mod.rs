@@ -1,6 +1,7 @@
 // crates/db/src/indexer_parallel/mod.rs
 // Fast JSONL parsing with memory-mapped I/O and SIMD-accelerated scanning.
-// Also contains the two-pass indexing pipeline: Pass 1 (index JSON) and Pass 2 (deep JSONL).
+// Unified single-pass indexing pipeline (`scan_and_index_all`) plus helpers
+// for hint extraction and stale-session pruning.
 
 mod backup;
 pub(crate) mod cost;
@@ -20,10 +21,7 @@ pub use backup::ingest_backup_sessions;
 pub use helpers::extract_commit_skill_invocations;
 pub use orchestrator::scan_and_index_all;
 pub use parser::parse_bytes;
-#[allow(deprecated)]
-pub use pipeline::{
-    build_index_hints, pass_1_read_indexes, pass_2_deep_index, prune_stale_sessions,
-};
+pub use pipeline::{build_index_hints, prune_stale_sessions};
 pub use types::{
     read_file_fast, CommitSkillInvocation, DeepIndexResult, ExtendedMetadata, FileData, IndexHints,
     ParseDiagnostics, ParseResult, ParsedSession, RawInvocation, COMMIT_SKILL_NAMES,

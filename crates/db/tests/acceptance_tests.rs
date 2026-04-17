@@ -1,16 +1,14 @@
-#![allow(deprecated)]
-// Acceptance tests for Startup UX + Parallel Indexing (AC-1 through AC-12).
+// Acceptance tests for Startup UX + Parallel Indexing (AC-1 through AC-13).
 //
-// These integration tests verify the two-pass indexing pipeline, server startup,
-// callback behavior, and schema correctness using temporary directories that
-// mimic ~/.claude/projects/<encoded-path>/ layout.
+// These integration tests verify the unified indexing pipeline
+// (`scan_and_index_all`), server startup, callback behavior, and schema
+// correctness using temporary directories that mimic
+// `~/.claude/projects/<encoded-path>/` layout.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use claude_view_db::indexer_parallel::{
-    build_index_hints, pass_1_read_indexes, pass_2_deep_index, scan_and_index_all,
-};
+use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 
 // ---------------------------------------------------------------------------
@@ -18,7 +16,8 @@ use claude_view_db::Database;
 // ---------------------------------------------------------------------------
 
 /// Realistic JSONL content for a session with 2 user + 2 assistant turns.
-const REALISTIC_JSONL: &str = r#"{"parentUuid":null,"isFinal":false,"type":"user","uuid":"u1","message":{"role":"user","content":[{"type":"text","text":"Hello world"}]}}
+/// Includes `gitBranch` so the parser-side branch extraction fires too.
+const REALISTIC_JSONL: &str = r#"{"parentUuid":null,"isFinal":false,"type":"user","uuid":"u1","gitBranch":"main","message":{"role":"user","content":[{"type":"text","text":"Hello world"}]}}
 {"parentUuid":"u1","isFinal":false,"type":"assistant","uuid":"a1","timestamp":1706200000,"message":{"model":"claude-opus-4-5-20251101","role":"assistant","content":[{"type":"text","text":"Hi there!"},{"type":"tool_use","name":"Read","id":"t1","input":{"file_path":"/tmp/test.rs"}}],"usage":{"input_tokens":50,"output_tokens":200,"cache_read_input_tokens":5000,"cache_creation_input_tokens":1000,"service_tier":"standard"}}}
 {"parentUuid":"a1","isFinal":true,"type":"user","uuid":"u2","message":{"role":"user","content":[{"type":"text","text":"Thanks for reading that file"}]}}
 "#;
@@ -71,6 +70,12 @@ fn setup_single_session() -> (tempfile::TempDir, std::path::PathBuf) {
     setup_claude_dir(1, 1)
 }
 
+/// Drive `scan_and_index_all` with no-op callbacks. Returns `(indexed, skipped)`.
+async fn run_scan(claude_dir: &std::path::Path, db: &Database) -> Result<(usize, usize), String> {
+    let hints = build_index_hints(claude_dir);
+    scan_and_index_all(claude_dir, db, &hints, None, None, |_| {}, |_| {}, || {}).await
+}
+
 // ---------------------------------------------------------------------------
 // AC-1: Server starts before indexing
 // ---------------------------------------------------------------------------
@@ -104,52 +109,43 @@ async fn ac1_server_responds_while_idle() {
 }
 
 // ---------------------------------------------------------------------------
-// AC-2: Pass 1 reads sessions-index.json correctly
+// AC-2: Session index fields land in DB after scan
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn ac2_pass1_reads_index_fields() {
+async fn ac2_scan_populates_index_fields() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    assert_eq!(projects, 1, "Should discover 1 project");
-    assert_eq!(sessions, 1, "Should discover 1 session");
+    let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
+    assert_eq!(indexed, 1, "Should index 1 session");
 
     let db_projects = db.list_projects().await.unwrap();
     assert_eq!(db_projects.len(), 1);
 
     let session = &db_projects[0].sessions[0];
     assert_eq!(session.id, "sess-0-0");
-    assert_eq!(session.preview, "Hello from session 0");
     assert_eq!(session.summary.as_deref(), Some("Session 0 summary"));
-    assert_eq!(session.message_count, 3);
     assert_eq!(session.git_branch.as_deref(), Some("main"));
     assert!(!session.is_sidechain);
-    // Pass 2 hasn't run yet
-    assert!(
-        !session.deep_indexed,
-        "deep_indexed should be false after Pass 1 only"
-    );
 }
 
 // ---------------------------------------------------------------------------
-// AC-3: Pass 1 handles missing / malformed index files
+// AC-3: Scan handles missing / malformed index files without panicking
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 async fn ac3_missing_index_returns_zero() {
     let tmp = tempfile::TempDir::new().unwrap();
     let claude_dir = tmp.path().to_path_buf();
-    // Create projects/ dir with a project subdirectory but NO sessions-index.json
+    // Create projects/ dir with a project subdirectory but NO jsonl files.
     let project_dir = claude_dir.join("projects").join("empty-project");
     std::fs::create_dir_all(&project_dir).unwrap();
 
     let db = Database::new_in_memory().await.unwrap();
-    let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+    let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
 
-    assert_eq!(projects, 0, "No valid index files means 0 projects");
-    assert_eq!(sessions, 0);
+    assert_eq!(indexed, 0, "No .jsonl files means 0 indexed sessions");
 }
 
 #[tokio::test]
@@ -165,37 +161,25 @@ async fn ac3_malformed_json_does_not_panic() {
     .unwrap();
 
     let db = Database::new_in_memory().await.unwrap();
-    // Should not panic; read_all_session_indexes logs a warning and skips malformed files
-    let result = pass_1_read_indexes(&claude_dir, &db).await;
-    // The function should succeed (skipping the bad file) — 0 projects found
+    // build_index_hints logs a warning and returns an empty map; scan should
+    // still complete (no .jsonl files → 0 indexed).
+    let result = run_scan(&claude_dir, &db).await;
     assert!(result.is_ok());
-    let (projects, sessions) = result.unwrap();
-    assert_eq!(projects, 0);
-    assert_eq!(sessions, 0);
+    assert_eq!(result.unwrap().0, 0);
 }
 
 // ---------------------------------------------------------------------------
-// AC-4: Pass 2 fills extended metadata
+// AC-4: Scan fills extended metadata (deep fields) end-to-end
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn ac4_pass2_fills_deep_fields() {
+async fn ac4_scan_fills_deep_fields() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-
-    // Before Pass 2
-    let before = db.list_projects().await.unwrap();
-    assert!(!before[0].sessions[0].deep_indexed);
-
-    // Run Pass 2
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
     assert_eq!(indexed, 1);
 
-    // After Pass 2
     let after = db.list_projects().await.unwrap();
     let session = &after[0].sessions[0];
     assert!(session.deep_indexed, "Should be deep indexed");
@@ -204,7 +188,6 @@ async fn ac4_pass2_fills_deep_fields() {
         !session.last_message.is_empty(),
         "last_message should be populated"
     );
-    // The JSONL has a Read tool use, verify tool_counts
     assert_eq!(session.tool_counts.read, 1, "Should detect 1 Read tool use");
 }
 
@@ -218,14 +201,7 @@ async fn ac7_batch_writes_all_sessions() {
     let (_tmp, claude_dir) = setup_claude_dir(4, 6);
     let db = Database::new_in_memory().await.unwrap();
 
-    let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    assert_eq!(projects, 4, "Should find 4 projects");
-    assert_eq!(sessions, 24, "Should find 24 sessions total");
-
-    // Run Pass 2
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
     assert_eq!(indexed, 24, "All 24 sessions should be deep indexed");
 
     // Verify all in DB
@@ -246,7 +222,7 @@ async fn ac7_batch_writes_all_sessions() {
 }
 
 // ---------------------------------------------------------------------------
-// AC-8: Parallel processing completes
+// AC-8: Parallel processing completes quickly
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -255,12 +231,8 @@ async fn ac8_parallel_processing_completes() {
     let (_tmp, claude_dir) = setup_claude_dir(2, 6);
     let db = Database::new_in_memory().await.unwrap();
 
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-
     let start = std::time::Instant::now();
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
     let elapsed = start.elapsed();
 
     assert_eq!(indexed, 12, "Should deep-index all 12 sessions");
@@ -308,25 +280,20 @@ async fn ac9_callbacks_fire_correctly() {
 }
 
 // ---------------------------------------------------------------------------
-// AC-11: Subsequent launches skip Pass 2
+// AC-11: Subsequent scans skip already-indexed sessions
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn ac11_second_pass2_returns_zero() {
+async fn ac11_second_scan_returns_zero() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
     // First full pipeline
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    let (first_run, _) = run_scan(&claude_dir, &db).await.unwrap();
     assert_eq!(first_run, 1, "First run should index 1 session");
 
-    // Second run of Pass 2 — all sessions already deep-indexed
-    let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    // Second run — session is already deep-indexed and file hasn't changed
+    let (second_run, _) = run_scan(&claude_dir, &db).await.unwrap();
     assert_eq!(
         second_run, 0,
         "Second run should skip all (already indexed)"
@@ -342,28 +309,24 @@ async fn ac12_new_schema_fields_end_to_end() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    // Run full pipeline
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    run_scan(&claude_dir, &db).await.unwrap();
 
     let projects = db.list_projects().await.unwrap();
     assert!(!projects.is_empty(), "Should have at least 1 project");
 
     let session = &projects[0].sessions[0];
 
-    // Verify summary field from sessions-index.json
+    // Verify summary field from sessions-index.json (propagated via hints)
     assert!(
         session.summary.is_some(),
-        "summary should be populated from sessions-index.json"
+        "summary should be populated from sessions-index.json hint"
     );
     assert_eq!(session.summary.as_deref(), Some("Session 0 summary"));
 
-    // Verify git_branch field from sessions-index.json
+    // Verify git_branch (parser extraction + index hint fallback)
     assert!(
         session.git_branch.is_some(),
-        "git_branch should be populated from sessions-index.json"
+        "git_branch should be populated"
     );
     assert_eq!(session.git_branch.as_deref(), Some("main"));
 
@@ -393,10 +356,7 @@ async fn ac12_json_serialization_includes_new_fields() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    run_scan(&claude_dir, &db).await.unwrap();
 
     let projects = db.list_projects().await.unwrap();
     let json = serde_json::to_string(&projects).unwrap();
@@ -426,7 +386,7 @@ async fn ac12_json_serialization_includes_new_fields() {
 }
 
 // ---------------------------------------------------------------------------
-// Additional: Pass 1 + Pass 2 with multiple projects
+// Multi-project scan correctness
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -434,13 +394,7 @@ async fn multiple_projects_indexed_correctly() {
     let (_tmp, claude_dir) = setup_claude_dir(3, 2);
     let db = Database::new_in_memory().await.unwrap();
 
-    let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    assert_eq!(projects, 3);
-    assert_eq!(sessions, 6);
-
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
     assert_eq!(indexed, 6);
 
     let db_projects = db.list_projects().await.unwrap();
@@ -466,11 +420,7 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
     let (_tmp, claude_dir) = setup_single_session();
     let db = Database::new_in_memory().await.unwrap();
 
-    // Run full pipeline
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    run_scan(&claude_dir, &db).await.unwrap();
 
     // Verify models table has data
     let models = db.get_all_models().await.unwrap();

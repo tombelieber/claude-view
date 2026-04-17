@@ -24,9 +24,5 @@ pub use dashboard::{ActivitySummaryRow, ProjectActivityRow, RichActivityResponse
 pub use search_prefilter::SearchPrefilter;
 pub use types::*;
 
-// Re-export _tx functions for indexer_parallel.rs (crate::queries::*_tx paths)
-#[allow(deprecated)]
-pub use row_types::{
-    batch_insert_invocations_tx, batch_insert_turns_tx, batch_upsert_models_tx,
-    update_session_deep_fields_tx,
-};
+// Re-export _tx functions used by the unified indexing pipeline.
+pub use row_types::{batch_insert_invocations_tx, batch_insert_turns_tx, batch_upsert_models_tx};

@@ -1,4 +1,3 @@
-#![allow(deprecated)]
 // Edge case tests for Phase 3 Metrics Engine (A10.1-A10.5).
 //
 // These tests verify robustness of the parsing and correlation pipeline
@@ -9,7 +8,7 @@ use claude_view_core::metrics::{
 };
 use claude_view_db::git_correlation::{scan_repo_commits, tier1_match, tier2_match, GitCommit};
 use claude_view_db::indexer_parallel::{
-    extract_commit_skill_invocations, parse_bytes, pass_1_read_indexes, pass_2_deep_index,
+    build_index_hints, extract_commit_skill_invocations, parse_bytes, scan_and_index_all,
     CommitSkillInvocation, RawInvocation,
 };
 use claude_view_db::Database;
@@ -451,7 +450,7 @@ async fn a10_4_parallel_indexing_no_data_corruption() {
         let session_id = format!("sess-{:03}", i);
         let jsonl_path = project_dir.join(format!("{}.jsonl", &session_id));
         let content = format!(
-            r#"{{"type":"user","message":{{"content":"Question {}"}}}}{}"#,
+            r#"{{"type":"user","timestamp":"2026-01-28T10:00:00Z","message":{{"content":"Question {}"}}}}{}"#,
             i, "\n"
         );
         std::fs::write(&jsonl_path, content).unwrap();
@@ -470,11 +469,12 @@ async fn a10_4_parallel_indexing_no_data_corruption() {
 
     let db = Database::new_in_memory().await.unwrap();
 
-    // Run parallel indexing
-    pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-    let (indexed, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-        .await
-        .unwrap();
+    // Run unified indexing pipeline
+    let hints = build_index_hints(&claude_dir);
+    let (indexed, _skipped) =
+        scan_and_index_all(&claude_dir, &db, &hints, None, None, |_| {}, |_| {}, || {})
+            .await
+            .unwrap();
 
     assert_eq!(indexed, 10, "All 10 sessions should be indexed");
 

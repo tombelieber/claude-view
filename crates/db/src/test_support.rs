@@ -1,11 +1,8 @@
 // crates/db/src/test_support.rs
 //
-// Phase 0 Step 3 — replacement for the deprecated Pass-1/Pass-2 seed helpers
-// (`insert_session_from_index`, `write_results_sqlx`, `update_session_deep_fields_tx`).
-//
-// Thin wrapper around `execute_upsert_parsed_session`. Defaults mirror the
-// Pass-1 behaviour of `insert_session_from_index` (empty JSON arrays, zero
-// counts, null cost) so mechanical migration of test fixtures is a
+// Canonical test-seeding helper — thin wrapper around
+// `execute_upsert_parsed_session`. Defaults supply empty JSON arrays, zero
+// counts, and null cost so mechanical test-fixture construction is a
 // one-for-one field-name port.
 
 use crate::indexer_parallel::ParsedSession;

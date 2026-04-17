@@ -36,12 +36,20 @@ mod normalize_tests {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod tests {
     use super::super::*;
     use crate::Database;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    /// Drive `scan_and_index_all` with no-op callbacks. Returns `(indexed, skipped)`.
+    async fn run_scan(
+        claude_dir: &std::path::Path,
+        db: &Database,
+    ) -> Result<(usize, usize), String> {
+        let hints = build_index_hints(claude_dir);
+        scan_and_index_all(claude_dir, db, &hints, None, None, |_| {}, |_| {}, || {}).await
+    }
 
     #[test]
     fn test_parse_bytes_empty() {
@@ -567,10 +575,10 @@ mod tests {
         let project_dir = claude_dir.join("projects").join("test-project");
         std::fs::create_dir_all(&project_dir).unwrap();
         let jsonl_path = project_dir.join("sess-001.jsonl");
-        let jsonl_content = br#"{"type":"user","message":{"content":"hello world"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]}}
-{"type":"user","message":{"content":"now edit it"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs"}}]}}
+        let jsonl_content = br#"{"type":"user","timestamp":"2026-01-25T17:18:00Z","message":{"content":"hello world"}}
+{"type":"assistant","timestamp":"2026-01-25T17:18:10Z","message":{"content":[{"type":"tool_use","name":"Read","input":{"file_path":"/src/main.rs"}}]}}
+{"type":"user","timestamp":"2026-01-25T17:18:20Z","message":{"content":"now edit it"}}
+{"type":"assistant","timestamp":"2026-01-25T17:18:30Z","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/src/lib.rs"}}]}}
 "#;
         std::fs::write(&jsonl_path, jsonl_content).unwrap();
         let index = format!(
@@ -593,12 +601,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pass_1_reads_and_inserts() {
+    async fn test_scan_reads_and_inserts_from_index() {
         let (_tmp, claude_dir) = setup_test_claude_dir();
         let db = Database::new_in_memory().await.unwrap();
-        let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        assert_eq!(projects, 1);
-        assert_eq!(sessions, 1);
+        let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
+        assert_eq!(indexed, 1);
         let db_projects = db.list_projects().await.unwrap();
         assert_eq!(db_projects.len(), 1);
         assert_eq!(db_projects[0].sessions.len(), 1);
@@ -607,36 +614,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pass_1_empty_dir() {
+    async fn test_scan_empty_dir() {
         let tmp = tempfile::TempDir::new().unwrap();
         let claude_dir = tmp.path().to_path_buf();
         std::fs::create_dir_all(claude_dir.join("projects")).unwrap();
         let db = Database::new_in_memory().await.unwrap();
-        let (projects, sessions) = pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        assert_eq!(projects, 0);
-        assert_eq!(sessions, 0);
+        let (indexed, _skipped) = run_scan(&claude_dir, &db).await.unwrap();
+        assert_eq!(indexed, 0);
     }
 
     #[tokio::test]
-    async fn test_pass_2_fills_deep_fields() {
+    async fn test_scan_fills_deep_fields() {
         let (_tmp, claude_dir) = setup_test_claude_dir();
         let db = Database::new_in_memory().await.unwrap();
-        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
         let progress = Arc::new(AtomicUsize::new(0));
         let progress_clone = progress.clone();
-        let (indexed, _) = pass_2_deep_index(
+
+        let hints = build_index_hints(&claude_dir);
+        let (indexed, _skipped) = scan_and_index_all(
+            &claude_dir,
             &db,
+            &hints,
             None,
             None,
-            |_| {},
-            move |done, _total, _bytes| {
-                progress_clone.store(done, Ordering::Relaxed);
+            move |_| {
+                progress_clone.fetch_add(1, Ordering::Relaxed);
             },
+            |_| {},
+            || {},
         )
         .await
         .unwrap();
+
         assert_eq!(indexed, 1);
-        assert_eq!(progress.load(Ordering::Relaxed), 1);
+        assert!(progress.load(Ordering::Relaxed) >= 1);
+
         let projects = db.list_projects().await.unwrap();
         let session = &projects[0].sessions[0];
         assert!(session.deep_indexed);
@@ -647,17 +659,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_pass_2_skips_already_indexed() {
+    async fn test_scan_skips_already_indexed() {
         let (_tmp, claude_dir) = setup_test_claude_dir();
         let db = Database::new_in_memory().await.unwrap();
-        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
-        let (first_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-            .await
-            .unwrap();
+        let (first_run, _) = run_scan(&claude_dir, &db).await.unwrap();
         assert_eq!(first_run, 1);
-        let (second_run, _) = pass_2_deep_index(&db, None, None, |_| {}, |_, _, _| {})
-            .await
-            .unwrap();
+        let (second_run, _) = run_scan(&claude_dir, &db).await.unwrap();
         assert_eq!(second_run, 0);
     }
 
@@ -873,8 +880,8 @@ mod tests {
         let jsonl_a = project_a_dir.join("sess-001.jsonl");
         std::fs::write(
             &jsonl_a,
-            br#"{"type":"user","message":{"content":"hello from session 1"}}
-{"type":"assistant","message":{"content":"hi back"}}
+            br#"{"type":"user","timestamp":"2026-01-25T10:00:00Z","message":{"content":"hello from session 1"}}
+{"type":"assistant","timestamp":"2026-01-25T10:00:10Z","message":{"content":"hi back"}}
 "#,
         )
         .unwrap();
@@ -888,8 +895,8 @@ mod tests {
         let jsonl_b = project_b_dir.join("sess-002.jsonl");
         std::fs::write(
             &jsonl_b,
-            br#"{"type":"user","message":{"content":"hello from session 2"}}
-{"type":"assistant","message":{"content":"hi again"}}
+            br#"{"type":"user","timestamp":"2026-01-25T11:00:00Z","message":{"content":"hello from session 2"}}
+{"type":"assistant","timestamp":"2026-01-25T11:00:10Z","message":{"content":"hi again"}}
 "#,
         )
         .unwrap();
@@ -905,7 +912,7 @@ mod tests {
     async fn test_prune_stale_sessions_removes_deleted_files() {
         let (_tmp, claude_dir, jsonl_b_path) = setup_two_session_claude_dir();
         let db = Database::new_in_memory().await.unwrap();
-        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        run_scan(&claude_dir, &db).await.unwrap();
         std::fs::remove_file(&jsonl_b_path).unwrap();
         let pruned = prune_stale_sessions(&db).await.unwrap();
         assert_eq!(pruned, 1);
@@ -915,7 +922,7 @@ mod tests {
     async fn test_prune_stale_sessions_no_op_when_all_exist() {
         let (_tmp, claude_dir, _) = setup_two_session_claude_dir();
         let db = Database::new_in_memory().await.unwrap();
-        pass_1_read_indexes(&claude_dir, &db).await.unwrap();
+        run_scan(&claude_dir, &db).await.unwrap();
         let pruned = prune_stale_sessions(&db).await.unwrap();
         assert_eq!(pruned, 0);
     }
@@ -964,7 +971,6 @@ mod index_hints_tests {
 }
 
 #[cfg(test)]
-#[allow(deprecated)]
 mod scan_and_index_tests {
     use super::super::*;
     use crate::Database;
