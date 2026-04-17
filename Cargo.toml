@@ -145,6 +145,11 @@ claude-view-server-local-llm = { path = "crates/server-local-llm" }
 claude-view-server-types = { path = "crates/server-types" }
 claude-view-observability = { path = "crates/observability" }
 
+# CQRS Phase 1 crates — scaffolded in PR 1.1. Consumers wire up in PR 1.2+.
+claude-view-session-parser = { path = "crates/session-parser" }
+claude-view-stats-rollup = { path = "crates/stats-rollup" }
+claude-view-stats-rollup-derive = { path = "crates/stats-rollup-derive" }
+
 # ── Build Profiles ────────────────────────────────────────────────────
 #
 # dev      — fastest compile, debug iteration
