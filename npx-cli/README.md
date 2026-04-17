@@ -123,6 +123,7 @@ Everything stays on your machine. Zero telemetry, zero cloud, zero network reque
 ## Links
 
 - [Website](https://claudeview.ai) — docs, changelog, blog
+- [Privacy Policy](https://claudeview.ai/privacy) — local-first data handling, App Store compliance
 - [GitHub Repository](https://github.com/tombelieber/claude-view) — full feature list, comparison table, architecture details
 - [@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin) — Claude Code plugin with 8 MCP tools and 3 skills
 - [claude-backup](https://github.com/tombelieber/claude-backup) — Claude Code deletes your sessions after 30 days. This saves them.
