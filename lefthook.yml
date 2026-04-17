@@ -43,7 +43,10 @@ pre-push:
   parallel: true
   commands:
     clippy:
-      run: ./scripts/cq clippy --workspace -- -D warnings
+      # -D deprecated is explicit (in addition to -D warnings which already
+      # catches deprecated by default) so any new caller of a legacy writer
+      # fails the gate immediately.
+      run: ./scripts/cq clippy --workspace -- -D warnings -D deprecated
     # NOTE: generated-types moved to post-merge. Drift is now caught at pull
     # time (when it's upstream-owned) instead of push time (when it's the
     # next pusher's problem). Keep this commented reminder for future eng.
