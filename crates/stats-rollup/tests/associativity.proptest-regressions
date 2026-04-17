@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 9e50c0f16976219cb905bfa2770acf9a829b8fcf17c0e906091e0210e531681d # shrinks to a = PeriodStats { session_count: 0, total_tokens: 0, total_cost_cents: 0, prompt_count: 0, file_count: 0, lines_added: 0, lines_removed: 0, commit_count: 0, duration_sum_ms: 0, duration_count: 0, reedit_rate_sum: 0.3342935736112978, reedit_rate_count: 0 }, b = PeriodStats { session_count: 0, total_tokens: 0, total_cost_cents: 0, prompt_count: 0, file_count: 0, lines_added: 0, lines_removed: 0, commit_count: 0, duration_sum_ms: 0, duration_count: 0, reedit_rate_sum: 0.6262197051280775, reedit_rate_count: 0 }, c = PeriodStats { session_count: 0, total_tokens: 0, total_cost_cents: 0, prompt_count: 0, file_count: 0, lines_added: 0, lines_removed: 0, commit_count: 0, duration_sum_ms: 0, duration_count: 0, reedit_rate_sum: 0.9236280582446476, reedit_rate_count: 0 }
