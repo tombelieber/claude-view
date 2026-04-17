@@ -301,11 +301,16 @@ impl AppStateBuilder {
             terminal_manager: Arc::new(TerminalManager::new()),
             session_catalog: {
                 let catalog = claude_view_core::session_catalog::SessionCatalog::new();
-                let home = dirs::home_dir().expect("home dir exists");
-                let _ = catalog.rebuild_from_filesystem(
-                    &home.join(".claude").join("projects"),
-                    &home.join(".claude-backup").join("machines"),
-                );
+                // Skip the filesystem walk in tests — tests seed the catalog
+                // explicitly (or leave it empty for the empty-list case).
+                // Production populates via `create_app_full` or the reconcile loop.
+                if !cfg!(test) {
+                    let home = dirs::home_dir().expect("home dir exists");
+                    let _ = catalog.rebuild_from_filesystem(
+                        &home.join(".claude").join("projects"),
+                        &home.join(".claude-backup").join("machines"),
+                    );
+                }
                 catalog
             },
             jwks: None,
