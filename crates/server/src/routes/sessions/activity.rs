@@ -41,6 +41,15 @@ pub async fn list_branches(State(state): State<Arc<AppState>>) -> ApiResult<Json
 ///
 /// For live sessions, hook events are in memory (not flushed to SQLite until
 /// SessionEnd). Check the live state first, then fall back to SQLite.
+///
+/// **Phase 3 PR 3.5 — no cutover.** Hook events live on the
+/// `hook_events` table (Channel B per design decision D8 of
+/// `2026-04-17-cqrs-phase-1-7-design.md` §1). Channel B is
+/// authoritative for real-time agent state, and `session_stats` is
+/// authoritative for parsed message stats — they carry different data
+/// and never dedup against each other (see CLAUDE.md "Separate
+/// Channels = Separate Data"). This handler is therefore unchanged by
+/// Phase 3; the openapi_compatibility test pins the response shape.
 #[utoipa::path(get, path = "/api/sessions/{id}/hook-events", tag = "sessions",
     params(("id" = String, Path, description = "Session ID")),
     responses(
