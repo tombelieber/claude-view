@@ -365,6 +365,21 @@ async fn main() -> Result<()> {
     // Step 1: Open database
     let db = Database::open_default().await?;
 
+    // Step 1b: Spawn the indexer_v2 shadow indexer (CQRS Phase 2).
+    //
+    // Runs in parallel with the legacy `live/manager` watcher, owning
+    // `session_stats` exclusively. Watches `~/.claude/projects/` for
+    // parent-session JSONL changes, debounces per session_id (500 ms),
+    // hash-gates redundant work, and re-indexes via the canonical
+    // `claude_view_session_parser` pipeline that powers route handlers.
+    //
+    // Phase 2 is shadow-mode: nothing reads from `session_stats` yet
+    // (Phase 3 cuts readers over). The handle is fire-and-forget — the
+    // task lives for the duration of the process; tokio will tear it
+    // down at shutdown along with all other spawned tasks.
+    let _shadow_indexer_handle =
+        claude_view_db::indexer_v2::spawn_shadow_indexer(std::sync::Arc::new(db.clone()));
+
     // Recover any classification jobs left in "running" state from previous crash
     match db.recover_stale_classification_jobs().await {
         Ok(count) if count > 0 => {

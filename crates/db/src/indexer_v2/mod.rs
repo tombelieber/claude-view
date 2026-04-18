@@ -11,17 +11,26 @@
 //! |-----------------|-----------------|-----------------------------------------|
 //! | `config`        | live            | `DEBOUNCE_MS` + `StatsDelta` payload    |
 //! | `writer`        | live            | `upsert_session_stats` (single SQL gw)  |
-//! | `orchestrator`  | scaffold only   | `spawn_shadow_indexer` (PR 2.2.1)       |
-//! | `drift`         | reserved        | `shadow_diff_total` metric (PR 2.2.2)   |
+//! | `orchestrator`  | live            | `index_session` + `spawn_shadow_indexer`|
+//! | `watcher`       | live            | `start_watcher` (fsnotify, depth-2 fil) |
+//! | `debouncer`     | live            | per-session 500 ms coalesce             |
+//! | `drift`         | live            | `compare_session` (parity test helper)  |
 
 mod config;
+mod debouncer;
 mod drift;
 mod orchestrator;
+mod watcher;
 mod writer;
 
 pub use config::{StatsDelta, DEBOUNCE_MS};
+pub use debouncer::Debouncer;
 pub use drift::{compare_session, DriftReport, FieldDiff};
-pub use orchestrator::{index_session, spawn_shadow_indexer, IndexSessionError};
+pub use orchestrator::{
+    default_projects_dir, index_session, run_one_index, spawn_shadow_indexer,
+    spawn_shadow_indexer_with_root, IndexSessionError,
+};
+pub use watcher::{start_watcher, FileEvent, FILE_EVENT_CHANNEL_CAPACITY};
 pub use writer::upsert_session_stats;
 
 #[cfg(test)]

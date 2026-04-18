@@ -21,6 +21,7 @@ chrono = { workspace = true }
 memmap2 = { workspace = true }
 memchr = { workspace = true }
 walkdir = { workspace = true }
+notify = { workspace = true }
 flate2 = { workspace = true }
 ts-rs = { workspace = true }
 utoipa = { version = "5" }

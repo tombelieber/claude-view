@@ -759,6 +759,7 @@ dependencies = [
  "flate2",
  "memchr",
  "memmap2",
+ "notify",
  "rusqlite",
  "serde",
  "serde_json",
