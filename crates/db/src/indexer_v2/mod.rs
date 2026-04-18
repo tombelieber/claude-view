@@ -20,6 +20,7 @@ mod orchestrator;
 mod writer;
 
 pub use config::{StatsDelta, DEBOUNCE_MS};
+pub use drift::{compare_session, DriftReport, FieldDiff};
 pub use orchestrator::{index_session, spawn_shadow_indexer, IndexSessionError};
 pub use writer::upsert_session_stats;
 

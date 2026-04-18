@@ -1,16 +1,13 @@
-//! Phase 2 indexer_v2 orchestrator — single-file index helper +
-//! `full_rebuild` driver.
+//! Phase 2 indexer_v2 orchestrator — single-file index helper.
 //!
 //! `index_session` is the smallest standalone unit of work: parse a JSONL
 //! file, extract stats, upsert into `session_stats`. It owns no I/O of
 //! its own beyond reading the source file (handed to it by path) and the
 //! single SQL UPSERT performed by [`super::writer::upsert_session_stats`].
 //!
-//! `full_rebuild` walks every JSONL under `~/.claude/projects/` and runs
-//! `index_session` on each — the building block used by both the
-//! 100-session parity harness (PR 2.2.2) and the eventual fsnotify
-//! orchestrator (PR 2.2.1's `spawn_shadow_indexer`, currently scaffold
-//! only).
+//! It is the building block used by both the eventual `full_rebuild`
+//! driver (planned, not yet implemented) and the eventual fsnotify
+//! orchestrator (`spawn_shadow_indexer`, currently scaffold only).
 //!
 //! No fsnotify wiring lives in this module yet. `spawn_shadow_indexer`
 //! is intentionally `unimplemented!()` so server startup crash-loops
