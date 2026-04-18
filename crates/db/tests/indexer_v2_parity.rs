@@ -52,7 +52,7 @@ use std::path::{Path, PathBuf};
 use claude_view_db::indexer_v2::{compare_session, index_session, IndexSessionError};
 use claude_view_db::Database;
 use claude_view_session_parser::{
-    extract_stats, parse_jsonl, SessionStats, PARSER_VERSION, STATS_VERSION,
+    blake3_head_tail, extract_stats, parse_jsonl, SessionStats, PARSER_VERSION, STATS_VERSION,
 };
 
 /// Default sample size when `INDEXER_V2_PARITY_N` is not set.
@@ -119,7 +119,19 @@ async fn indexer_v2_parity_against_prod_sessions() {
         }
 
         // Canonical parse — what server route handlers see when they
-        // re-derive stats on demand.
+        // re-derive stats on demand. Capture the file's content hash
+        // both BEFORE the parse and AFTER the writer runs; if it
+        // changed in between, a live session was appending to the
+        // JSONL and the canonical-vs-shadow comparison is racy. Skip
+        // those instead of failing — the writer is correct, the test
+        // just couldn't get a stable snapshot.
+        let hash_before = match blake3_head_tail(path) {
+            Ok(h) => h,
+            Err(_) => {
+                writer.skipped_io += 1;
+                continue;
+            }
+        };
         let bytes = match std::fs::read(path) {
             Ok(b) => b,
             Err(_) => {
@@ -150,6 +162,15 @@ async fn indexer_v2_parity_against_prod_sessions() {
                 continue;
             }
             Err(e) => panic!("index_session({sid}) failed unexpectedly: {e}"),
+        }
+
+        let hash_after = blake3_head_tail(path).ok();
+        if hash_after.as_ref() != Some(&hash_before) {
+            // File changed between the canonical read and the writer
+            // call — live session appending. Skip; this isn't a
+            // correctness failure of the writer.
+            writer.skipped_live += 1;
+            continue;
         }
 
         let shadow = read_shadow_stats(&db, sid).await;
@@ -438,6 +459,9 @@ struct WriterReport {
     skipped_missing_file: usize,
     skipped_io: usize,
     skipped_parse: usize,
+    /// File content hash changed between the canonical read and the
+    /// writer call — a live session was appending. Not a writer bug.
+    skipped_live: usize,
     field_histogram: std::collections::HashMap<String, usize>,
     examples: Vec<String>,
 }
@@ -445,7 +469,8 @@ struct WriterReport {
 impl WriterReport {
     fn print(&self, sampled: usize) {
         let compared = self.clean + self.drifted;
-        let total_skipped = self.skipped_missing_file + self.skipped_io + self.skipped_parse;
+        let total_skipped =
+            self.skipped_missing_file + self.skipped_io + self.skipped_parse + self.skipped_live;
         println!();
         println!("════════════════════════════════════════════════════");
         println!(" indexer_v2 writer round-trip parity (must be 0 drift)");
@@ -465,6 +490,7 @@ impl WriterReport {
         println!(" skipped (file) : {}", self.skipped_missing_file);
         println!(" skipped (io)   : {}", self.skipped_io);
         println!(" skipped (parse): {}", self.skipped_parse);
+        println!(" skipped (live) : {}", self.skipped_live);
         println!(" total skipped  : {total_skipped}");
         if !self.field_histogram.is_empty() {
             println!();

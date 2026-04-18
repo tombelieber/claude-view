@@ -315,10 +315,19 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
         stats.duration_seconds = parse_duration_seconds(first, last);
     }
 
-    // ── Primary model (most used) ──
+    // ── Primary model (most used; ties broken by lexicographic name) ──
+    //
+    // `HashMap::into_iter` is non-deterministic, so a bare
+    // `max_by_key(|(_, count)| *count)` picks an arbitrary winner when
+    // two models tie on count. That non-determinism leaks into every
+    // consumer (CQRS Phase 2 parity test caught it on 2/2000 prod
+    // sessions whose JSONL had model-count ties). Including the model
+    // string in the key — sorted ascending so the lexicographically-
+    // smallest name wins on a tie — makes the result deterministic
+    // for any given input bytes.
     stats.primary_model = model_counts
         .into_iter()
-        .max_by_key(|(_, count)| *count)
+        .max_by(|(am, ac), (bm, bc)| ac.cmp(bc).then_with(|| bm.cmp(am)))
         .map(|(model, _)| model);
 
     // ── Text content ──
@@ -486,6 +495,52 @@ mod tests {
         assert_eq!(
             stats.primary_model.as_deref(),
             Some("claude-sonnet-4-5-20250514")
+        );
+    }
+
+    /// Regression test for the non-deterministic `primary_model`
+    /// selection bug caught by the CQRS Phase 2 parity gate
+    /// (2/2000 prod sessions had model-count ties; HashMap iteration
+    /// order leaked through `max_by_key` and the same input bytes
+    /// produced different `primary_model` values across two parses).
+    ///
+    /// Repeats the same input 100 times to exercise HashMap order
+    /// stochasticity. With the deterministic tie-break, the result
+    /// must be identical every iteration. With the bug, this test
+    /// fails on > 50 % of runs.
+    #[test]
+    fn primary_model_is_deterministic_under_ties() {
+        let tmp = tempdir().unwrap();
+        let path = tmp.path().join("ties.jsonl");
+        // Three models, each appearing exactly twice — fully tied.
+        make_jsonl(
+            &path,
+            &[
+                r#"{"type":"assistant","message":{"id":"a1","model":"claude-opus-4-7","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+                r#"{"type":"assistant","message":{"id":"a2","model":"claude-opus-4-7","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+                r#"{"type":"assistant","message":{"id":"b1","model":"claude-sonnet-4-6","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+                r#"{"type":"assistant","message":{"id":"b2","model":"claude-sonnet-4-6","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+                r#"{"type":"assistant","message":{"id":"c1","model":"claude-haiku-4-5","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+                r#"{"type":"assistant","message":{"id":"c2","model":"claude-haiku-4-5","role":"assistant","content":[],"usage":{"input_tokens":1,"output_tokens":1}}}"#,
+            ],
+        );
+
+        let first = extract_stats(&path, false).unwrap().primary_model;
+        for _ in 0..99 {
+            let next = extract_stats(&path, false).unwrap().primary_model;
+            assert_eq!(
+                next, first,
+                "primary_model must be deterministic across repeated parses; \
+                 if this test flakes, the HashMap tie-break regressed"
+            );
+        }
+
+        // Tie-break rule: lex-smallest model name wins.
+        // Sorted ascending: claude-haiku-4-5 < claude-opus-4-7 < claude-sonnet-4-6.
+        assert_eq!(
+            first.as_deref(),
+            Some("claude-haiku-4-5"),
+            "lex-smallest model must win on a count tie"
         );
     }
 

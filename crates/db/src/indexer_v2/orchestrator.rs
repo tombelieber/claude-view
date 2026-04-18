@@ -187,12 +187,27 @@ pub fn spawn_shadow_indexer_with_root(db: Arc<Database>, projects_dir: PathBuf) 
                     tracing::debug!(?path, "indexer_v2: ignoring file removal");
                 }
                 FileEvent::Rescan => {
-                    // Phase 2: a full rescan driver lives in a future
-                    // commit (`full_rebuild`). Until it lands, log so
-                    // operators can correlate kernel-overflow events
-                    // with stale session_stats rows.
+                    // Kernel queue overflowed (or a watcher error
+                    // demanded re-sync). Walk the projects tree and
+                    // re-index every parent-session JSONL we find.
+                    //
+                    // This is intentionally a foreground await on the
+                    // orchestrator loop: while the rebuild runs, new
+                    // Modified events accumulate in the mpsc backlog
+                    // (capacity 512) and are processed once we drain
+                    // back to recv. The drop counter surfaces overflow
+                    // if the rebuild takes longer than the backlog can
+                    // absorb — operators see it in the same log line.
+                    let db_clone = db.clone();
+                    let root = projects_dir.clone();
+                    let report = full_rebuild(db_clone, root).await;
                     tracing::warn!(
-                        "indexer_v2: Rescan event received — full_rebuild not yet implemented"
+                        scanned = report.scanned,
+                        indexed = report.indexed,
+                        skipped_unchanged = report.skipped_unchanged,
+                        errors = report.errors,
+                        elapsed_ms = report.elapsed_ms,
+                        "indexer_v2: full_rebuild after Rescan event finished"
                     );
                 }
             }
@@ -200,6 +215,117 @@ pub fn spawn_shadow_indexer_with_root(db: Arc<Database>, projects_dir: PathBuf) 
 
         tracing::info!("indexer_v2: watcher channel closed; shadow indexer exiting");
     })
+}
+
+/// Aggregate outcome of a [`full_rebuild`] pass. All counters are
+/// monotonic across the rebuild; nothing is reset partway. Reported via
+/// the orchestrator's tracing event so operators can spot rebuild bursts
+/// in production logs.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RebuildReport {
+    /// Total parent-session `.jsonl` files visited.
+    pub scanned: usize,
+    /// Files where the on-disk content hash differed from the stored
+    /// `session_stats.source_content_hash` (or no row existed) — these
+    /// were re-parsed and upserted.
+    pub indexed: usize,
+    /// Files whose hash matched the stored row — skipped, no work done.
+    /// On a freshly-warm DB this is the steady-state majority.
+    pub skipped_unchanged: usize,
+    /// Files that failed (IO, parse, or DB error). Not fatal — the
+    /// rebuild keeps going; counts surface in the report so an
+    /// operator can grep for them.
+    pub errors: usize,
+    /// Wall-clock duration of the whole pass.
+    pub elapsed_ms: u128,
+}
+
+/// Walk `projects_dir` for every parent-session JSONL file (depth 2,
+/// `.jsonl` extension) and run a hash-gated re-index against each.
+///
+/// **Phase 2 use cases:**
+///
+/// 1. Servicing `FileEvent::Rescan` from the watcher (kernel queue
+///    overflow, watcher error). Called from the orchestrator loop.
+/// 2. One-shot backfill: a Phase 3 PR can call this once at server
+///    startup so `session_stats.row_count` converges to
+///    `sessions.row_count` before the read-side cutover lands. Phase 2
+///    deliberately does **not** wire this into startup — shadow mode
+///    is opt-in convergence; readers don't depend on it yet.
+///
+/// Re-uses `run_one_index` so the per-file work matches every other
+/// code path (hash gate, error tolerance, tracing).
+pub async fn full_rebuild(db: Arc<Database>, projects_dir: PathBuf) -> RebuildReport {
+    let started = std::time::Instant::now();
+    let mut report = RebuildReport::default();
+
+    let canonical = projects_dir
+        .canonicalize()
+        .unwrap_or_else(|_| projects_dir.clone());
+
+    if !canonical.exists() {
+        tracing::warn!(
+            projects_dir = %canonical.display(),
+            "indexer_v2: full_rebuild — projects dir missing, nothing to scan"
+        );
+        report.elapsed_ms = started.elapsed().as_millis();
+        return report;
+    }
+
+    // walkdir + min/max depth = 2 selects exactly the parent-session
+    // files (`{project}/{sessionId}.jsonl`), matching the watcher's
+    // depth-2 filter. Subagent files at depth 4 are skipped without
+    // a per-file string check.
+    let walker = walkdir::WalkDir::new(&canonical)
+        .min_depth(2)
+        .max_depth(2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_type().is_file()
+                && e.path().extension().and_then(|x| x.to_str()) == Some("jsonl")
+        });
+
+    for entry in walker {
+        report.scanned += 1;
+        let path = entry.path().to_path_buf();
+        let Some(sid) = path.file_stem().and_then(|s| s.to_str()).map(String::from) else {
+            continue;
+        };
+
+        // Inline hash gate so we can tally indexed vs skipped without
+        // run_one_index swallowing the distinction. Same logic, just
+        // accounting at the boundary.
+        let on_disk = match blake3_head_tail(&path) {
+            Ok(h) => h.to_vec(),
+            Err(_) => {
+                report.errors += 1;
+                continue;
+            }
+        };
+        let header = match db.get_stats_header(&sid).await {
+            Ok(h) => h,
+            Err(_) => {
+                report.errors += 1;
+                continue;
+            }
+        };
+        if header
+            .as_ref()
+            .map(|h| h.source_content_hash.as_slice() == on_disk.as_slice())
+            .unwrap_or(false)
+        {
+            report.skipped_unchanged += 1;
+            continue;
+        }
+        match index_session(&db, &path, &sid).await {
+            Ok(()) => report.indexed += 1,
+            Err(_) => report.errors += 1,
+        }
+    }
+
+    report.elapsed_ms = started.elapsed().as_millis();
+    report
 }
 
 /// Body of one debounced re-index. Public for tests + for callers that
@@ -402,5 +528,108 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(count.0, 1);
+    }
+
+    /// Helper: build a `{root}/{project}/{sid}.jsonl` file populated
+    /// with the minimal one-user-line fixture.
+    fn write_session(root: &Path, project: &str, sid: &str) -> PathBuf {
+        let project_dir = root.join(project);
+        std::fs::create_dir_all(&project_dir).unwrap();
+        let path = project_dir.join(format!("{sid}.jsonl"));
+        std::fs::write(&path, minimal_jsonl_with_one_user_message()).unwrap();
+        path
+    }
+
+    #[tokio::test]
+    async fn full_rebuild_indexes_every_parent_session() {
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        write_session(&root, "proj-a", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        write_session(&root, "proj-a", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        write_session(&root, "proj-b", "cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+        let report = full_rebuild(db.clone(), root).await;
+
+        assert_eq!(report.scanned, 3, "must visit every parent session");
+        assert_eq!(report.indexed, 3, "must index every untouched session");
+        assert_eq!(report.skipped_unchanged, 0);
+        assert_eq!(report.errors, 0);
+
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_stats")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+        assert_eq!(count.0, 3, "session_stats should hold one row per session");
+    }
+
+    #[tokio::test]
+    async fn full_rebuild_skips_subagent_files() {
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // One real parent session + one subagent file at depth 4 that
+        // must be ignored by the depth filter (mirrors the watcher's
+        // structural rule).
+        write_session(&root, "proj-x", "11111111-1111-1111-1111-111111111111");
+        let subagent_dir = root
+            .join("proj-x")
+            .join("11111111-1111-1111-1111-111111111111")
+            .join("subagents");
+        std::fs::create_dir_all(&subagent_dir).unwrap();
+        std::fs::write(
+            subagent_dir.join("agent-foo.jsonl"),
+            minimal_jsonl_with_one_user_message(),
+        )
+        .unwrap();
+
+        let report = full_rebuild(db.clone(), root).await;
+
+        assert_eq!(report.scanned, 1, "depth filter must skip subagent files");
+        assert_eq!(report.indexed, 1);
+    }
+
+    #[tokio::test]
+    async fn full_rebuild_skips_unchanged_sessions_via_hash_gate() {
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        write_session(&root, "proj-y", "22222222-2222-2222-2222-222222222222");
+
+        // First pass — fresh DB, indexes 1.
+        let first = full_rebuild(db.clone(), root.clone()).await;
+        assert_eq!(first.indexed, 1);
+        assert_eq!(first.skipped_unchanged, 0);
+
+        // Second pass on the same content — every file's stored hash
+        // matches on-disk, so the hash gate must short-circuit.
+        let second = full_rebuild(db.clone(), root).await;
+        assert_eq!(second.scanned, 1);
+        assert_eq!(second.indexed, 0);
+        assert_eq!(second.skipped_unchanged, 1);
+        assert_eq!(second.errors, 0);
+    }
+
+    #[tokio::test]
+    async fn full_rebuild_on_missing_root_returns_empty_report() {
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        let report = full_rebuild(db, PathBuf::from("/no/such/projects/dir")).await;
+        assert_eq!(
+            report,
+            RebuildReport::default().with_elapsed(report.elapsed_ms)
+        );
+    }
+}
+
+#[cfg(test)]
+impl RebuildReport {
+    /// Test helper: build a default report with a custom `elapsed_ms`
+    /// so tests can assert structural equality without caring about
+    /// the wall-clock value.
+    fn with_elapsed(self, elapsed_ms: u128) -> Self {
+        Self { elapsed_ms, ..self }
     }
 }
