@@ -34,17 +34,32 @@ pub async fn get_session_detail(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<SessionDetail>> {
-    // 1. Catalog — authoritative source of file path for any session on disk.
-    let row = state
-        .session_catalog
-        .get(&session_id)
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+    // Phase 3 PR 3.3: try session_stats first (single indexed SELECT);
+    // fall back to SessionCatalog + JSONL parse if the adapter returns
+    // None (not-yet-indexed, env-var override, DB error).
+    let (row, stats) = match state.session_catalog_adapter.get_full(&session_id).await {
+        Ok(Some(full)) if full.project_id.is_some() && full.file_path.is_some() => {
+            // Happy path — DB row has everything the detail view needs.
+            let cat_row = crate::session_catalog_adapter::full_row_to_catalog_row(&full)
+                .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+            let stats: claude_view_core::session_stats::SessionStats = (&full).into();
+            (cat_row, stats)
+        }
+        _ => {
+            // Fallback: catalog + JSONL parse. Same behaviour as pre-Phase-3.
+            // Hit when env var is set, the session hasn't been indexed yet,
+            // or the DB query failed.
+            let row = state
+                .session_catalog
+                .get(&session_id)
+                .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+            let stats = session_stats::extract_stats(&row.file_path, row.is_compressed)
+                .map_err(|e| ApiError::Internal(format!("JSONL parse failed: {e}")))?;
+            (row, stats)
+        }
+    };
 
-    // 2. JSONL stats — ~0.28ms p95.
-    let stats = session_stats::extract_stats(&row.file_path, row.is_compressed)
-        .map_err(|e| ApiError::Internal(format!("JSONL parse failed: {e}")))?;
-
-    // 3. DB enrichment — archived, commit_count, skills_used, reedit_rate.
+    // DB enrichment — archived, commit_count, skills_used, reedit_rate.
     //    `linked_commits` isn't populated here; we fetch tier/evidence via the
     //    dedicated commits query below so the response preserves CommitWithTier.
     let enrichment_map = fetch_enrichments(&state.db, std::slice::from_ref(&session_id))
