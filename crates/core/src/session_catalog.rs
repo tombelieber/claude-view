@@ -129,6 +129,25 @@ pub struct WalkStats {
 
 /// Thread-safe handle to the in-memory session catalog. Cloneable —
 /// all clones share the same underlying `RwLock`.
+///
+/// **Phase 3 (CQRS) status — 2026-04-18:**
+///
+/// New API handlers should **not** read from this type directly.
+/// Use `claude_view_server::session_catalog_adapter::SessionCatalogAdapter`
+/// instead — it serves the same shape but reads from `session_stats`
+/// (falling back to this catalog for pre-migration-66 rows).
+///
+/// This struct is retained because it's still load-bearing for:
+///   1. The startup filesystem walk that seeds `session_stats` via
+///      `full_rebuild`.
+///   2. The adapter's fallback path when a row hasn't been reindexed
+///      yet.
+///   3. Live-session reconcile loops that update it when the fs
+///      changes.
+///
+/// Phase 6 retires the legacy `sessions` table and rationalises the
+/// startup bootstrap; Phase 7 is the earliest this type could go away
+/// entirely. Do not add new callers.
 #[derive(Debug, Clone)]
 pub struct SessionCatalog {
     inner: Arc<RwLock<HashMap<SessionId, CatalogRow>>>,

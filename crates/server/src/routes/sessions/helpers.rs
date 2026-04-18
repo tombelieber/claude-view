@@ -98,22 +98,29 @@ pub(crate) fn build_session_info(
     }
 }
 
-/// Resolve a session's JSONL file path: catalog first, then DB, then live session store.
+/// Resolve a session's JSONL file path: adapter (session_stats) first,
+/// then legacy `sessions` table, then live-session store.
 ///
-/// Phase 2 (JSONL-first hardcut): the in-memory `SessionCatalog` is the authoritative
-/// source for session → file_path lookups — it's populated from a filesystem walk at
-/// startup and reconciled every 5s, so it sees every session that exists on disk.
+/// **Phase 3 PR 3.z:** cut from `state.session_catalog.get()` to
+/// `state.session_catalog_adapter.get()`. The adapter internally
+/// falls back to the in-memory catalog for rows that haven't been
+/// reindexed yet, so there's no coverage regression — the catalog
+/// path still runs, just underneath the adapter.
 ///
 /// The DB and live-session fallbacks remain for two narrow cases:
-///   - DB: coverage during the migration window when callers hand in a session id
-///     that the catalog hasn't yet picked up (pre-reconcile race).
-///   - Live: IDE-spawned sessions whose JSONL file may not yet be on disk.
+///   - DB `sessions.file_path`: coverage during the migration window
+///     when callers hand in a session id that the adapter hasn't yet
+///     picked up (pre-reconcile race). Removed in Phase 6 when the
+///     legacy `sessions` table is retired.
+///   - Live: IDE-spawned sessions whose JSONL file may not yet be on
+///     disk.
 pub(crate) async fn resolve_session_file_path(
     state: &AppState,
     session_id: &str,
 ) -> ApiResult<std::path::PathBuf> {
-    // Catalog first — no DB, no async, no lock contention.
-    if let Some(row) = state.session_catalog.get(session_id) {
+    // Adapter first — session_stats row + graceful fallback to the
+    // in-memory catalog for pre-migration rows.
+    if let Some(row) = state.session_catalog_adapter.get(session_id).await {
         if row.file_path.exists() {
             return Ok(row.file_path);
         }

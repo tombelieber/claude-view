@@ -3997,7 +3997,7 @@
           "sessions"
         ],
         "summary": "Fetch the full interaction data for a session's pending interaction.",
-        "description": "1. Look up session in live_sessions — 404 if not found\n2. Read pending_interaction — 404 if None (no pending interaction)\n3. Look up full data in interaction_data side-map — 404 if not found",
+        "description": "1. Look up session in live_sessions — 404 if not found\n2. Read pending_interaction — 404 if None (no pending interaction)\n3. Look up full data in interaction_data side-map — 404 if not found\n\n**Phase 3 PR 3.7 — no cutover.** Interaction data is live-only state\n(pending-interaction + interaction_data side-map) maintained by the\nlive session manager. It is not derivable from JSONL or\n`session_stats` — those reflect the historical record, while this\nendpoint serves in-flight permission/question/plan prompts. The\n2026-04-17 design doc §5.1 contemplated using\n`session_stats.last_ts` for cache validation, but the current\nhandler has no cache surface that would benefit. Response shape is\npinned by the openapi_compatibility test.",
         "operationId": "get_interaction_handler",
         "parameters": [
           {
