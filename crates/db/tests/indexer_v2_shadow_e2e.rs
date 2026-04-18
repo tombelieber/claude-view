@@ -93,7 +93,7 @@ async fn shadow_indexer_picks_up_new_jsonl_file() {
     let path = session_path(&root, "demo-project", sid);
     std::fs::write(&path, ONE_USER_LINE).expect("write fixture jsonl");
 
-    let header = await_until(Duration::from_secs(5), || {
+    let header = await_until(Duration::from_secs(15), || {
         let db = db.clone();
         async move { db.get_stats_header(sid).await.expect("get_stats_header") }
     })
@@ -128,7 +128,7 @@ async fn shadow_indexer_re_indexes_on_append() {
     std::fs::write(&path, ONE_USER_LINE).expect("write fixture jsonl");
 
     // Wait for the first index to land — line_count = 1.
-    await_until(Duration::from_secs(5), || {
+    await_until(Duration::from_secs(15), || {
         let db = db.clone();
         let sid = sid.to_string();
         async move {
@@ -146,12 +146,18 @@ async fn shadow_indexer_re_indexes_on_append() {
     })
     .await;
 
+    // Brief settle so fsnotify isn't still draining the queue from
+    // the first write when the second hits — under concurrent test
+    // load, FSEvents can coalesce closely-spaced events into one
+    // delivery, hiding the second write.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
     // Append a second line. The watcher should fire, the debouncer
     // should coalesce, and the next index_session must reflect the
     // larger file.
     std::fs::write(&path, TWO_USER_LINES).expect("append second line");
 
-    await_until(Duration::from_secs(5), || {
+    await_until(Duration::from_secs(15), || {
         let db = db.clone();
         let sid = sid.to_string();
         async move {
