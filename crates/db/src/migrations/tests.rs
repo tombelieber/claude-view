@@ -1893,3 +1893,253 @@ async fn test_migration63_sdk_supported_dropped() {
         "Migration 63 should have dropped models.sdk_supported"
     );
 }
+
+// ========================================================================
+// Migration 64: session_stats — Phase 2 read-side mirror table
+// ========================================================================
+
+#[tokio::test]
+async fn test_migration64_session_stats_columns_exist() {
+    let pool = setup_db().await;
+    let cols: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
+
+    // 9 staleness/header
+    for col in [
+        "session_id",
+        "source_content_hash",
+        "source_size",
+        "source_inode",
+        "source_mid_hash",
+        "parser_version",
+        "stats_version",
+        "indexed_at",
+    ] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // 6 token columns
+    for col in [
+        "total_input_tokens",
+        "total_output_tokens",
+        "cache_read_tokens",
+        "cache_creation_tokens",
+        "cache_creation_5m_tokens",
+        "cache_creation_1hr_tokens",
+    ] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // 6 count columns
+    for col in [
+        "turn_count",
+        "user_prompt_count",
+        "line_count",
+        "tool_call_count",
+        "thinking_block_count",
+        "api_error_count",
+    ] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // 4 tool counts
+    for col in [
+        "files_read_count",
+        "files_edited_count",
+        "bash_count",
+        "agent_spawn_count",
+    ] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // 3 time columns
+    for col in ["first_message_at", "last_message_at", "duration_seconds"] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // 4 string columns
+    for col in ["primary_model", "git_branch", "preview", "last_message"] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // 1 JSON column
+    assert!(
+        names.contains(&"per_model_tokens_json"),
+        "missing session_stats.per_model_tokens_json"
+    );
+
+    // Total = 8 header + 24 stats = 32. The design doc (§3.1) said
+    // "9 header + 25 stats = 34" but miscounted; our schema and this
+    // assertion reflect what actually exists. If this drifts, the writer
+    // ownership registry rule (§10.2) likely needs an update.
+    assert_eq!(
+        names.len(),
+        32,
+        "session_stats column count drifted from the 32 documented in features.rs (got {})",
+        names.len()
+    );
+}
+
+#[tokio::test]
+async fn test_migration64_session_stats_strict_mode_rejects_text_in_int() {
+    // STRICT mode is the headline change vs the legacy `sessions` table —
+    // catches `"123"` (TEXT) being stored where INTEGER is declared.
+    let pool = setup_db().await;
+    let result = sqlx::query(
+        r#"INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                                       parser_version, stats_version, indexed_at,
+                                       total_input_tokens)
+           VALUES ('strict-test', X'00', 1, 1, 1, 0, 'not-an-int')"#,
+    )
+    .execute(&pool)
+    .await;
+    assert!(
+        result.is_err(),
+        "STRICT mode must reject TEXT into total_input_tokens (INTEGER)"
+    );
+}
+
+#[tokio::test]
+async fn test_migration64_session_stats_indexes_created() {
+    let pool = setup_db().await;
+    let indexes: Vec<(String,)> = sqlx::query_as(
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='session_stats'",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
+
+    for ix in [
+        "idx_session_stats_last_ts",
+        "idx_session_stats_indexed_at",
+        "idx_session_stats_total_tokens",
+        "idx_session_stats_primary_model",
+        "idx_session_stats_git_branch",
+    ] {
+        assert!(index_names.contains(&ix), "missing index {}", ix);
+    }
+}
+
+#[tokio::test]
+async fn test_migration64_session_stats_default_row_inserts() {
+    // All-defaults insert with the 8 NOT NULL no-default columns supplied —
+    // the rest fall back to the migration's DEFAULT 0 / DEFAULT '' clauses.
+    let pool = setup_db().await;
+    sqlx::query(
+        r#"INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                                       parser_version, stats_version, indexed_at)
+           VALUES ('default-row', X'00', 1, 1, 1, 0)"#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let row: (i64, i64, i64, String, String) = sqlx::query_as(
+        r#"SELECT total_input_tokens, turn_count, files_read_count,
+                  preview, per_model_tokens_json
+             FROM session_stats WHERE session_id = 'default-row'"#,
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(row.0, 0);
+    assert_eq!(row.1, 0);
+    assert_eq!(row.2, 0);
+    assert_eq!(row.3, "");
+    assert_eq!(row.4, "{}");
+}
+
+// ========================================================================
+// Migration 65: session_flags — Phase 5 fold target (table only in Phase 2)
+// ========================================================================
+
+#[tokio::test]
+async fn test_migration65_session_flags_columns_exist() {
+    let pool = setup_db().await;
+    let cols: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_flags')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
+
+    for col in [
+        "session_id",
+        "archived_at",
+        "dismissed_at",
+        "category_l1",
+        "category_l2",
+        "category_l3",
+        "category_confidence",
+        "category_source",
+        "classified_at",
+        "applied_seq",
+    ] {
+        assert!(names.contains(&col), "missing session_flags.{}", col);
+    }
+    assert_eq!(names.len(), 10, "session_flags column count drifted");
+}
+
+#[tokio::test]
+async fn test_migration65_session_flags_partial_indexes_created() {
+    // Both indexes are partial (WHERE x IS NOT NULL) — verify they exist
+    // AND have the partial filter so they stay sparse on the prod DB.
+    let pool = setup_db().await;
+    let indexes: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT name, sql FROM sqlite_master WHERE type='index' AND tbl_name='session_flags'",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    let by_name: std::collections::HashMap<&str, &Option<String>> =
+        indexes.iter().map(|(n, s)| (n.as_str(), s)).collect();
+
+    let archived = by_name
+        .get("idx_session_flags_archived")
+        .expect("missing idx_session_flags_archived");
+    assert!(
+        archived
+            .as_ref()
+            .map(|s| s.contains("WHERE archived_at IS NOT NULL"))
+            .unwrap_or(false),
+        "archived index lost its WHERE clause: {:?}",
+        archived
+    );
+
+    let category = by_name
+        .get("idx_session_flags_category")
+        .expect("missing idx_session_flags_category");
+    assert!(
+        category
+            .as_ref()
+            .map(|s| s.contains("WHERE category_l1 IS NOT NULL"))
+            .unwrap_or(false),
+        "category index lost its WHERE clause: {:?}",
+        category
+    );
+}
+
+#[tokio::test]
+async fn test_migration65_session_flags_applied_seq_default_zero() {
+    let pool = setup_db().await;
+    sqlx::query("INSERT INTO session_flags (session_id) VALUES ('seq-default')")
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let row: (i64,) =
+        sqlx::query_as("SELECT applied_seq FROM session_flags WHERE session_id = 'seq-default'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        row.0, 0,
+        "applied_seq must default to 0 (Phase 5 fold start)"
+    );
+}

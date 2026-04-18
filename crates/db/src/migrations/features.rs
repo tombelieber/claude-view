@@ -149,4 +149,111 @@ ALTER TABLE sessions DROP COLUMN correction_count;
 ALTER TABLE sessions DROP COLUMN same_file_edit_count;
 ALTER TABLE models DROP COLUMN sdk_supported;
 COMMIT;"#,
+    // Migration 64: session_stats — Layer-2 typed read-side mirror of the
+    // existing `sessions` row, populated by the Phase 2 indexer_v2 writer
+    // (PR 2.2). STRICT mode enforces declared types; no FK to `sessions`
+    // because shadow mode tolerates transient inconsistency. Schema mirrors
+    // `claude_view_session_parser::SessionStats` — any new SessionStats
+    // field requires a matching ALTER in a future migration (writer
+    // ownership registry, design §10.2).
+    //
+    // Field grouping (32 columns total = 8 staleness/header + 24 stats —
+    // design §3.1 said "9 header + 25 stats = 34" but miscounted):
+    //   header (8)   : session_id PK + content_hash/size/inode/mid_hash
+    //                  staleness + parser/stats versions + indexed_at
+    //   tokens (6)   : input/output/cache_read/cache_creation + 5m/1hr breakdown
+    //   counts (6)   : turns/prompts/lines/tools/thinking/api_errors
+    //   tools  (4)   : files_read/files_edited/bash/agent_spawn
+    //   times  (3)   : first/last message + duration_seconds (unix seconds)
+    //   strings(4)   : primary_model + git_branch + preview + last_message
+    //   per-model(1) : per_model_tokens_json (JSON, normalized at write)
+    //
+    // Indexes target Phase 3 read-cutover queries:
+    //   last_ts + indexed_at: list ordering / "what's new"
+    //   total_tokens (expr) : sort by token cost — uses an expression index
+    //                         on (input + output) since there is no stored
+    //                         total_tokens column. Design §3.1 referenced
+    //                         a non-existent `total_tokens` column; the
+    //                         sum-expression is the minimum-surprise
+    //                         substitute that delivers the same ORDER BY.
+    //   primary_model       : "tokens by model" filter
+    //   git_branch          : per-branch grouping
+    r#"BEGIN;
+CREATE TABLE session_stats (
+    session_id          TEXT PRIMARY KEY,
+    source_content_hash BLOB NOT NULL,
+    source_size         INTEGER NOT NULL,
+    source_inode        INTEGER,
+    source_mid_hash     BLOB,
+    parser_version      INTEGER NOT NULL,
+    stats_version       INTEGER NOT NULL,
+    indexed_at          INTEGER NOT NULL,
+
+    -- Token counts (mirror SessionStats token fields).
+    total_input_tokens          INTEGER NOT NULL DEFAULT 0,
+    total_output_tokens         INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens           INTEGER NOT NULL DEFAULT 0,
+    cache_creation_tokens       INTEGER NOT NULL DEFAULT 0,
+    cache_creation_5m_tokens    INTEGER NOT NULL DEFAULT 0,
+    cache_creation_1hr_tokens   INTEGER NOT NULL DEFAULT 0,
+
+    -- Counts (mirror SessionStats turn / prompt / line / tool / thinking / error).
+    turn_count                  INTEGER NOT NULL DEFAULT 0,
+    user_prompt_count           INTEGER NOT NULL DEFAULT 0,
+    line_count                  INTEGER NOT NULL DEFAULT 0,
+    tool_call_count             INTEGER NOT NULL DEFAULT 0,
+    thinking_block_count        INTEGER NOT NULL DEFAULT 0,
+    api_error_count             INTEGER NOT NULL DEFAULT 0,
+
+    -- Tool breakdown.
+    files_read_count            INTEGER NOT NULL DEFAULT 0,
+    files_edited_count          INTEGER NOT NULL DEFAULT 0,
+    bash_count                  INTEGER NOT NULL DEFAULT 0,
+    agent_spawn_count           INTEGER NOT NULL DEFAULT 0,
+
+    -- Timestamps (unix seconds; RFC3339 string normalized at write time).
+    first_message_at            INTEGER,
+    last_message_at             INTEGER,
+    duration_seconds            INTEGER NOT NULL DEFAULT 0,
+
+    -- Model + git + display strings.
+    primary_model               TEXT,
+    git_branch                  TEXT,
+    preview                     TEXT NOT NULL DEFAULT '',
+    last_message                TEXT NOT NULL DEFAULT '',
+
+    -- Per-model token breakdown (JSON object {model_id: {input, output, ...}}).
+    per_model_tokens_json       TEXT NOT NULL DEFAULT '{}'
+) STRICT;
+CREATE INDEX idx_session_stats_last_ts ON session_stats(last_message_at DESC);
+CREATE INDEX idx_session_stats_indexed_at ON session_stats(indexed_at DESC);
+CREATE INDEX idx_session_stats_total_tokens ON session_stats((total_input_tokens + total_output_tokens) DESC);
+CREATE INDEX idx_session_stats_primary_model ON session_stats(primary_model);
+CREATE INDEX idx_session_stats_git_branch ON session_stats(git_branch);
+COMMIT;"#,
+    // Migration 65: session_flags — append-only fold target for
+    // archive/dismiss/classify mutations. Phase 5 will add the fold writer;
+    // Phase 2 lands the table now so shadow-mode rollups have a stable join
+    // target. All rows start with applied_seq=0; the Phase 5 writer
+    // increments applied_seq INSIDE the fold transaction.
+    //
+    // Indexes target Phase 5 + Phase 6 reads:
+    //   archived: WHERE archived_at IS NOT NULL — partial keeps it sparse.
+    //   category: WHERE category_l1 IS NOT NULL — same sparsity argument.
+    r#"BEGIN;
+CREATE TABLE session_flags (
+    session_id            TEXT PRIMARY KEY,
+    archived_at           INTEGER,
+    dismissed_at          INTEGER,
+    category_l1           TEXT,
+    category_l2           TEXT,
+    category_l3           TEXT,
+    category_confidence   REAL,
+    category_source       TEXT,
+    classified_at         INTEGER,
+    applied_seq           INTEGER NOT NULL DEFAULT 0
+) STRICT;
+CREATE INDEX idx_session_flags_archived ON session_flags(archived_at) WHERE archived_at IS NOT NULL;
+CREATE INDEX idx_session_flags_category ON session_flags(category_l1) WHERE category_l1 IS NOT NULL;
+COMMIT;"#,
 ];
