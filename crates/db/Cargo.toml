@@ -8,6 +8,7 @@ license.workspace = true
 [dependencies]
 claude-view-core = { workspace = true }
 claude-view-search = { workspace = true }
+claude-view-session-parser = { workspace = true }
 sqlx = { workspace = true }
 rusqlite = { workspace = true }
 tokio = { workspace = true }

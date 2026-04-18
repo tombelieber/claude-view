@@ -8,6 +8,7 @@
 
 pub mod git_correlation;
 pub mod indexer_parallel;
+pub mod indexer_v2;
 pub mod insights_trends;
 mod migrations;
 pub mod pricing;
