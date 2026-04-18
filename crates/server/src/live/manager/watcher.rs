@@ -6,7 +6,8 @@
 //!
 //! `process_jsonl_update` is the core JSONL processing logic for a single session file.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -16,6 +17,7 @@ use tracing::{error, info, warn};
 use claude_view_core::pricing::TokenUsage;
 
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+use claude_view_db::indexer_v2::{build_delta_from_file, DeltaSource, StatsDelta};
 
 use crate::live::mutation::types::{LifecycleEvent, SessionMutation};
 use crate::live::process::count_claude_processes;
@@ -384,35 +386,34 @@ impl LiveSessionManager {
             }
         }
 
-        // Build metadata from accumulator
+        // Build metadata from accumulator (feeds the in-memory live UI
+        // layer; `session_stats` is populated separately via the delta
+        // channel below).
         let metadata = build_metadata_from_accumulator(acc, last_activity_at, None);
 
-        // Persist partial state to DB (fire-and-forget)
-        let file_size = std::fs::metadata(path).map(|m| m.len() as i64).unwrap_or(0);
-        if let Err(e) = self
-            .db
-            .update_session_from_tail(
-                &session_id,
-                acc.user_turn_count as i32 + acc.tokens.total_tokens.min(1) as i32,
-                acc.user_turn_count as i32,
-                last_activity_at,
-                &acc.last_user_message,
-                file_size,
-                file_size,
-                last_activity_at,
-                acc.tokens.input_tokens as i64,
-                acc.tokens.output_tokens as i64,
-                acc.tokens.cache_read_tokens as i64,
-                acc.tokens.cache_creation_tokens as i64,
-                acc.tool_counts_edit as i32,
-                acc.tool_counts_read as i32,
-                acc.tool_counts_bash as i32,
-                acc.tool_counts_write as i32,
-            )
-            .await
-        {
-            tracing::warn!(session_id = %session_id, error = %e, "Failed to update session from tail");
-        }
+        // Phase 2.5 — publish the parsed stats to the shared writer
+        // channel instead of writing to the legacy `sessions` table.
+        // The producer path is:
+        //
+        //   parse_tail → accumulator update → spawn(build_delta_from_file + try_send)
+        //
+        // Design constraints enforced here (SOTA §10 / design §4.2):
+        //   - Non-blocking: the hot tail loop keeps no lock on the
+        //     delta publish; the parse happens on a blocking thread
+        //     off-reactor (see `build_delta_from_file`).
+        //   - `try_send` only. On `TrySendError::Full` we bump the
+        //     `stage_c_producer_drop_total{producer="live_tail"}`
+        //     counter; the fsnotify shadow-indexer path (500 ms
+        //     debounce) covers the drop.
+        //   - No direct write to `sessions` — indexer_v2 owns
+        //     `session_stats` exclusively.
+        let delta_path = path.to_path_buf();
+        let delta_session_id = session_id.clone();
+        let delta_tx = self.stats_delta_tx.clone();
+        let delta_seq = self.stats_delta_seq.fetch_add(1, Ordering::Relaxed);
+        tokio::spawn(async move {
+            publish_live_tail_delta(delta_path, delta_session_id, delta_tx, delta_seq).await;
+        });
 
         let file_path_str = path.to_str().unwrap_or("").to_string();
 
@@ -490,4 +491,60 @@ impl LiveSessionManager {
     }
 
     // process_single_line is in line_processor.rs
+}
+
+/// Phase 2.5 — parse a live JSONL file into a [`StatsDelta`] and
+/// `try_send` it to the shared writer channel.
+///
+/// Runs off the hot tail loop in its own `tokio::spawn` task so the
+/// file I/O + parse never blocks `process_jsonl_update`. Dropping the
+/// delta on a full channel is acceptable: the fsnotify shadow indexer
+/// re-indexes this session within `DEBOUNCE_MS` anyway, so
+/// `session_stats` converges without retry logic here.
+///
+/// Three error paths, each with the minimum observability:
+///   - `build_delta_from_file` failed (e.g. file was rotated out from
+///     under us, parse rejected new content) — debug-log and return.
+///     Transient conditions resolve on the next fsnotify event.
+///   - Channel full — bump `stage_c_producer_drop_total{producer="live_tail"}`.
+///     Surfaces overflow in `/metrics` without flooding logs.
+///   - Channel closed — log at error. Indicates the consumer task
+///     exited, which should never happen outside shutdown.
+async fn publish_live_tail_delta(
+    path: PathBuf,
+    session_id: String,
+    tx: mpsc::Sender<StatsDelta>,
+    seq: u64,
+) {
+    use tokio::sync::mpsc::error::TrySendError;
+
+    let delta =
+        match build_delta_from_file(path, session_id.clone(), DeltaSource::LiveTail, seq).await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::debug!(
+                    session_id = %session_id,
+                    error = %e,
+                    "indexer_v2 live-tail: build_delta_from_file failed (transient)"
+                );
+                return;
+            }
+        };
+
+    match tx.try_send(delta) {
+        Ok(()) => {}
+        Err(TrySendError::Full(_)) => {
+            metrics::counter!(
+                "stage_c_producer_drop_total",
+                "producer" => DeltaSource::LiveTail.metric_label(),
+            )
+            .increment(1);
+        }
+        Err(TrySendError::Closed(_)) => {
+            tracing::error!(
+                session_id = %session_id,
+                "stats_delta channel closed — indexer_v2 consumer exited"
+            );
+        }
+    }
 }

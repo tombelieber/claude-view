@@ -27,8 +27,9 @@ pub use config::{DeltaSource, StatsDelta, DEBOUNCE_MS, STATS_DELTA_CHANNEL_CAPAC
 pub use debouncer::Debouncer;
 pub use drift::{compare_session, DriftReport, FieldDiff};
 pub use orchestrator::{
-    default_projects_dir, full_rebuild, index_session, run_one_index, spawn_shadow_indexer,
-    spawn_shadow_indexer_with_root, IndexSessionError, RebuildReport,
+    build_delta_from_file, default_projects_dir, full_rebuild, index_session, run_one_index,
+    spawn_delta_consumer, spawn_shadow_indexer, spawn_shadow_indexer_with_root, IndexSessionError,
+    RebuildReport,
 };
 pub use watcher::{start_watcher, FileEvent, FILE_EVENT_CHANNEL_CAPACITY};
 pub use writer::upsert_session_stats;

@@ -422,6 +422,17 @@ pub fn create_app_full(
         }
     }
 
+    // Phase 2.5: spawn the shared `StatsDelta` writer consumer BEFORE
+    // the live manager starts. The consumer owns the single call to
+    // `upsert_session_stats`; live-tail `process_jsonl_update` try_sends
+    // deltas instead of writing to the legacy `sessions` table.
+    //
+    // Fire-and-forget handle — the task runs for the process lifetime;
+    // tokio shutdown drops the sender, the channel closes, the consumer
+    // exits cleanly.
+    let (stats_delta_tx, _stats_delta_consumer_handle) =
+        claude_view_db::indexer_v2::spawn_delta_consumer(Arc::new(db.clone()));
+
     let (
         manager,
         live_sessions,
@@ -450,6 +461,7 @@ pub fn create_app_full(
         tmux.clone(),
         born_waiters.clone(),
         auth_session_holder.clone(),
+        stats_delta_tx,
     );
 
     // Hook registration deferred — caller must invoke register_hooks()

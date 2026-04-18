@@ -127,6 +127,19 @@ pub struct LiveSessionManager {
     tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
     /// Born waiters — create_session() registers, Born handler resolves.
     born_waiters: crate::routes::cli_sessions::BornWaiters,
+    /// Phase 2.5 — Sender for the shared `StatsDelta` writer channel.
+    ///
+    /// Live-tail `process_jsonl_update` constructs a delta on every
+    /// observed JSONL change and `try_send`s here. The consumer,
+    /// spawned in `app_factory` via
+    /// [`claude_view_db::indexer_v2::spawn_delta_consumer`], routes each
+    /// delta into `upsert_session_stats`. Replaces the direct
+    /// `update_session_from_tail` write that existed pre-Phase 2.5.
+    pub(crate) stats_delta_tx: mpsc::Sender<claude_view_db::indexer_v2::StatsDelta>,
+    /// Monotonic counter feeding `StatsDelta.seq` — one counter per
+    /// process suffices for Phase 2.5 (Phase 4 Stage C may refine to
+    /// per-session if rollup ordering demands it).
+    pub(crate) stats_delta_seq: Arc<AtomicU64>,
 }
 
 impl LiveSessionManager {
@@ -159,6 +172,7 @@ impl LiveSessionManager {
         tmux: Arc<dyn crate::routes::cli_sessions::tmux::TmuxCommand + 'static>,
         born_waiters: crate::routes::cli_sessions::BornWaiters,
         auth_session_holder: Arc<tokio::sync::RwLock<Option<crate::auth::AuthSession>>>,
+        stats_delta_tx: mpsc::Sender<claude_view_db::indexer_v2::StatsDelta>,
     ) -> (
         Arc<Self>,
         LiveSessionMap,
@@ -228,6 +242,8 @@ impl LiveSessionManager {
             tmux_index,
             tmux,
             born_waiters,
+            stats_delta_tx,
+            stats_delta_seq: Arc::new(AtomicU64::new(0)),
         });
 
         // Spawn background tasks

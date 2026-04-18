@@ -196,6 +196,14 @@ mod tests {
             tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
             tmux: Arc::new(crate::routes::cli_sessions::tmux::mock::MockTmux::new()),
             born_waiters: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            // Phase 2.5: tests don't exercise the delta channel, but the
+            // field is non-Option. Capacity 1 keeps the construction
+            // cheap; the consumer is `_unused_rx` and never reads.
+            stats_delta_tx: {
+                let (tx, _unused_rx) = mpsc::channel(1);
+                tx
+            },
+            stats_delta_seq: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         });
 
         (manager, rx, snapshot_rx)

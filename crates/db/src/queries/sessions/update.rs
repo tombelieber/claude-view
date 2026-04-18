@@ -5,65 +5,6 @@ use crate::{Database, DbResult};
 use chrono::Utc;
 
 impl Database {
-    /// Partial update from live tail — only updates fields that can be
-    /// observed from appended JSONL lines. Does NOT overwrite fields
-    /// that require a full parse (e.g., duration_seconds, commit_count,
-    /// files_touched, skills_used, lines_added/removed).
-    ///
-    /// Called from the live session manager after each `parse_tail()` poll.
-    /// Parameters match the accumulated state from `SessionAccumulator`.
-    #[allow(clippy::too_many_arguments)]
-    pub async fn update_session_from_tail(
-        &self,
-        session_id: &str,
-        message_count: i32,
-        turn_count: i32,
-        last_message_at: i64,
-        last_message: &str,
-        size_bytes: i64,
-        file_size_at_index: i64,
-        file_mtime_at_index: i64,
-        total_input_tokens: i64,
-        total_output_tokens: i64,
-        cache_read_tokens: i64,
-        cache_creation_tokens: i64,
-        tool_counts_edit: i32,
-        tool_counts_read: i32,
-        tool_counts_bash: i32,
-        tool_counts_write: i32,
-    ) -> DbResult<()> {
-        sqlx::query(
-            "UPDATE sessions SET
-                message_count = ?2, turn_count = ?3, last_message_at = ?4,
-                last_message = ?5, size_bytes = ?6, file_size_at_index = ?7,
-                file_mtime_at_index = ?8,
-                total_input_tokens = ?9, total_output_tokens = ?10,
-                cache_read_tokens = ?11, cache_creation_tokens = ?12,
-                tool_counts_edit = ?13, tool_counts_read = ?14,
-                tool_counts_bash = ?15, tool_counts_write = ?16
-            WHERE id = ?1",
-        )
-        .bind(session_id) // ?1
-        .bind(message_count) // ?2
-        .bind(turn_count) // ?3
-        .bind(last_message_at) // ?4
-        .bind(last_message) // ?5
-        .bind(size_bytes) // ?6
-        .bind(file_size_at_index) // ?7
-        .bind(file_mtime_at_index) // ?8
-        .bind(total_input_tokens) // ?9
-        .bind(total_output_tokens) // ?10
-        .bind(cache_read_tokens) // ?11
-        .bind(cache_creation_tokens) // ?12
-        .bind(tool_counts_edit) // ?13
-        .bind(tool_counts_read) // ?14
-        .bind(tool_counts_bash) // ?15
-        .bind(tool_counts_write) // ?16
-        .execute(self.pool())
-        .await?;
-        Ok(())
-    }
-
     /// Update session topology fields discovered via content classification.
     /// Called after insert_session_from_index for sessions discovered by
     /// discover_orphan_sessions() which have cwd and parent_id from JSONL.

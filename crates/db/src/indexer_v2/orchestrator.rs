@@ -41,7 +41,7 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use super::config::{DeltaSource, StatsDelta, DEBOUNCE_MS};
+use super::config::{DeltaSource, StatsDelta, DEBOUNCE_MS, STATS_DELTA_CHANNEL_CAPACITY};
 use super::debouncer::Debouncer;
 use super::watcher::{start_watcher, FileEvent, FILE_EVENT_CHANNEL_CAPACITY};
 use super::writer::upsert_session_stats;
@@ -70,6 +70,44 @@ pub async fn index_session(
     path: &Path,
     session_id: &str,
 ) -> Result<(), IndexSessionError> {
+    let delta = build_delta_sync(path, session_id, DeltaSource::Indexer, 0)?;
+    upsert_session_stats(db, &delta).await?;
+    Ok(())
+}
+
+/// Async wrapper over [`build_delta_sync`] — parses one JSONL file into
+/// a [`StatsDelta`] on a `spawn_blocking` worker, without touching the
+/// database.
+///
+/// Used by producers that publish deltas through the shared mpsc
+/// channel (live-tail watcher, drift healer) rather than calling
+/// `upsert_session_stats` directly. The file I/O + parse can take up to
+/// a few milliseconds on large sessions, so offloading to a blocking
+/// thread keeps producer hot paths (live-tail watcher, fsnotify event
+/// loop) off the reactor.
+pub async fn build_delta_from_file(
+    path: PathBuf,
+    session_id: String,
+    source: DeltaSource,
+    seq: u64,
+) -> Result<StatsDelta, IndexSessionError> {
+    tokio::task::spawn_blocking(move || build_delta_sync(&path, &session_id, source, seq))
+        .await
+        .map_err(|join_err| IndexSessionError::Io(std::io::Error::other(join_err.to_string())))?
+}
+
+/// Synchronous core of the parse + extract + hash pipeline that every
+/// producer shares. Reading the file + computing hashes is unavoidable
+/// blocking work; running it off-runtime is the caller's responsibility
+/// ([`build_delta_from_file`] wraps this in `spawn_blocking`; the
+/// existing `index_session` path runs it inline, matching pre-Phase-2.5
+/// behavior).
+fn build_delta_sync(
+    path: &Path,
+    session_id: &str,
+    source: DeltaSource,
+    seq: u64,
+) -> Result<StatsDelta, IndexSessionError> {
     let bytes = std::fs::read(path)?;
     let metadata = std::fs::metadata(path)?;
     let size = metadata.len();
@@ -84,24 +122,62 @@ pub async fn index_session(
         None
     };
 
-    let delta = StatsDelta {
+    Ok(StatsDelta {
         session_id: session_id.to_string(),
         source_content_hash: head_tail,
         source_size: i64::try_from(size).unwrap_or(i64::MAX),
         source_inode: file_inode(&metadata),
         source_mid_hash: mid_hash,
         stats,
-        // Phase 2.5 lineage: the sync indexer path produces deltas
-        // without a prior snapshot. Phase 4 Stage C will synthesise
-        // `old` via `get_stats_header` + a column read when rollup
-        // deltas need it; Phase 2 is shadow-mode so None is correct.
+        // Phase 2.5 lineage: producers that can't cheaply compute a
+        // previous snapshot (indexer cold start, fresh live-tail event)
+        // send `None`. Phase 4 Stage C synthesises `old` via
+        // `get_stats_header` + a column read when rollup deltas need it.
         old: None,
-        seq: 0,
-        source: DeltaSource::Indexer,
-    };
+        seq,
+        source,
+    })
+}
 
-    upsert_session_stats(db, &delta).await?;
-    Ok(())
+/// Spawn the shared StatsDelta writer consumer (Phase 2.5).
+///
+/// Returns `(Sender<StatsDelta>, JoinHandle<()>)`. The sender is cloned
+/// to each producer (live-tail watcher today; drift healer in Phase 7);
+/// the task runs for the process lifetime. When the runtime shuts down
+/// it drops the sender, the channel closes, the consumer exits.
+///
+/// Every delta that comes through gets routed to
+/// [`upsert_session_stats`] — the single writer gateway for
+/// `session_stats`. Upsert errors log but do not kill the consumer so a
+/// single bad row can't stall the whole stream.
+///
+/// Back-pressure contract (SOTA §10 Phase 2.5):
+/// - Channel capacity [`STATS_DELTA_CHANNEL_CAPACITY`] (1024).
+/// - Producers `try_send` only. On `TrySendError::Full` they bump
+///   `stage_c_producer_drop_total{producer=<label>}` and rely on the
+///   fsnotify shadow-indexer path (500 ms debounce) to cover the drop.
+pub fn spawn_delta_consumer(db: Arc<Database>) -> (mpsc::Sender<StatsDelta>, JoinHandle<()>) {
+    let (tx, mut rx) = mpsc::channel::<StatsDelta>(STATS_DELTA_CHANNEL_CAPACITY);
+    let handle = tokio::spawn(async move {
+        tracing::info!(
+            capacity = STATS_DELTA_CHANNEL_CAPACITY,
+            "indexer_v2: StatsDelta consumer running"
+        );
+        while let Some(delta) = rx.recv().await {
+            let source_label = delta.source.metric_label();
+            if let Err(e) = upsert_session_stats(&db, &delta).await {
+                tracing::warn!(
+                    session_id = %delta.session_id,
+                    source = source_label,
+                    seq = delta.seq,
+                    error = %e,
+                    "indexer_v2: delta consumer upsert failed"
+                );
+            }
+        }
+        tracing::info!("indexer_v2: StatsDelta consumer exiting (channel closed)");
+    });
+    (tx, handle)
 }
 
 /// Default fsnotify root: `~/.claude/projects/`. Returned as `None` if
@@ -628,6 +704,147 @@ mod tests {
             report,
             RebuildReport::default().with_elapsed(report.elapsed_ms)
         );
+    }
+
+    // ── Phase 2.5: delta channel + build_delta_from_file ──
+
+    /// `build_delta_from_file` must produce the same writer-relevant
+    /// output as the sync indexer path. This is the parity the live-tail
+    /// migration rides on: live-tail sends via the channel, indexer
+    /// sends direct, both paths call `build_delta_sync` underneath so
+    /// the resulting `session_stats` row is byte-identical.
+    #[tokio::test]
+    async fn build_delta_from_file_matches_index_session_output() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp
+            .path()
+            .join("cccccccc-cccc-cccc-cccc-cccccccccccc.jsonl");
+        std::fs::write(&path, minimal_jsonl_with_one_user_message()).unwrap();
+
+        // Path 1 — index_session → direct upsert.
+        let db_a = Database::new_in_memory().await.unwrap();
+        index_session(&db_a, &path, "cccccccc-cccc-cccc-cccc-cccccccccccc")
+            .await
+            .unwrap();
+
+        // Path 2 — build_delta_from_file → manual upsert (simulates the
+        // live-tail → channel → consumer shape without spawning a task).
+        let db_b = Database::new_in_memory().await.unwrap();
+        let delta = build_delta_from_file(
+            path.clone(),
+            "cccccccc-cccc-cccc-cccc-cccccccccccc".to_string(),
+            DeltaSource::LiveTail,
+            42,
+        )
+        .await
+        .unwrap();
+        assert_eq!(delta.source, DeltaSource::LiveTail);
+        assert_eq!(delta.seq, 42);
+        upsert_session_stats(&db_b, &delta).await.unwrap();
+
+        // The staleness headers must match — same bytes → same hash,
+        // size, inode, mid_hash.
+        let header_a = db_a
+            .get_stats_header("cccccccc-cccc-cccc-cccc-cccccccccccc")
+            .await
+            .unwrap()
+            .unwrap();
+        let header_b = db_b
+            .get_stats_header("cccccccc-cccc-cccc-cccc-cccccccccccc")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(header_a.source_content_hash, header_b.source_content_hash);
+        assert_eq!(header_a.source_size, header_b.source_size);
+        assert_eq!(header_a.source_inode, header_b.source_inode);
+        assert_eq!(header_a.source_mid_hash, header_b.source_mid_hash);
+
+        // The observable stats columns must match.
+        let cols_a: (i64, i64) = sqlx::query_as(
+            "SELECT user_prompt_count, line_count FROM session_stats WHERE session_id = ?",
+        )
+        .bind("cccccccc-cccc-cccc-cccc-cccccccccccc")
+        .fetch_one(db_a.pool())
+        .await
+        .unwrap();
+        let cols_b: (i64, i64) = sqlx::query_as(
+            "SELECT user_prompt_count, line_count FROM session_stats WHERE session_id = ?",
+        )
+        .bind("cccccccc-cccc-cccc-cccc-cccccccccccc")
+        .fetch_one(db_b.pool())
+        .await
+        .unwrap();
+        assert_eq!(
+            cols_a, cols_b,
+            "live-tail delta path must produce the same row as direct index_session"
+        );
+    }
+
+    /// Deltas sent through the consumer channel must land in
+    /// `session_stats` the same way direct upserts do. Verifies the
+    /// single-writer-gateway invariant end-to-end: channel → consumer
+    /// → writer.
+    #[tokio::test]
+    async fn spawn_delta_consumer_routes_deltas_to_upsert_session_stats() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp
+            .path()
+            .join("dddddddd-dddd-dddd-dddd-dddddddddddd.jsonl");
+        std::fs::write(&path, minimal_jsonl_with_one_user_message()).unwrap();
+
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        let (tx, _handle) = spawn_delta_consumer(db.clone());
+
+        let delta = build_delta_from_file(
+            path.clone(),
+            "dddddddd-dddd-dddd-dddd-dddddddddddd".to_string(),
+            DeltaSource::LiveTail,
+            1,
+        )
+        .await
+        .unwrap();
+        tx.try_send(delta).expect("fresh channel must accept send");
+
+        // Consumer runs on the runtime; poll until the row appears
+        // (bounded wait so a regression times out instead of hanging).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if db
+                .get_stats_header("dddddddd-dddd-dddd-dddd-dddddddddddd")
+                .await
+                .unwrap()
+                .is_some()
+            {
+                break;
+            }
+            if std::time::Instant::now() >= deadline {
+                panic!("consumer did not upsert delta within 2s");
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        let row: (i64, i64) = sqlx::query_as(
+            "SELECT user_prompt_count, line_count FROM session_stats WHERE session_id = ?",
+        )
+        .bind("dddddddd-dddd-dddd-dddd-dddddddddddd")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+        assert_eq!(row.0, 1);
+        assert_eq!(row.1, 1);
+    }
+
+    /// Once every producer drops its sender, the consumer must exit
+    /// cleanly — the JoinHandle completes without panicking. This is
+    /// how tokio shutdown reaps the consumer task.
+    #[tokio::test]
+    async fn spawn_delta_consumer_exits_when_senders_drop() {
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        let (tx, handle) = spawn_delta_consumer(db);
+        drop(tx);
+        // If the consumer somehow loops forever, this await will hang
+        // and the test runner will time out.
+        handle.await.expect("consumer task must exit cleanly");
     }
 }
 
