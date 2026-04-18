@@ -108,8 +108,9 @@ async function findSessionId(): Promise<string> {
 }
 
 async function checkServerReachable(): Promise<void> {
+  const probeTimeoutMs = Number(process.env.PROBE_TIMEOUT_MS ?? REQUEST_TIMEOUT_MS)
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 5_000)
+  const timer = setTimeout(() => ctrl.abort(), probeTimeoutMs)
   try {
     const res = await fetch(`${URL}/api/sessions?limit=1`, { signal: ctrl.signal })
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -118,7 +119,7 @@ async function checkServerReachable(): Promise<void> {
     console.error(`\nServer not reachable at ${URL}:`)
     const msg =
       (err as Error).name === 'AbortError'
-        ? 'timeout >5s (server may be indexing — wait for quiet and retry)'
+        ? `timeout >${probeTimeoutMs}ms (server may be indexing — wait for quiet and retry, or raise PROBE_TIMEOUT_MS)`
         : (err as Error).message
     console.error(`  ${msg}`)
     console.error('\nStart the server first (if not running):')
