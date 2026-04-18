@@ -43,8 +43,6 @@ function createMockSession(id: string, modifiedAt: number): SessionInfo {
     linesRemoved: 0,
     locSource: 0,
     parseVersion: 1,
-    correctionCount: 0,
-    sameFileEditCount: 0,
   }
 }
 

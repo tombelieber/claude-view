@@ -69,9 +69,6 @@ export type SessionInfo = {
   categoryConfidence?: number | null
   categorySource?: string | null
   classifiedAt?: string | null
-  promptWordCount?: number | null
-  correctionCount: number
-  sameFileEditCount: number
   totalTaskTimeSeconds?: number | null
   longestTaskSeconds?: number | null
   longestTaskPreview?: string | null

@@ -15,9 +15,4 @@ export type ModelWithStats = {
   lastSeen: number | null
   totalTurns: number
   totalSessions: number
-  /**
-   * True if this model is reported by the Agent SDK as usable.
-   * Chat model selector filters on this — only SDK-supported models are selectable.
-   */
-  sdkSupported: boolean
 }

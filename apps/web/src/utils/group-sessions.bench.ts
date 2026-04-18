@@ -51,8 +51,6 @@ function makeSession(i: number): SessionInfo {
     linesRemoved: i * 3,
     locSource: 100 + i,
     parseVersion: 1,
-    correctionCount: 0,
-    sameFileEditCount: 0,
   }
 }
 

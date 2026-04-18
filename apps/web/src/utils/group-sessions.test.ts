@@ -51,8 +51,6 @@ function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
     linesRemoved: 0,
     locSource: 0,
     parseVersion: 1,
-    correctionCount: 0,
-    sameFileEditCount: 0,
     totalTaskTimeSeconds: null,
     longestTaskSeconds: null,
     longestTaskPreview: null,

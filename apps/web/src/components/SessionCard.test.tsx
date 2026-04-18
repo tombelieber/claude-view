@@ -53,8 +53,6 @@ const createMockSession = (overrides?: Partial<SessionInfo>): SessionInfo => ({
   linesAdded: 0,
   linesRemoved: 0,
   locSource: 0,
-  correctionCount: 0,
-  sameFileEditCount: 0,
   totalTaskTimeSeconds: null,
   longestTaskSeconds: null,
   longestTaskPreview: null,
