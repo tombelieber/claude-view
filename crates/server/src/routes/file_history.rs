@@ -35,17 +35,29 @@ pub async fn get_file_history(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<FileHistoryResponse>> {
-    // Verify session exists and get its JSONL path
-    let jsonl_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+    // Phase 3 PR 3.4: source the JSONL path from the catalog adapter
+    // (session_stats → fallback to in-memory catalog → fallback to
+    // legacy `sessions` table). The adapter's `get` call handles the
+    // env-var override and falls back to the in-memory catalog for
+    // rows that haven't been reindexed yet; the legacy `get_session_file_path`
+    // remains as a belt-and-braces third tier for paths that exist in
+    // the legacy sessions table but aren't yet mirrored anywhere else.
+    let jsonl_path = match state.session_catalog_adapter.get(&session_id).await {
+        Some(row) => row.file_path,
+        None => {
+            let legacy = state
+                .db
+                .get_session_file_path(&session_id)
+                .await?
+                .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+            PathBuf::from(legacy)
+        }
+    };
 
     let history_dir = file_history::claude_file_history_dir()
         .ok_or_else(|| ApiError::Internal("Cannot determine home directory".to_string()))?;
 
-    let jsonl = PathBuf::from(jsonl_path);
+    let jsonl = jsonl_path;
     let sid = session_id.clone();
 
     let result = tokio::task::spawn_blocking(move || {
