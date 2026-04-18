@@ -3574,7 +3574,7 @@
           "sessions"
         ],
         "summary": "GET /api/sessions/:id/hook-events — Fetch hook events for a session.",
-        "description": "For live sessions, hook events are in memory (not flushed to SQLite until\nSessionEnd). Check the live state first, then fall back to SQLite.",
+        "description": "For live sessions, hook events are in memory (not flushed to SQLite until\nSessionEnd). Check the live state first, then fall back to SQLite.\n\n**Phase 3 PR 3.5 — no cutover.** Hook events live on the\n`hook_events` table (Channel B per design decision D8 of\n`2026-04-17-cqrs-phase-1-7-design.md` §1). Channel B is\nauthoritative for real-time agent state, and `session_stats` is\nauthoritative for parsed message stats — they carry different data\nand never dedup against each other (see CLAUDE.md \"Separate\nChannels = Separate Data\"). This handler is therefore unchanged by\nPhase 3; the openapi_compatibility test pins the response shape.",
         "operationId": "get_session_hook_events",
         "parameters": [
           {
@@ -3717,6 +3717,7 @@
           "plans"
         ],
         "summary": "GET /api/sessions/:id/plans -- returns plan documents for the session's slug.",
+        "description": "**Phase 3 PR 3.6 — no cutover.** Plans are a Layer 3 concern (per\ndesign §5 of `2026-04-17-cqrs-phase-1-7-design.md`): filesystem\nfiles under `~/.claude/plans/<slug>/*.md` keyed by the session's\nslug. `session_stats` doesn't carry the slug, so the slug lookup\nstays on the legacy `sessions` table through Phase 3; Phase 6\n(sessions table retirement) migrates the slug elsewhere. The\nopenapi_compatibility test pins this endpoint's response shape\nacross Phase 3.",
         "operationId": "get_session_plans",
         "parameters": [
           {

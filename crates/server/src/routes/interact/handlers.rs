@@ -34,6 +34,16 @@ fn extract_request_id(req: &InteractRequest) -> &str {
 /// 1. Look up session in live_sessions — 404 if not found
 /// 2. Read pending_interaction — 404 if None (no pending interaction)
 /// 3. Look up full data in interaction_data side-map — 404 if not found
+///
+/// **Phase 3 PR 3.7 — no cutover.** Interaction data is live-only state
+/// (pending-interaction + interaction_data side-map) maintained by the
+/// live session manager. It is not derivable from JSONL or
+/// `session_stats` — those reflect the historical record, while this
+/// endpoint serves in-flight permission/question/plan prompts. The
+/// 2026-04-17 design doc §5.1 contemplated using
+/// `session_stats.last_ts` for cache validation, but the current
+/// handler has no cache surface that would benefit. Response shape is
+/// pinned by the openapi_compatibility test.
 #[utoipa::path(
     get,
     path = "/api/sessions/{session_id}/interaction",
