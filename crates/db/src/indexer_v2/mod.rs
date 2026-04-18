@@ -20,7 +20,7 @@ mod orchestrator;
 mod writer;
 
 pub use config::{StatsDelta, DEBOUNCE_MS};
-pub use orchestrator::spawn_shadow_indexer;
+pub use orchestrator::{index_session, spawn_shadow_indexer, IndexSessionError};
 pub use writer::upsert_session_stats;
 
 #[cfg(test)]
