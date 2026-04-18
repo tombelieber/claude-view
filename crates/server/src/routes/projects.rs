@@ -33,16 +33,24 @@ use super::sessions::helpers::build_session_info;
 pub async fn list_projects(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<ProjectSummary>>> {
-    let project_counts = state.session_catalog.projects();
+    // Phase 3 PR 3.1: read from `session_stats` via the catalog adapter
+    // instead of the in-memory `SessionCatalog`. The adapter internally
+    // honours `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1` and falls back to
+    // the in-memory map when session_stats has NULL project_id rows.
+    //
+    // Two parallel reads — one count, one last-activity — are issued to
+    // the DB in sequence. The design targets ≤5 ms p99; two indexed
+    // GROUP-BY queries on session_stats hit that comfortably.
+    let project_counts = state.session_catalog_adapter.projects().await;
+    let last_activity_map = state
+        .session_catalog_adapter
+        .projects_with_last_activity()
+        .await;
 
     let mut summaries: Vec<ProjectSummary> = project_counts
         .into_iter()
         .map(|(project_id, session_count)| {
-            let last_activity_at = state
-                .session_catalog
-                .list(&CatFilter::by_project(&project_id), CatSort::LastTsDesc, 1)
-                .first()
-                .map(|row| row.mtime);
+            let last_activity_at = last_activity_map.get(&project_id).and_then(|v| *v);
 
             // Project dir existence check — encoded id decodes ambiguously so
             // we walk `~/.claude/projects` looking for a matching subdir.
@@ -222,5 +230,66 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         let parsed: Vec<ProjectSummary> = serde_json::from_str(&body).unwrap();
         assert!(parsed.is_empty());
+    }
+
+    /// Phase 3 PR 3.1 — verifies the cutover reads from `session_stats`.
+    /// Seeds two session_stats rows spanning two project_ids and
+    /// asserts both show up in the handler's response with correct
+    /// counts and last-activity timestamps.
+    #[tokio::test]
+    async fn list_projects_reads_from_session_stats() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // Seed two rows — one per project — directly via SQL. Bypasses the
+        // indexer to keep this unit test tight; the indexer's own round-trip
+        // tests cover writer correctness.
+        for (idx, (sid, pid, last_ts)) in [
+            ("s1", "proj-alpha", 1_800_000_000_i64),
+            ("s2", "proj-alpha", 1_800_000_500_i64),
+            ("s3", "proj-bravo", 1_700_000_000_i64),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sqlx::query(
+                r#"INSERT INTO session_stats (
+                       session_id, source_content_hash, source_size,
+                       parser_version, stats_version, indexed_at,
+                       last_message_at,
+                       project_id, file_path, is_compressed, source_mtime
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(sid)
+            .bind(vec![idx as u8])
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(last_ts)
+            .bind(pid)
+            .bind(format!("/tmp/{pid}/{sid}.jsonl"))
+            .bind(0_i64)
+            .bind(last_ts - 10)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        }
+
+        let app = crate::create_app(db);
+        let (status, body) = do_get(app, "/api/projects").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let parsed: Vec<ProjectSummary> = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed.len(), 2, "must return both seeded projects");
+
+        // Response is sorted by last_activity_at DESC. For proj-alpha,
+        // the adapter's query uses MAX(COALESCE(last_message_at, source_mtime)),
+        // so the newer session (s2) drives last_activity_at.
+        assert_eq!(parsed[0].name, "proj-alpha");
+        assert_eq!(parsed[0].session_count, 2);
+        assert_eq!(parsed[0].last_activity_at, Some(1_800_000_500));
+        assert_eq!(parsed[1].name, "proj-bravo");
+        assert_eq!(parsed[1].session_count, 1);
+        assert_eq!(parsed[1].last_activity_at, Some(1_700_000_000));
     }
 }
