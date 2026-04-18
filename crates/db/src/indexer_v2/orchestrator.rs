@@ -41,7 +41,7 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use super::config::{StatsDelta, DEBOUNCE_MS};
+use super::config::{DeltaSource, StatsDelta, DEBOUNCE_MS};
 use super::debouncer::Debouncer;
 use super::watcher::{start_watcher, FileEvent, FILE_EVENT_CHANNEL_CAPACITY};
 use super::writer::upsert_session_stats;
@@ -91,6 +91,13 @@ pub async fn index_session(
         source_inode: file_inode(&metadata),
         source_mid_hash: mid_hash,
         stats,
+        // Phase 2.5 lineage: the sync indexer path produces deltas
+        // without a prior snapshot. Phase 4 Stage C will synthesise
+        // `old` via `get_stats_header` + a column read when rollup
+        // deltas need it; Phase 2 is shadow-mode so None is correct.
+        old: None,
+        seq: 0,
+        source: DeltaSource::Indexer,
     };
 
     upsert_session_stats(db, &delta).await?;

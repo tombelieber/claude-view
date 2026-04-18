@@ -23,7 +23,7 @@ mod orchestrator;
 mod watcher;
 mod writer;
 
-pub use config::{StatsDelta, DEBOUNCE_MS};
+pub use config::{DeltaSource, StatsDelta, DEBOUNCE_MS, STATS_DELTA_CHANNEL_CAPACITY};
 pub use debouncer::Debouncer;
 pub use drift::{compare_session, DriftReport, FieldDiff};
 pub use orchestrator::{
@@ -37,8 +37,15 @@ pub use writer::upsert_session_stats;
 mod tests {
     use claude_view_session_parser::{SessionStats, PARSER_VERSION, STATS_VERSION};
 
-    use super::{upsert_session_stats, StatsDelta};
+    use super::{upsert_session_stats, DeltaSource, StatsDelta};
     use crate::Database;
+
+    /// Shared default for test-only lineage fields (`old`/`seq`/`source`).
+    /// Writer ignores these; having a helper keeps the four upsert tests
+    /// focused on the writer payload.
+    fn indexer_lineage() -> (Option<SessionStats>, u64, DeltaSource) {
+        (None, 0, DeltaSource::Indexer)
+    }
 
     fn empty_stats() -> SessionStats {
         SessionStats {
@@ -73,6 +80,7 @@ mod tests {
     async fn upsert_inserts_then_reads_back_via_get_stats_header() {
         let db = Database::new_in_memory().await.unwrap();
 
+        let (old, seq, source) = indexer_lineage();
         let delta = StatsDelta {
             session_id: "sess-insert".into(),
             source_content_hash: vec![0x01, 0x02, 0x03],
@@ -80,6 +88,9 @@ mod tests {
             source_inode: Some(7),
             source_mid_hash: Some(vec![0xAA, 0xBB]),
             stats: empty_stats(),
+            old,
+            seq,
+            source,
         };
 
         upsert_session_stats(&db, &delta).await.unwrap();
@@ -105,6 +116,7 @@ mod tests {
 
         let mut stats = empty_stats();
         stats.total_input_tokens = 100;
+        let (old, seq, source) = indexer_lineage();
         let first = StatsDelta {
             session_id: "sess-conflict".into(),
             source_content_hash: vec![0x01],
@@ -112,6 +124,9 @@ mod tests {
             source_inode: None,
             source_mid_hash: None,
             stats,
+            old: old.clone(),
+            seq,
+            source,
         };
         upsert_session_stats(&db, &first).await.unwrap();
 
@@ -126,6 +141,9 @@ mod tests {
             source_inode: Some(123),
             source_mid_hash: None,
             stats: stats2,
+            old,
+            seq,
+            source,
         };
         upsert_session_stats(&db, &second).await.unwrap();
 
@@ -157,6 +175,7 @@ mod tests {
         let mut stats = empty_stats();
         stats.first_message_at = Some("2026-04-18T10:30:00Z".into());
         stats.last_message_at = Some("2026-04-18T11:00:00Z".into());
+        let (old, seq, source) = indexer_lineage();
         let delta = StatsDelta {
             session_id: "sess-ts".into(),
             source_content_hash: vec![0x01],
@@ -164,6 +183,9 @@ mod tests {
             source_inode: None,
             source_mid_hash: None,
             stats,
+            old,
+            seq,
+            source,
         };
         upsert_session_stats(&db, &delta).await.unwrap();
 
@@ -199,6 +221,7 @@ mod tests {
         let mut stats = empty_stats();
         stats.first_message_at = Some("not a date".into());
         // last_message_at left as None
+        let (old, seq, source) = indexer_lineage();
         let delta = StatsDelta {
             session_id: "sess-bad-ts".into(),
             source_content_hash: vec![0x01],
@@ -206,6 +229,9 @@ mod tests {
             source_inode: None,
             source_mid_hash: None,
             stats,
+            old,
+            seq,
+            source,
         };
         upsert_session_stats(&db, &delta).await.unwrap();
 
