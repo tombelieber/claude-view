@@ -39,6 +39,9 @@ pub use queries::TokenStats;
 pub use queries::TokensByModel;
 pub use queries::TokensByProject;
 pub use queries::{ActivitySummaryRow, ProjectActivityRow, RichActivityResponse};
+// Phase 3 PR 3.a: catalog-shape reads consumed by the core-layer
+// `SessionCatalogAdapter` — session_stats → CatalogRow-shaped rows.
+pub use queries::{CatalogFilter, CatalogSort, StatsCatalogRow};
 
 // Re-export session upsert helpers for the live manager's flush_batch
 pub use queries::sessions::{execute_upsert_parsed_session, UPSERT_SESSION_SQL};

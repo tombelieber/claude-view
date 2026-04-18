@@ -1972,14 +1972,21 @@ async fn test_migration64_session_stats_columns_exist() {
         "missing session_stats.per_model_tokens_json"
     );
 
-    // Total = 8 header + 24 stats = 32. The design doc (§3.1) said
-    // "9 header + 25 stats = 34" but miscounted; our schema and this
-    // assertion reflect what actually exists. If this drifts, the writer
-    // ownership registry rule (§10.2) likely needs an update.
+    // Phase 3 PR 3.a (migration 66) added 4 filesystem-mirror columns:
+    // project_id, file_path, is_compressed, source_mtime.
+    for col in ["project_id", "file_path", "is_compressed", "source_mtime"] {
+        assert!(names.contains(&col), "missing session_stats.{}", col);
+    }
+
+    // Total = 8 header + 24 stats (Phase 2 PR 2.1) + 4 filesystem-mirror
+    // (Phase 3 PR 3.a) = 36. The design doc (§3.1) said "9 header + 25
+    // stats = 34" but miscounted; our schema and this assertion reflect
+    // what actually exists. If this drifts, the writer ownership registry
+    // rule (§10.2) likely needs an update.
     assert_eq!(
         names.len(),
-        32,
-        "session_stats column count drifted from the 32 documented in features.rs (got {})",
+        36,
+        "session_stats column count drifted from the 36 documented in features.rs (got {})",
         names.len()
     );
 }

@@ -137,7 +137,19 @@ pub struct AppState {
     pub terminal_manager: Arc<TerminalManager>,
     /// JSONL-first session catalog (in-memory walk of live + backup).
     /// Populated once at startup, refreshed by mtime-poll reconcile loop.
+    ///
+    /// **Phase 3 (CQRS) note:** during the read-side cutover (PRs 3.1 →
+    /// 3.7), route handlers read from `session_catalog_adapter` instead
+    /// of this field directly. The in-memory catalog stays authoritative
+    /// for filesystem-walk-style operations (startup bootstrap,
+    /// `project_dir_exists` checks) and serves as the fallback source
+    /// for rows that haven't been reindexed since migration 66.
     pub session_catalog: claude_view_core::session_catalog::SessionCatalog,
+    /// Phase 3 read-side adapter over `session_stats`. Route handlers
+    /// use this as the default read surface; `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1`
+    /// routes every call to `session_catalog` instead. Clone is cheap
+    /// (Arc<Database> + Arc<RwLock> internals).
+    pub session_catalog_adapter: crate::session_catalog_adapter::SessionCatalogAdapter,
     /// Supabase JWKS cache for JWT validation (sharing feature).
     /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).
     pub jwks: Option<Arc<tokio::sync::RwLock<JwksCache>>>,
@@ -274,6 +286,31 @@ impl AppStateBuilder {
         } else {
             (None, None, None)
         };
+        // Phase 3 PR 3.a: build the legacy catalog first so both
+        // `session_catalog` (legacy) and `session_catalog_adapter` (new)
+        // can share the underlying storage. The adapter holds a `Clone`
+        // of the catalog, which just bumps the `Arc<RwLock>` refcount.
+        let legacy_catalog = {
+            let catalog = claude_view_core::session_catalog::SessionCatalog::new();
+            // Skip the filesystem walk in tests — tests seed the catalog
+            // explicitly (or leave it empty for the empty-list case).
+            // Production populates via `create_app_full` or the reconcile loop.
+            if !cfg!(test) {
+                let home = dirs::home_dir().expect("home dir exists");
+                let _ = catalog.rebuild_from_filesystem(
+                    &home.join(".claude").join("projects"),
+                    &home.join(".claude-backup").join("machines"),
+                );
+            }
+            catalog
+        };
+        let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+            self.db.clone(),
+            legacy_catalog.clone(),
+        );
+        // `legacy_catalog.clone()` above bumps the `Arc<RwLock>` refcount;
+        // both the adapter and `AppState.session_catalog` share storage.
+
         Arc::new(AppState {
             start_time: Instant::now(),
             db: self.db,
@@ -304,20 +341,8 @@ impl AppStateBuilder {
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
             sidecar: Arc::new(SidecarManager::new()),
             terminal_manager: Arc::new(TerminalManager::new()),
-            session_catalog: {
-                let catalog = claude_view_core::session_catalog::SessionCatalog::new();
-                // Skip the filesystem walk in tests — tests seed the catalog
-                // explicitly (or leave it empty for the empty-list case).
-                // Production populates via `create_app_full` or the reconcile loop.
-                if !cfg!(test) {
-                    let home = dirs::home_dir().expect("home dir exists");
-                    let _ = catalog.rebuild_from_filesystem(
-                        &home.join(".claude").join("projects"),
-                        &home.join(".claude-backup").join("machines"),
-                    );
-                }
-                catalog
-            },
+            session_catalog: legacy_catalog,
+            session_catalog_adapter,
             jwks: None,
             auth_session: Arc::new(tokio::sync::RwLock::new(None)),
             share: None,

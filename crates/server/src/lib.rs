@@ -24,6 +24,7 @@ pub mod openapi;
 pub mod routes;
 pub mod search_migration;
 pub mod search_service;
+pub mod session_catalog_adapter;
 pub mod share_serializer;
 pub use claude_view_server_sidecar as sidecar;
 pub mod state;

@@ -84,6 +84,11 @@ mod tests {
         use tower::ServiceExt;
 
         let db = Database::new_in_memory().await.unwrap();
+        let legacy_catalog = claude_view_core::session_catalog::SessionCatalog::new();
+        let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+            db.clone(),
+            legacy_catalog.clone(),
+        );
         let state = Arc::new(AppState {
             start_time: std::time::Instant::now(),
             db,
@@ -112,7 +117,8 @@ mod tests {
             terminal_manager: Arc::new(
                 crate::routes::cli_sessions::terminal::TerminalManager::new(),
             ),
-            session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
+            session_catalog: legacy_catalog,
+            session_catalog_adapter,
             jwks: None,
             auth_session: Arc::new(tokio::sync::RwLock::new(None)),
             share: None,

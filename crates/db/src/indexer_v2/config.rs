@@ -86,6 +86,29 @@ pub struct StatsDelta {
     pub source_inode: Option<i64>,
     /// blake3 of the file's mid 64 KB (only computed for files >1 MiB).
     pub source_mid_hash: Option<Vec<u8>>,
+
+    // ── Phase 3 PR 3.a filesystem-mirror fields ──
+    //
+    // These answer "which project owns this session?", "where is the
+    // JSONL on disk?" and "live vs. archived?" for the read-side adapter
+    // (`SessionCatalogAdapter`) without touching a second source. Phase
+    // 3 readers are DB-only; these columns let the adapter serve them.
+    //
+    /// Project directory name (`~/.claude/projects/<project_id>/...`).
+    /// Derived from the parent directory of the JSONL file at parse time.
+    pub project_id: String,
+    /// Absolute path to the JSONL file on disk (live `.jsonl` or backup
+    /// `.jsonl.gz`). Stored for per-session reads that still need to
+    /// re-parse the raw JSONL (e.g. full message history).
+    pub source_file_path: String,
+    /// `true` if the file is a backup-archive `.jsonl.gz`, `false` for
+    /// a live `.jsonl`. The writer persists `1`/`0` (SQLite STRICT has
+    /// no BOOLEAN).
+    pub is_compressed: bool,
+    /// Filesystem mtime at parse time (unix seconds). Secondary sort key
+    /// for rows where `last_message_at` is NULL.
+    pub source_mtime: i64,
+
     /// Parsed + extracted statistics that populate the 24 stats columns.
     /// Matches the Phase 2.5 design's `new: SessionStats` — the writer
     /// persists this.

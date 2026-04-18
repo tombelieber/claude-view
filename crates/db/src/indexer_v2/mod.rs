@@ -48,6 +48,19 @@ mod tests {
         (None, 0, DeltaSource::Indexer)
     }
 
+    /// Shared default for Phase 3 PR 3.a filesystem-mirror fields. Tests
+    /// that care about project/file_path shape set these explicitly; the
+    /// writer round-trip tests in this module only need them populated so
+    /// the new NOT-NULL column constraints on the writer path are satisfied.
+    fn phase3_fs_fields() -> (String, String, bool, i64) {
+        (
+            "test-project".into(),
+            "/tmp/test-project/sess.jsonl".into(),
+            false,
+            0,
+        )
+    }
+
     fn empty_stats() -> SessionStats {
         SessionStats {
             total_input_tokens: 0,
@@ -82,12 +95,17 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         let (old, seq, source) = indexer_lineage();
+        let (project_id, source_file_path, is_compressed, source_mtime) = phase3_fs_fields();
         let delta = StatsDelta {
             session_id: "sess-insert".into(),
             source_content_hash: vec![0x01, 0x02, 0x03],
             source_size: 4096,
             source_inode: Some(7),
             source_mid_hash: Some(vec![0xAA, 0xBB]),
+            project_id,
+            source_file_path,
+            is_compressed,
+            source_mtime,
             stats: empty_stats(),
             old,
             seq,
@@ -118,12 +136,17 @@ mod tests {
         let mut stats = empty_stats();
         stats.total_input_tokens = 100;
         let (old, seq, source) = indexer_lineage();
+        let (project_id, source_file_path, is_compressed, source_mtime) = phase3_fs_fields();
         let first = StatsDelta {
             session_id: "sess-conflict".into(),
             source_content_hash: vec![0x01],
             source_size: 1,
             source_inode: None,
             source_mid_hash: None,
+            project_id: project_id.clone(),
+            source_file_path: source_file_path.clone(),
+            is_compressed,
+            source_mtime,
             stats,
             old: old.clone(),
             seq,
@@ -141,6 +164,10 @@ mod tests {
             source_size: 8192,
             source_inode: Some(123),
             source_mid_hash: None,
+            project_id,
+            source_file_path,
+            is_compressed,
+            source_mtime,
             stats: stats2,
             old,
             seq,
@@ -177,12 +204,17 @@ mod tests {
         stats.first_message_at = Some("2026-04-18T10:30:00Z".into());
         stats.last_message_at = Some("2026-04-18T11:00:00Z".into());
         let (old, seq, source) = indexer_lineage();
+        let (project_id, source_file_path, is_compressed, source_mtime) = phase3_fs_fields();
         let delta = StatsDelta {
             session_id: "sess-ts".into(),
             source_content_hash: vec![0x01],
             source_size: 1,
             source_inode: None,
             source_mid_hash: None,
+            project_id,
+            source_file_path,
+            is_compressed,
+            source_mtime,
             stats,
             old,
             seq,
@@ -223,12 +255,17 @@ mod tests {
         stats.first_message_at = Some("not a date".into());
         // last_message_at left as None
         let (old, seq, source) = indexer_lineage();
+        let (project_id, source_file_path, is_compressed, source_mtime) = phase3_fs_fields();
         let delta = StatsDelta {
             session_id: "sess-bad-ts".into(),
             source_content_hash: vec![0x01],
             source_size: 1,
             source_inode: None,
             source_mid_hash: None,
+            project_id,
+            source_file_path,
+            is_compressed,
+            source_mtime,
             stats,
             old,
             seq,

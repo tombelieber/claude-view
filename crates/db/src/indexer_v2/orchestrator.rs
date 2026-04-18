@@ -122,12 +122,40 @@ fn build_delta_sync(
         None
     };
 
+    // Filesystem-mirror fields (Phase 3 PR 3.a): the catalog adapter
+    // needs `project_id` and `file_path` to answer reads without a
+    // second source. `project_id` is the parent directory name — this
+    // matches the walker in `core/session_catalog.rs::walk_root` which
+    // enforces `<root>/<project_id>/<session_id><suffix>`.
+    let project_id = path
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+    let source_file_path = path.to_string_lossy().into_owned();
+    let is_compressed = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("gz"))
+        .unwrap_or(false);
+    let source_mtime = metadata
+        .modified()
+        .ok()
+        .and_then(|mt| mt.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
     Ok(StatsDelta {
         session_id: session_id.to_string(),
         source_content_hash: head_tail,
         source_size: i64::try_from(size).unwrap_or(i64::MAX),
         source_inode: file_inode(&metadata),
         source_mid_hash: mid_hash,
+        project_id,
+        source_file_path,
+        is_compressed,
+        source_mtime,
         stats,
         // Phase 2.5 lineage: producers that can't cheaply compute a
         // previous snapshot (indexer cold start, fresh live-tail event)

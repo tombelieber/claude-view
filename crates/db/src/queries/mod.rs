@@ -16,17 +16,17 @@ pub mod search_prefilter;
 mod seed;
 pub mod sessions;
 pub mod settings;
-mod stats;
+pub mod stats;
 mod system;
 mod types;
 
 pub use dashboard::ActivityPoint;
 pub use dashboard::{ActivitySummaryRow, ProjectActivityRow, RichActivityResponse};
 pub use search_prefilter::SearchPrefilter;
-// `stats::StatsHeader` is intentionally not re-exported in PR 2.1 — the
-// only caller (indexer_v2 in PR 2.2) lives inside `claude_view_db` itself
-// and reaches it via `crate::queries::stats`. Promoting to a public
-// re-export will happen when an external crate first needs the type.
+// Phase 3 PR 3.a: catalog-shape reads consumed by `SessionCatalogAdapter`
+// (crates/core/src/session_catalog.rs). `StatsHeader` stays private — it's
+// still an internal indexer_v2 type.
+pub use stats::{CatalogFilter, CatalogSort, StatsCatalogRow};
 pub use types::*;
 
 // Re-export _tx functions used by the unified indexing pipeline.

@@ -17,6 +17,11 @@ use super::types::RichModeFinders;
 /// registered pointing to the given JSONL file path.
 async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppState> {
     let db = claude_view_db::Database::new_in_memory().await.unwrap();
+    let legacy_catalog = claude_view_core::session_catalog::SessionCatalog::new();
+    let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+        db.clone(),
+        legacy_catalog.clone(),
+    );
     let state = Arc::new(AppState {
         start_time: std::time::Instant::now(),
         db,
@@ -91,7 +96,8 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
+        session_catalog: legacy_catalog,
+        session_catalog_adapter,
     });
 
     // Register the session in the live sessions map
@@ -260,6 +266,11 @@ async fn ws_upgrade_returns_101() {
 async fn ws_unknown_session_returns_error() {
     // Create state with NO sessions registered
     let db = claude_view_db::Database::new_in_memory().await.unwrap();
+    let legacy_catalog = claude_view_core::session_catalog::SessionCatalog::new();
+    let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+        db.clone(),
+        legacy_catalog.clone(),
+    );
     let state = Arc::new(AppState {
         start_time: std::time::Instant::now(),
         db,
@@ -334,7 +345,8 @@ async fn ws_unknown_session_returns_error() {
         tmux: Arc::new(crate::routes::cli_sessions::tmux::RealTmux),
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
-        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
+        session_catalog: legacy_catalog,
+        session_catalog_adapter,
     });
 
     let (addr, server_handle) = start_test_server(state).await;

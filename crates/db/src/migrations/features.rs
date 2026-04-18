@@ -256,4 +256,41 @@ CREATE TABLE session_flags (
 CREATE INDEX idx_session_flags_archived ON session_flags(archived_at) WHERE archived_at IS NOT NULL;
 CREATE INDEX idx_session_flags_category ON session_flags(category_l1) WHERE category_l1 IS NOT NULL;
 COMMIT;"#,
+    // Migration 66: CQRS Phase 3 PR 3.a — extend `session_stats` with the
+    // filesystem-mirror columns the read-side catalog adapter needs
+    // (`project_id`, `file_path`, `is_compressed`, `source_mtime`).
+    //
+    // Why these four: the current `SessionCatalog` in-memory map carries
+    // exactly these filesystem facts (see `crates/core/src/session_catalog.rs`
+    // `CatalogRow`). Phase 3 readers stay DB-only — they cannot fall back
+    // into a filesystem walk per request — so every row the adapter serves
+    // must answer "which project?", "which file on disk?", "live or gz?"
+    // and "sort_ts fallback" without help from a parallel source.
+    //
+    // All four columns are nullable for graceful rollout. Rows indexed
+    // before this migration get NULL; the adapter falls back to the
+    // in-memory `SessionCatalog` for project_id / file_path lookups on
+    // those rows. A `full_rebuild` at startup backfills them in minutes,
+    // after which the fallback never triggers. Phase 7 drift detector
+    // will alert if any row stays NULL longer than a soak window.
+    //
+    // `is_compressed` is stored as INTEGER (SQLite STRICT has no BOOLEAN
+    // type); the writer emits 0/1 and the adapter casts on read.
+    //
+    // Indexes:
+    //   - project_id : `/api/projects` distinct scan + per-project list
+    //   - file_path UNIQUE: guards against accidental double-indexing
+    //     when fsnotify fires twice for the same file (belt-and-braces
+    //     behind the hash gate)
+    //   - mtime DESC: secondary sort for rows where `last_message_at`
+    //     is NULL (short sessions, corrupted parses)
+    r#"BEGIN;
+ALTER TABLE session_stats ADD COLUMN project_id TEXT;
+ALTER TABLE session_stats ADD COLUMN file_path TEXT;
+ALTER TABLE session_stats ADD COLUMN is_compressed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN source_mtime INTEGER;
+CREATE INDEX idx_session_stats_project_id ON session_stats(project_id) WHERE project_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_session_stats_file_path ON session_stats(file_path) WHERE file_path IS NOT NULL;
+CREATE INDEX idx_session_stats_mtime ON session_stats(source_mtime DESC) WHERE source_mtime IS NOT NULL;
+COMMIT;"#,
 ];

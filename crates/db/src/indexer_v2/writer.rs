@@ -40,6 +40,12 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
         .and_then(rfc3339_to_unix);
     let per_model_tokens_json = serde_json::to_string(&json!({})).unwrap_or_else(|_| "{}".into());
 
+    // Phase 3 PR 3.a: filesystem-mirror columns added in migration 66.
+    // The writer persists them on every upsert; the adapter selects
+    // them so readers can serve project_id / file_path / mtime without
+    // a parallel fs scan.
+    let is_compressed_int = i64::from(delta.is_compressed);
+
     sqlx::query(
         r#"INSERT INTO session_stats (
                 session_id, source_content_hash, source_size, source_inode, source_mid_hash,
@@ -51,7 +57,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 files_read_count, files_edited_count, bash_count, agent_spawn_count,
                 first_message_at, last_message_at, duration_seconds,
                 primary_model, git_branch, preview, last_message,
-                per_model_tokens_json
+                per_model_tokens_json,
+                project_id, file_path, is_compressed, source_mtime
            ) VALUES (
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
@@ -62,7 +69,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 ?, ?, ?, ?,
                 ?, ?, ?,
                 ?, ?, ?, ?,
-                ?
+                ?,
+                ?, ?, ?, ?
            )
            ON CONFLICT(session_id) DO UPDATE SET
                 source_content_hash = excluded.source_content_hash,
@@ -95,7 +103,11 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 git_branch = excluded.git_branch,
                 preview = excluded.preview,
                 last_message = excluded.last_message,
-                per_model_tokens_json = excluded.per_model_tokens_json"#,
+                per_model_tokens_json = excluded.per_model_tokens_json,
+                project_id = excluded.project_id,
+                file_path = excluded.file_path,
+                is_compressed = excluded.is_compressed,
+                source_mtime = excluded.source_mtime"#,
     )
     .bind(&delta.session_id)
     .bind(&delta.source_content_hash)
@@ -129,6 +141,10 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
     .bind(delta.stats.preview.as_str())
     .bind(delta.stats.last_message.as_str())
     .bind(per_model_tokens_json)
+    .bind(delta.project_id.as_str())
+    .bind(delta.source_file_path.as_str())
+    .bind(is_compressed_int)
+    .bind(delta.source_mtime)
     .execute(db.pool())
     .await?;
 

@@ -70,6 +70,15 @@ pub fn create_app(db: Database) -> Router {
 /// temporary directory instead of `~/.claude-view/telemetry.json`.
 pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathBuf) -> Router {
     use std::collections::HashMap;
+    // Phase 3 PR 3.a: build the catalog + adapter together so both
+    // `AppState.session_catalog` and `AppState.session_catalog_adapter`
+    // share storage. In this empty-state constructor the catalog stays
+    // empty until something rebuilds it — tests + integration hosts do.
+    let legacy_catalog = claude_view_core::session_catalog::SessionCatalog::new();
+    let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+        db.clone(),
+        legacy_catalog.clone(),
+    );
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
         db,
@@ -96,7 +105,8 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
-        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
+        session_catalog: legacy_catalog,
+        session_catalog_adapter,
         jwks: None,
         auth_session: Arc::new(tokio::sync::RwLock::new(None)),
         share: None,
@@ -191,6 +201,11 @@ pub fn create_app_with_indexing(db: Database, indexing: Arc<IndexingState>) -> R
 /// `GitSyncState`, allowing tests to pre-configure sync progress/phase and
 /// then assert on the SSE endpoint output.
 pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Router {
+    let legacy_catalog = claude_view_core::session_catalog::SessionCatalog::new();
+    let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+        db.clone(),
+        legacy_catalog.clone(),
+    );
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
         db,
@@ -217,7 +232,8 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
-        session_catalog: claude_view_core::session_catalog::SessionCatalog::new(),
+        session_catalog: legacy_catalog,
+        session_catalog_adapter,
         jwks: None,
         auth_session: Arc::new(tokio::sync::RwLock::new(None)),
         share: None,
@@ -490,6 +506,28 @@ pub fn create_app_full(
     // (auth_session_holder + refresh loop were already initialised above,
     // before the LiveSessionManager start — see §3.4.1 for ordering.)
 
+    // Phase 3 PR 3.a: build the legacy catalog, then wrap it in the
+    // adapter. Both fields below share the same underlying `Arc<RwLock>`
+    // — mutations to the legacy catalog (reconcile loop, reindex) are
+    // visible to the adapter's fallback path.
+    let legacy_catalog = {
+        let catalog = claude_view_core::session_catalog::SessionCatalog::new();
+        let home = dirs::home_dir().expect("home dir exists");
+        let _ = catalog.rebuild_from_filesystem(
+            &home.join(".claude").join("projects"),
+            &home.join(".claude-backup").join("machines"),
+        );
+        tracing::info!(
+            sessions = catalog.len(),
+            "JSONL-first session catalog populated"
+        );
+        catalog
+    };
+    let session_catalog_adapter = crate::session_catalog_adapter::SessionCatalogAdapter::new(
+        db.clone(),
+        legacy_catalog.clone(),
+    );
+
     let state = Arc::new(state::AppState {
         start_time: std::time::Instant::now(),
         db,
@@ -514,19 +552,8 @@ pub fn create_app_full(
         hook_event_channels,
         sidecar,
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
-        session_catalog: {
-            let catalog = claude_view_core::session_catalog::SessionCatalog::new();
-            let home = dirs::home_dir().expect("home dir exists");
-            let _ = catalog.rebuild_from_filesystem(
-                &home.join(".claude").join("projects"),
-                &home.join(".claude-backup").join("machines"),
-            );
-            tracing::info!(
-                sessions = catalog.len(),
-                "JSONL-first session catalog populated"
-            );
-            catalog
-        },
+        session_catalog: legacy_catalog,
+        session_catalog_adapter,
         jwks,
         auth_session: auth_session_holder.clone(),
         share,
