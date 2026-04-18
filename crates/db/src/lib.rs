@@ -193,7 +193,7 @@ impl Database {
         let current_version = row.0 as usize;
 
         // Run only new migrations
-        for (i, migration) in migrations::MIGRATIONS.iter().enumerate() {
+        for (i, migration) in migrations::migrations().iter().enumerate() {
             let version = i + 1; // 1-based
             if version > current_version {
                 // Multi-statement migrations (containing BEGIN/COMMIT) use raw_sql()
