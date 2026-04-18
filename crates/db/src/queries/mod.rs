@@ -26,7 +26,7 @@ pub use search_prefilter::SearchPrefilter;
 // Phase 3 PR 3.a: catalog-shape reads consumed by `SessionCatalogAdapter`
 // (crates/core/src/session_catalog.rs). `StatsHeader` stays private — it's
 // still an internal indexer_v2 type.
-pub use stats::{CatalogFilter, CatalogSort, StatsCatalogRow};
+pub use stats::{CatalogFilter, CatalogSort, FullSessionStatsRow, StatsCatalogRow};
 pub use types::*;
 
 // Re-export _tx functions used by the unified indexing pipeline.

@@ -6,7 +6,6 @@
 //! property from the design doc (§10.2).
 
 use claude_view_session_parser::{PARSER_VERSION, STATS_VERSION};
-use serde_json::json;
 
 use super::config::StatsDelta;
 use crate::{Database, DbResult};
@@ -24,8 +23,14 @@ use crate::{Database, DbResult};
 /// seconds; unparseable input becomes NULL (consistent with the legacy
 /// path that also tolerates malformed timestamps).
 ///
-/// `per_model_tokens_json` is left as `'{}'` until the parser exposes
-/// per-model breakdown; PR 2.2.1 will swap this for the real JSON.
+/// `per_model_tokens_json` serializes the parser's
+/// `HashMap<String, TokenUsage>` via `serde_json`. Phase 2 left this as
+/// a hardcoded `'{}'` placeholder because Phase 3 readers didn't consume
+/// it yet; Phase 3 PR 3.2 (this change) wires cost calculation off the
+/// DB row so the real data has to flow through. The serialization is
+/// infallible in practice (HashMap + TokenUsage derive Serialize with
+/// no trait objects) — the unwrap_or falls back to `'{}'` for
+/// belt-and-braces.
 pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult<()> {
     let now = chrono::Utc::now().timestamp();
     let first_ts = delta
@@ -38,7 +43,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
         .last_message_at
         .as_deref()
         .and_then(rfc3339_to_unix);
-    let per_model_tokens_json = serde_json::to_string(&json!({})).unwrap_or_else(|_| "{}".into());
+    let per_model_tokens_json =
+        serde_json::to_string(&delta.stats.per_model_tokens).unwrap_or_else(|_| "{}".into());
 
     // Phase 3 PR 3.a: filesystem-mirror columns added in migration 66.
     // The writer persists them on every upsert; the adapter selects

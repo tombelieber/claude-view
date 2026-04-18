@@ -34,7 +34,7 @@ pub struct TokenBreakdown {
 }
 
 /// Accumulated token counts for a live session.
-#[derive(Debug, Clone, Default, Serialize, TS, utoipa::ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, serde::Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(
     feature = "codegen",
     ts(

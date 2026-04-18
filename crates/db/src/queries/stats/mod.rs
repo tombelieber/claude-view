@@ -144,6 +144,175 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for StatsCatalogRow {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Full-shape row (catalog metadata + all stats columns)
+// ---------------------------------------------------------------------------
+
+/// Full-shape session_stats row. Used by Phase 3 endpoint handlers
+/// (PR 3.2+) that need both the catalog metadata and the parsed stats
+/// without touching the JSONL file.
+///
+/// Field order mirrors `claude_view_core::session_stats::SessionStats`
+/// plus the filesystem-mirror columns the catalog view needs. The
+/// route handler converts this into `SessionStats` via
+/// `From<&FullSessionStatsRow>` before calling `build_session_info`.
+#[derive(Debug, Clone)]
+pub struct FullSessionStatsRow {
+    // Catalog metadata
+    pub session_id: String,
+    pub project_id: Option<String>,
+    pub file_path: Option<PathBuf>,
+    pub is_compressed: bool,
+    pub source_size: i64,
+    pub source_mtime: Option<i64>,
+
+    // Tokens
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub cache_read_tokens: i64,
+    pub cache_creation_tokens: i64,
+    pub cache_creation_5m_tokens: i64,
+    pub cache_creation_1hr_tokens: i64,
+
+    // Counts
+    pub turn_count: i64,
+    pub user_prompt_count: i64,
+    pub line_count: i64,
+    pub tool_call_count: i64,
+    pub thinking_block_count: i64,
+    pub api_error_count: i64,
+
+    // Tool breakdown
+    pub files_read_count: i64,
+    pub files_edited_count: i64,
+    pub bash_count: i64,
+    pub agent_spawn_count: i64,
+
+    // Timestamps
+    pub first_message_at: Option<i64>,
+    pub last_message_at: Option<i64>,
+    pub duration_seconds: i64,
+
+    // Model + git + display strings
+    pub primary_model: Option<String>,
+    pub git_branch: Option<String>,
+    pub preview: String,
+    pub last_message: String,
+
+    // Per-model tokens (JSON blob deserialized into HashMap). The writer
+    // serializes `HashMap<String, TokenUsage>` as JSON; this field
+    // round-trips it back. Empty map when the column is `'{}'` or
+    // invalid JSON (graceful — we never fail the query on a bad blob).
+    pub per_model_tokens: HashMap<String, claude_view_core::pricing::TokenUsage>,
+}
+
+const FULL_ROW_SQL_BY_ID: &str = "SELECT \
+    session_id, project_id, file_path, is_compressed, source_size, source_mtime, \
+    total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens, \
+    cache_creation_5m_tokens, cache_creation_1hr_tokens, \
+    turn_count, user_prompt_count, line_count, tool_call_count, \
+    thinking_block_count, api_error_count, \
+    files_read_count, files_edited_count, bash_count, agent_spawn_count, \
+    first_message_at, last_message_at, duration_seconds, \
+    primary_model, git_branch, preview, last_message, \
+    per_model_tokens_json \
+    FROM session_stats WHERE session_id = ?";
+
+const FULL_ROW_SQL_LIST_PREFIX: &str = "SELECT \
+    session_id, project_id, file_path, is_compressed, source_size, source_mtime, \
+    total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens, \
+    cache_creation_5m_tokens, cache_creation_1hr_tokens, \
+    turn_count, user_prompt_count, line_count, tool_call_count, \
+    thinking_block_count, api_error_count, \
+    files_read_count, files_edited_count, bash_count, agent_spawn_count, \
+    first_message_at, last_message_at, duration_seconds, \
+    primary_model, git_branch, preview, last_message, \
+    per_model_tokens_json \
+    FROM session_stats";
+
+impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
+    fn from_row(row: &'r sqlx::sqlite::SqliteRow) -> Result<Self, sqlx::Error> {
+        let file_path_str: Option<String> = row.try_get("file_path")?;
+        let is_compressed_int: i64 = row.try_get("is_compressed")?;
+        let per_model_json: String = row.try_get("per_model_tokens_json")?;
+        // Permissive parse: '{}' or bad JSON → empty map. Never fail
+        // the whole query on a malformed per-model blob; cost just
+        // displays as None for that row.
+        let per_model_tokens = serde_json::from_str(&per_model_json).unwrap_or_default();
+        Ok(Self {
+            session_id: row.try_get("session_id")?,
+            project_id: row.try_get("project_id")?,
+            file_path: file_path_str.map(PathBuf::from),
+            is_compressed: is_compressed_int != 0,
+            source_size: row.try_get("source_size")?,
+            source_mtime: row.try_get("source_mtime")?,
+            total_input_tokens: row.try_get("total_input_tokens")?,
+            total_output_tokens: row.try_get("total_output_tokens")?,
+            cache_read_tokens: row.try_get("cache_read_tokens")?,
+            cache_creation_tokens: row.try_get("cache_creation_tokens")?,
+            cache_creation_5m_tokens: row.try_get("cache_creation_5m_tokens")?,
+            cache_creation_1hr_tokens: row.try_get("cache_creation_1hr_tokens")?,
+            turn_count: row.try_get("turn_count")?,
+            user_prompt_count: row.try_get("user_prompt_count")?,
+            line_count: row.try_get("line_count")?,
+            tool_call_count: row.try_get("tool_call_count")?,
+            thinking_block_count: row.try_get("thinking_block_count")?,
+            api_error_count: row.try_get("api_error_count")?,
+            files_read_count: row.try_get("files_read_count")?,
+            files_edited_count: row.try_get("files_edited_count")?,
+            bash_count: row.try_get("bash_count")?,
+            agent_spawn_count: row.try_get("agent_spawn_count")?,
+            first_message_at: row.try_get("first_message_at")?,
+            last_message_at: row.try_get("last_message_at")?,
+            duration_seconds: row.try_get("duration_seconds")?,
+            primary_model: row.try_get("primary_model")?,
+            git_branch: row.try_get("git_branch")?,
+            preview: row.try_get("preview")?,
+            last_message: row.try_get("last_message")?,
+            per_model_tokens,
+        })
+    }
+}
+
+/// Build a `SessionStats` from a DB row. `first_message_at` /
+/// `last_message_at` are stored as unix-seconds and converted back to
+/// RFC3339 strings so the `SessionInfo` builder doesn't need a second
+/// code path.
+impl From<&FullSessionStatsRow> for claude_view_core::session_stats::SessionStats {
+    fn from(row: &FullSessionStatsRow) -> Self {
+        fn unix_to_rfc3339(ts: Option<i64>) -> Option<String> {
+            ts.and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                .map(|dt| dt.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+        }
+        Self {
+            total_input_tokens: row.total_input_tokens.max(0) as u64,
+            total_output_tokens: row.total_output_tokens.max(0) as u64,
+            cache_read_tokens: row.cache_read_tokens.max(0) as u64,
+            cache_creation_tokens: row.cache_creation_tokens.max(0) as u64,
+            cache_creation_5m_tokens: row.cache_creation_5m_tokens.max(0) as u64,
+            cache_creation_1hr_tokens: row.cache_creation_1hr_tokens.max(0) as u64,
+            turn_count: row.turn_count.max(0) as u32,
+            user_prompt_count: row.user_prompt_count.max(0) as u32,
+            line_count: row.line_count.max(0) as u32,
+            tool_call_count: row.tool_call_count.max(0) as u32,
+            thinking_block_count: row.thinking_block_count.max(0) as u32,
+            api_error_count: row.api_error_count.max(0) as u32,
+            files_read_count: row.files_read_count.max(0) as u32,
+            files_edited_count: row.files_edited_count.max(0) as u32,
+            bash_count: row.bash_count.max(0) as u32,
+            agent_spawn_count: row.agent_spawn_count.max(0) as u32,
+            first_message_at: unix_to_rfc3339(row.first_message_at),
+            last_message_at: unix_to_rfc3339(row.last_message_at),
+            duration_seconds: row.duration_seconds.max(0) as u32,
+            primary_model: row.primary_model.clone(),
+            git_branch: row.git_branch.clone(),
+            preview: row.preview.clone(),
+            last_message: row.last_message.clone(),
+            per_model_tokens: row.per_model_tokens.clone(),
+        }
+    }
+}
+
 impl Database {
     /// Fetch one catalog row by session id, or `None` if the session has
     /// never been indexed (first fsnotify event hasn't landed yet).
@@ -232,6 +401,62 @@ impl Database {
             out.insert(pid, count as usize);
         }
         Ok(out)
+    }
+
+    /// Load the full row shape — catalog metadata + all stats columns —
+    /// for one session. Used by Phase 3 endpoint handlers that need to
+    /// answer detail queries without re-parsing the JSONL.
+    ///
+    /// Returns `None` if the session hasn't been indexed yet.
+    pub async fn get_full_session_stats(
+        &self,
+        session_id: &str,
+    ) -> DbResult<Option<FullSessionStatsRow>> {
+        let row = sqlx::query_as::<_, FullSessionStatsRow>(FULL_ROW_SQL_BY_ID)
+            .bind(session_id)
+            .fetch_optional(self.pool())
+            .await?;
+        Ok(row)
+    }
+
+    /// List the full row shape matching `filter`, sorted + limited.
+    /// Used by the Phase 3 `/api/sessions` list cutover (PR 3.2).
+    ///
+    /// Rows with `project_id IS NULL` (pre-migration-66 rows that haven't
+    /// been reindexed) are EXCLUDED — callers that still need them
+    /// should fall back to the in-memory catalog via
+    /// `SessionCatalogAdapter::list`. For the list handler this is the
+    /// right behaviour: a row without project_id cannot be rendered in
+    /// the project-scoped list UI anyway.
+    pub async fn list_full_session_stats(
+        &self,
+        filter: &CatalogFilter,
+        sort: CatalogSort,
+        limit: i64,
+    ) -> DbResult<Vec<FullSessionStatsRow>> {
+        let direction = match sort {
+            CatalogSort::LastTsDesc => "DESC",
+            CatalogSort::LastTsAsc => "ASC",
+        };
+
+        let sql = format!(
+            r#"{FULL_ROW_SQL_LIST_PREFIX}
+                WHERE (?1 IS NULL OR project_id = ?1)
+                  AND project_id IS NOT NULL
+                  AND (?2 IS NULL OR COALESCE(last_message_at, source_mtime, 0) >= ?2)
+                  AND (?3 IS NULL OR COALESCE(last_message_at, source_mtime, 0) <= ?3)
+                ORDER BY COALESCE(last_message_at, source_mtime, 0) {direction}
+                LIMIT ?4"#
+        );
+
+        let rows = sqlx::query_as::<_, FullSessionStatsRow>(&sql)
+            .bind(filter.project_id.as_deref())
+            .bind(filter.min_last_ts)
+            .bind(filter.max_last_ts)
+            .bind(limit)
+            .fetch_all(self.pool())
+            .await?;
+        Ok(rows)
     }
 
     /// Return distinct project_id values with a "last activity" timestamp

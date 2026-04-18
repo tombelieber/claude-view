@@ -26,7 +26,7 @@
 use claude_view_core::session_catalog::{
     CatalogRow, Filter as CatFilter, ProjectId, SessionCatalog, SessionId, Sort as CatSort,
 };
-use claude_view_db::{CatalogFilter, CatalogSort, Database, StatsCatalogRow};
+use claude_view_db::{CatalogFilter, CatalogSort, Database, FullSessionStatsRow, StatsCatalogRow};
 use std::collections::HashMap;
 
 /// Env-var name that flips the adapter into legacy-passthrough mode.
@@ -188,6 +188,65 @@ impl SessionCatalogAdapter {
         merged
     }
 
+    /// Phase 3 PR 3.2 — full-row list. Returns every column needed to
+    /// render a `/api/sessions` list entry (catalog metadata + stats +
+    /// per-model token breakdown) without a second DB call and without
+    /// parsing the JSONL. Filters, sorts, limits match
+    /// [`Self::list`] semantics.
+    ///
+    /// Error / env-var behaviour: returns `Err(())` if the env-var
+    /// gate is on, signalling the caller should fall back to the
+    /// legacy path. DB errors fall through as `Err(())` too — the
+    /// caller decides whether to fail the request or serve stale data.
+    pub async fn list_full(
+        &self,
+        filter: &CatFilter,
+        sort: CatSort,
+        limit: usize,
+    ) -> Result<Vec<FullSessionStatsRow>, ()> {
+        if legacy_read_enabled() {
+            return Err(());
+        }
+
+        let db_filter = CatalogFilter {
+            project_id: filter.project_id.clone(),
+            min_last_ts: filter.min_last_ts,
+            max_last_ts: filter.max_last_ts,
+        };
+        let db_sort = match sort {
+            CatSort::LastTsDesc => CatalogSort::LastTsDesc,
+            CatSort::LastTsAsc => CatalogSort::LastTsAsc,
+        };
+        let limit_i64 = i64::try_from(limit).unwrap_or(i64::MAX);
+
+        self.db
+            .list_full_session_stats(&db_filter, db_sort, limit_i64)
+            .await
+            .map_err(|err| {
+                tracing::warn!(
+                    error = %err,
+                    "SessionCatalogAdapter::list_full — session_stats query failed"
+                );
+            })
+    }
+
+    /// Phase 3 PR 3.3 — single-session full-row load.
+    pub async fn get_full(&self, session_id: &str) -> Result<Option<FullSessionStatsRow>, ()> {
+        if legacy_read_enabled() {
+            return Err(());
+        }
+        self.db
+            .get_full_session_stats(session_id)
+            .await
+            .map_err(|err| {
+                tracing::warn!(
+                    error = %err,
+                    session_id,
+                    "SessionCatalogAdapter::get_full — session_stats query failed"
+                );
+            })
+    }
+
     /// Last-activity-per-project helper. Delegates straight to the DB in
     /// the normal path — `/api/projects` needs both the count and the
     /// last activity and assembling them from two calls would require
@@ -239,6 +298,24 @@ impl SessionCatalogAdapter {
 /// indexed before migration 66 landed). Callers that get `None` should
 /// fall back to the in-memory `SessionCatalog`.
 fn stats_row_to_catalog_row(row: &StatsCatalogRow) -> Option<CatalogRow> {
+    let file_path = row.file_path.clone()?;
+    let project_id = row.project_id.clone()?;
+    Some(CatalogRow {
+        id: row.session_id.clone() as SessionId,
+        file_path,
+        is_compressed: row.is_compressed,
+        bytes: u64::try_from(row.source_size.max(0)).unwrap_or(0),
+        mtime: row.source_mtime.unwrap_or(0),
+        project_id,
+        first_ts: row.first_message_at,
+        last_ts: row.last_message_at,
+    })
+}
+
+/// Convert a full-stats row into the legacy `CatalogRow` used by
+/// `build_session_info`. Returns `None` if the row still has NULL
+/// filesystem-mirror columns (pre-migration-66 data).
+pub fn full_row_to_catalog_row(row: &FullSessionStatsRow) -> Option<CatalogRow> {
     let file_path = row.file_path.clone()?;
     let project_id = row.project_id.clone()?;
     Some(CatalogRow {

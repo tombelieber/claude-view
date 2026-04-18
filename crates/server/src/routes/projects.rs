@@ -137,19 +137,41 @@ pub async fn list_project_sessions(
         "oldest" => CatSort::LastTsAsc,
         _ => CatSort::LastTsDesc,
     };
-    let rows = state
-        .session_catalog
-        .list(&cat_filter, cat_sort, usize::MAX);
 
+    // Phase 3 PR 3.2: the hot path is a single SELECT over session_stats
+    // with all columns. Each row produces a SessionInfo with zero JSONL
+    // I/O. Legacy path (env-var flip or DB failure) still parses JSONL
+    // per session via the catalog + session_stats::extract_stats pair.
     let pricing = &state.pricing;
-    let mut all_sessions: Vec<SessionInfo> = rows
-        .iter()
-        .filter_map(|row| {
-            session_stats::extract_stats(&row.file_path, row.is_compressed)
-                .ok()
-                .map(|stats| build_session_info(row, &stats, pricing))
-        })
-        .collect();
+    let mut all_sessions: Vec<SessionInfo> = match state
+        .session_catalog_adapter
+        .list_full(&cat_filter, cat_sort, usize::MAX)
+        .await
+    {
+        Ok(rows) => rows
+            .iter()
+            .filter_map(|row| {
+                let cat_row = crate::session_catalog_adapter::full_row_to_catalog_row(row)?;
+                let db_stats: claude_view_core::session_stats::SessionStats = row.into();
+                Some(build_session_info(&cat_row, &db_stats, pricing))
+            })
+            .collect(),
+        Err(()) => {
+            // Legacy fallback: env-var forced the old code path or
+            // the DB query failed. Re-parse each JSONL via the
+            // in-memory catalog — matches pre-Phase-3 behaviour.
+            let rows = state
+                .session_catalog
+                .list(&cat_filter, cat_sort, usize::MAX);
+            rows.iter()
+                .filter_map(|row| {
+                    session_stats::extract_stats(&row.file_path, row.is_compressed)
+                        .ok()
+                        .map(|stats| build_session_info(row, &stats, pricing))
+                })
+                .collect()
+        }
+    };
 
     // Layer DB-only fields (archived, commits, skills, reedit) so the caller
     // can filter/display them. Cheap: one query regardless of result size.
