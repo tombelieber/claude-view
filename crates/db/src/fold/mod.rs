@@ -41,8 +41,13 @@
 //! avoid a spin loop against a broken DB handle.
 
 mod apply;
+pub mod parity;
 mod types;
 
+pub use parity::{
+    compare_flags_session, run_parity_sweep, FlagFieldDiff, FlagParityReport, ParitySweepSummary,
+    FLAG_FIELDS,
+};
 pub use types::{ActionEvent, ClassifyPayload, FoldBatchSummary};
 
 use std::sync::Arc;
@@ -128,6 +133,68 @@ pub async fn run_forever(db: Arc<Database>) {
 /// `tokio::spawn(run_forever(db))` directly.
 pub fn spawn_flags_fold(db: Arc<Database>) {
     tokio::spawn(run_forever(db));
+}
+
+// ──────────────────────────────────────────────────────────────────
+// PR 5.4 — shadow parity monitor
+// ──────────────────────────────────────────────────────────────────
+
+/// How many recent sessions the parity monitor samples per sweep.
+/// Matches the §7.1 exit gate's "≥ 10,000 fold events processed" ask
+/// — a 10k-session prod DB samples the entire table per cycle; a
+/// larger corpus gets the most-recent slice.
+const PARITY_SWEEP_LIMIT: i64 = 10_000;
+
+/// How often the parity monitor runs. 15 min balances "useful
+/// feedback loop during the 48 h Phase 5 soak" with "negligible DB
+/// load (~10 k rows × 8 fields × 2 reads per cycle)".
+const PARITY_SWEEP_INTERVAL_SECS: u64 = 900;
+
+/// Background loop that periodically runs `run_parity_sweep` and logs
+/// the aggregated counts at INFO level. Phase 7's /metrics exporter
+/// will replace the tracing hop with direct Prometheus counter
+/// increments; until then the logs are the observability channel.
+pub async fn run_parity_forever(db: Arc<Database>) {
+    loop {
+        tokio::time::sleep(Duration::from_secs(PARITY_SWEEP_INTERVAL_SECS)).await;
+        match parity::run_parity_sweep(&db, PARITY_SWEEP_LIMIT).await {
+            Ok(summary) => {
+                let any_drift = summary.total_diverged > 0;
+                // Fold per-field counts into a comma-joined display string
+                // so the log entry is one line even when most fields are 0.
+                let per_field: String = summary
+                    .per_field_counts
+                    .iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                if any_drift {
+                    tracing::warn!(
+                        sampled = summary.total_sampled,
+                        diverged = summary.total_diverged,
+                        missing_shadow = summary.total_missing_shadow,
+                        fields = %per_field,
+                        "shadow_flags_diff_total non-zero — §6.4 48h soak gate NOT clean"
+                    );
+                } else {
+                    tracing::info!(
+                        sampled = summary.total_sampled,
+                        fields = %per_field,
+                        "shadow_flags_diff_total all zero — §6.4 soak-clean cycle"
+                    );
+                }
+            }
+            Err(e) => tracing::warn!(
+                error = %e,
+                "parity sweep failed — retrying at next interval"
+            ),
+        }
+    }
+}
+
+/// Spawn the parity monitor on the current tokio runtime.
+pub fn spawn_parity_monitor(db: Arc<Database>) {
+    tokio::spawn(run_parity_forever(db));
 }
 
 impl Database {

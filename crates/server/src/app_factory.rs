@@ -510,7 +510,17 @@ pub fn create_app_full(
     // Until PR 5.5 flips readers onto `session_flags`, this is a
     // shadow writer — the legacy `sessions.*` columns remain the
     // source of truth and PR 5.4's parity monitor compares the two.
-    claude_view_db::fold::spawn_flags_fold(Arc::new(db.clone()));
+    let fold_db = Arc::new(db.clone());
+    claude_view_db::fold::spawn_flags_fold(fold_db.clone());
+
+    // CQRS Phase 5 PR 5.4 — spawn the shadow parity monitor. Every
+    // 15 min it samples the 10 k most recent sessions and logs
+    // `shadow_flags_diff_total{field}` counts at INFO (all-zero) or
+    // WARN (any drift). §6.4 soak gate = 48 h continuous all-zero
+    // before Phase 5 readers may cut over (PR 5.5). Phase 7 adds
+    // /metrics so these counts feed Prometheus alerts directly; until
+    // then `tracing::warn!` is the alert channel.
+    claude_view_db::fold::spawn_parity_monitor(fold_db);
 
     let (
         manager,
