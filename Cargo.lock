@@ -754,6 +754,7 @@ dependencies = [
  "claude-view-search",
  "claude-view-server",
  "claude-view-session-parser",
+ "claude-view-stats-rollup",
  "claude-view-types",
  "dirs",
  "flate2",
