@@ -449,21 +449,28 @@ pub fn create_app_full(
     let (stats_delta_tx, _stats_delta_consumer_handle) =
         claude_view_db::indexer_v2::spawn_delta_consumer(Arc::new(db.clone()));
 
-    // CQRS Phase 4 PR 4.2c — kick off a full rebuild of rollup tables
-    // from `session_stats` in the background. Runs asynchronously so
-    // server binding is not delayed; rollup reader endpoints (Phase 4.3+)
-    // may observe empty tables for the first few seconds after startup
-    // until this task completes (4.8k sessions × ~0.3 ms ≈ 1.5 s on the
-    // author's M5 Max; scales linearly with session count).
+    // CQRS Phase 4 PR 4.2c + 4.8 — kick off a composed rollup rebuild:
+    // truncate + replay `session_stats` through Stage C, then fold the
+    // pre-aggregated `contribution_snapshots` for Phase-5-blocked line /
+    // commit fields.
     //
-    // Idempotent: re-running over the same session_stats produces the
-    // same rollup state (`full_rebuild_from_session_stats` truncates
-    // before re-folding). Safe to run concurrently with the live
-    // Stage C incremental path above — live deltas see
-    // session_count += 1 on first observation; rebuild's first-
-    // observation mode also writes session_count = 1; the UPSERT
-    // pointwise-sum semantics absorb the overlap idempotently
-    // because rebuild truncates first.
+    // Runs asynchronously so server binding is not delayed; rollup
+    // reader endpoints (Phase 4.3+) may observe empty tables for the
+    // first few seconds after startup until this task completes
+    // (4.8k sessions × ~0.3 ms + snapshot fold ≈ 2 s on the author's
+    // M5 Max; scales linearly with session + snapshot row count).
+    //
+    // Idempotent: re-running over the same session_stats +
+    // contribution_snapshots produces the same rollup state
+    // (`full_rebuild_from_session_stats` truncates before re-folding;
+    // the snapshot fold writes only the fields Stage C leaves at
+    // zero, so the two writers commute under pointwise-sum UPSERT).
+    //
+    // Safe to run concurrently with the live Stage C incremental path
+    // above — live deltas see session_count += 1 on first observation;
+    // rebuild's first-observation mode also writes session_count = 1;
+    // the UPSERT pointwise-sum semantics absorb the overlap because
+    // rebuild truncates first.
     //
     // Logs summary on completion; errors log but do not kill the
     // task's spawned tokio runtime slot (matches the consumer's
@@ -471,18 +478,23 @@ pub fn create_app_full(
     let rebuild_db = Arc::new(db.clone());
     tokio::spawn(async move {
         let started = std::time::Instant::now();
-        match claude_view_db::stage_c::full_rebuild_from_session_stats(rebuild_db.pool()).await {
-            Ok(summary) => tracing::info!(
-                rows_observed = summary.rows_observed,
-                rows_applied = summary.rows_applied,
+        match claude_view_db::stage_c::full_rebuild_with_snapshots(rebuild_db.pool()).await {
+            Ok((rebuild, fold)) => tracing::info!(
+                rebuild_rows_observed = rebuild.rows_observed,
+                rebuild_rows_applied = rebuild.rows_applied,
+                fold_rows_observed = fold.rows_observed,
+                fold_rows_applied = fold.rows_applied,
+                fold_rows_skipped_no_project = fold.rows_skipped_no_project,
+                fold_rows_skipped_bad_date = fold.rows_skipped_bad_date,
                 elapsed_ms = started.elapsed().as_millis() as u64,
-                "Stage C startup full_rebuild complete"
+                "Stage C startup full_rebuild + snapshot fold complete"
             ),
             Err(e) => tracing::warn!(
                 error = %e,
                 elapsed_ms = started.elapsed().as_millis() as u64,
-                "Stage C startup full_rebuild failed — rollup endpoints \
-                 will populate incrementally as new deltas arrive"
+                "Stage C startup full_rebuild + snapshot fold failed — \
+                 rollup endpoints will populate incrementally as new \
+                 deltas arrive"
             ),
         }
     });

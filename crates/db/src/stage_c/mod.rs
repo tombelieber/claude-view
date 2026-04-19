@@ -42,7 +42,32 @@
 //! See `private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md §6.2 PR 4.2`.
 
 pub mod consumer;
+pub mod fold;
 pub mod rebuild;
 
 pub use consumer::{apply_stats_delta, resolve_observation_ts, StageCError};
+pub use fold::{fold_contribution_snapshots_into_rollups, FoldSummary};
 pub use rebuild::{full_rebuild_from_session_stats, RebuildSummary};
+
+/// Composed rebuild entry point — truncates rollup tables, replays
+/// `session_stats` through Stage C, then folds `contribution_snapshots`
+/// for the Phase-5-blocked line / commit fields.
+///
+/// This is the entry point `app_factory.rs` should call at startup.
+/// The two sub-steps remain public for tests that need to assert on
+/// intermediate state (e.g. Stage-C-only baseline before fold).
+///
+/// ## Atomicity
+///
+/// Not atomic across the two phases — Stage C replay can partially
+/// complete before fold errors, leaving rollups in a half-rebuilt
+/// state. This matches the existing `full_rebuild_from_session_stats`
+/// semantics (the rebuild can also partially complete). The next
+/// rebuild truncates first and reapplies; no state lingers.
+pub async fn full_rebuild_with_snapshots(
+    pool: &sqlx::SqlitePool,
+) -> Result<(RebuildSummary, FoldSummary), StageCError> {
+    let rebuild = full_rebuild_from_session_stats(pool).await?;
+    let fold = fold_contribution_snapshots_into_rollups(pool).await?;
+    Ok((rebuild, fold))
+}
