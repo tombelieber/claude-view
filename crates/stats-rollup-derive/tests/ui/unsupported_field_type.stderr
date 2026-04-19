@@ -1,0 +1,5 @@
+error: only `u64` and `f64` field types are supported in #[derive(RollupTable)] structs today
+ --> tests/ui/unsupported_field_type.rs:8:16
+  |
+8 |     pub label: String,
+  |                ^^^^^^

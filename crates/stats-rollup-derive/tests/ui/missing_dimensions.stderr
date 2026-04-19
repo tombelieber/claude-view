@@ -1,0 +1,7 @@
+error: missing `#[rollup(dimensions = [global, project(project_id: TEXT), ...])]` attribute
+ --> tests/ui/missing_dimensions.rs:3:10
+  |
+3 | #[derive(RollupTable)]
+  |          ^^^^^^^^^^^
+  |
+  = note: this error originates in the derive macro `RollupTable` (in Nightly builds, run with -Z macro-backtrace for more info)

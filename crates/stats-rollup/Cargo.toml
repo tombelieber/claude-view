@@ -1,7 +1,10 @@
 # crates/stats-rollup/Cargo.toml
 #
-# CQRS Phase 1 — Stage C rollup. Associative-monoid merge over session windows.
-# Pure; no I/O, no DB. PR 1.1 scaffold; PR 1.3 adds `rollup`, `merge`, `period`.
+# CQRS Phase 1: associative-monoid merge over session windows.
+# Phase 4: adds `StatsCore` + `#[derive(RollupTable)]` expansion →
+# 15 typed rollup structs + migrations + sqlx-based I/O functions. The
+# sqlx dependency arrives here in Phase 4 because the macro expands
+# `::sqlx::query(...)` in the user's crate namespace.
 
 [package]
 name = "claude-view-stats-rollup"
@@ -11,6 +14,7 @@ license.workspace = true
 
 [dependencies]
 serde = { workspace = true }
+sqlx = { workspace = true }
 claude-view-core = { workspace = true }
 claude-view-session-parser = { workspace = true }
 claude-view-stats-rollup-derive = { path = "../stats-rollup-derive" }
@@ -18,3 +22,4 @@ workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dev-dependencies]
 proptest = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

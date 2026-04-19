@@ -1,0 +1,5 @@
+error: #[derive(RollupTable)] is only supported on structs
+ --> tests/ui/non_struct.rs:6:10
+  |
+6 | pub enum Nope {
+  |          ^^^^

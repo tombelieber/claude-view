@@ -1091,6 +1091,8 @@ dependencies = [
  "claude-view-stats-rollup-derive",
  "proptest",
  "serde",
+ "sqlx",
+ "tokio",
  "workspace-hack",
 ]
 
@@ -1100,6 +1102,7 @@ version = "0.38.0"
 dependencies = [
  "proc-macro2",
  "quote",
+ "sqlx",
  "syn",
  "trybuild",
  "workspace-hack",

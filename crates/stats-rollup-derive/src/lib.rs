@@ -1,44 +1,64 @@
-//! CQRS Phase 1 proc-macro scaffold for `#[derive(RollupTable)]`.
+//! CQRS Phase 4 proc-macro for `#[derive(RollupTable)]`.
 //!
-//! PR 1.4 behavior: parses the `DeriveInput` so bogus applications (e.g., applied
-//! to an `enum` or `union`) fail with a clear compiler error, and emits a hidden
-//! `__ROLLUP_TABLE_STUB` const on the target type. This const lets Phase 4 code
-//! — and tests — check "was `RollupTable` derived here?" without inventing a
-//! separate trait or runtime registry.
+//! Expands the derive into the 15 typed rollup structs, migrations, and
+//! I/O functions that Stage C + the read-side cutover endpoints consume.
+//! Spec: `private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md §6.2`.
 //!
-//! Phase 4 replaces the emitted body with full codegen: 15 typed rollup table
-//! structs + SQL migration strings + typed query functions. See design doc §6.
+//! Input shape (enforced by [`attrs::RollupConfig`]):
+//! ```ignore
+//! #[derive(RollupTable)]
+//! #[rollup(buckets = [daily, weekly, monthly])]
+//! #[rollup(dimensions = [
+//!     global,
+//!     project(project_id: TEXT),
+//!     branch(project_id: TEXT, branch: TEXT),
+//!     model(model_id: TEXT),
+//!     category(category_l1: TEXT),
+//! ])]
+//! pub struct StatsCore {
+//!     pub session_count: u64,
+//!     // ... numeric stat fields only ...
+//!     pub reedit_rate_sum: f64,
+//! }
+//! ```
+//!
+//! Output: `TABLE_COUNT` const = `buckets.len() * dimensions.len()`,
+//! one `struct` per `(bucket, dim)` pair, one `CREATE TABLE` string in
+//! `migrations::STATEMENTS`, and three `async fn`s per struct
+//! (`insert_*`, `upsert_*`, `select_range_*`).
+//!
+//! See `crates/stats-rollup-derive/tests/ui/` for the happy-path and
+//! compile-fail matrix.
 
 use proc_macro::TokenStream;
-use quote::quote;
-use syn::{parse_macro_input, Data, DeriveInput};
+use syn::{parse_macro_input, DeriveInput};
+
+mod attrs;
+mod codegen;
 
 #[proc_macro_derive(RollupTable, attributes(rollup))]
 pub fn rollup_table_derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let name = &input.ident;
 
-    // Validate target shape early so Phase 4's codegen has a documented
-    // contract to extend. `RollupTable` is only meaningful for structs;
-    // enums/unions get a clear error now rather than a confusing codegen
-    // error later.
-    if !matches!(input.data, Data::Struct(_)) {
-        return syn::Error::new_spanned(
-            &input.ident,
-            "#[derive(RollupTable)] is only supported on structs",
+    let cfg = match attrs::RollupConfig::from_attrs(&input.attrs) {
+        Ok(c) => c,
+        Err(e) => return e.to_compile_error().into(),
+    };
+
+    let fields = match codegen::StatsField::all_from(&input) {
+        Ok(f) => f,
+        Err(e) => return e.to_compile_error().into(),
+    };
+
+    if fields.is_empty() {
+        return syn::Error::new(
+            input.ident.span(),
+            "#[derive(RollupTable)] requires at least one numeric field \
+             (u64 or f64) on the target struct",
         )
         .to_compile_error()
         .into();
     }
 
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
-
-    let expanded = quote! {
-        impl #impl_generics #name #ty_generics #where_clause {
-            #[doc(hidden)]
-            pub const __ROLLUP_TABLE_STUB: () = ();
-        }
-    };
-
-    expanded.into()
+    codegen::emit(&input, &cfg, &fields).into()
 }

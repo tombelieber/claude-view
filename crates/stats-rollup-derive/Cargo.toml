@@ -21,3 +21,8 @@ workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
 [dev-dependencies]
 trybuild = { workspace = true }
+# Phase 4: trybuild `ui/*.rs` files compile as if inside this crate; the
+# macro expansion uses `::sqlx::query(...)` paths, so trybuild needs sqlx
+# available. Not a runtime cost on proc-macro consumers because those
+# consumers already have sqlx (e.g. `stats-rollup`).
+sqlx = { workspace = true }

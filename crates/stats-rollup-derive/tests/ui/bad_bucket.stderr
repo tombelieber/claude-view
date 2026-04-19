@@ -1,0 +1,5 @@
+error: unknown bucket `yearly`; expected one of: daily, weekly, monthly
+ --> tests/ui/bad_bucket.rs:4:21
+  |
+4 | #[rollup(buckets = [yearly])]
+  |                     ^^^^^^

@@ -1,24 +1,26 @@
-//! CQRS Phase 1 rollup crate — Stage C aggregation + associative-monoid merge primitives.
+//! Phase 1 — associative-monoid merge primitives over session windows.
+//! Phase 4 — `StatsCore` + `#[derive(RollupTable)]` expansion into 15
+//! typed rollup structs, `CREATE TABLE` statements, and sqlx I/O fns.
 //!
-//! PR 1.3: Phase 1 impl takes `&[&SessionStats]`. Phase 4 extends to
-//! `&[RollupInput<'_> { stats, flags }]` once `SessionFlags` arrives.
-//! Do NOT introduce a new `SessionStats` type; reuse the one from
-//! `claude-view-core` (re-exported via `claude-view-session-parser`).
+//! Version types (`RollupVersion`, `ROLLUP_VERSION`) are re-exported
+//! from `claude-view-session-parser` so there's exactly one canonical
+//! ROLLUP_VERSION in the workspace.
 //!
-//! Version types (`RollupVersion`, `ROLLUP_VERSION`) are re-exported from
-//! `claude-view-session-parser` to keep a single source of truth. Bumping
-//! `ROLLUP_VERSION` there forces rollup-only recompute without re-running
-//! Stages A/B.
+//! Bumping `ROLLUP_VERSION` there forces rollup-only recompute without
+//! re-running Stages A/B.
 //!
-//! See `private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md §2.2`.
+//! See `private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md
+//! §2.2 (Phase 1 scaffold) + §6.2 (Phase 4 macro expansion)`.
 
 pub mod bucket;
 pub mod merge;
 pub mod period;
 pub mod rollup;
+pub mod stats_core;
 
 pub use bucket::Bucket;
 pub use claude_view_session_parser::{RollupVersion, ROLLUP_VERSION};
 pub use merge::merge;
 pub use period::PeriodStats;
 pub use rollup::rollup;
+pub use stats_core::StatsCore;
