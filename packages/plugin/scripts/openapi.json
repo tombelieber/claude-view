@@ -1288,6 +1288,156 @@
         }
       }
     },
+    "/api/insights/models": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "GET /api/insights/models — per-model usage aggregated from rollup\ntables.",
+        "operationId": "get_insights_models",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Period start (unix seconds). Pair with `to`; omit both for\nall-time.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Period end (unix seconds). Pair with `from`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Rollup bucket granularity. Valid: `daily`, `weekly`, `monthly`.\nDefaults to `daily`.\n\nSmaller buckets scan more rows; for ranges >= 180 days prefer\n`weekly` or `monthly` to keep row count bounded. The aggregation\nsum is identical across granularities.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max rows to return after descending-by-total-tokens sort.\nDefaults to 100. Hard-capped at 500 server-side to bound payload\nsize.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-model aggregated usage for the requested range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsModelsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/insights/projects": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "GET /api/insights/projects — per-project usage aggregated from\nrollup tables.",
+        "operationId": "get_insights_projects",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "description": "Period start (unix seconds). Pair with `to`; omit both for\nall-time.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "description": "Period end (unix seconds). Pair with `from`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "bucket",
+            "in": "query",
+            "description": "Rollup bucket granularity. Valid: `daily`, `weekly`, `monthly`.\nDefaults to `daily`.\n\nSmaller buckets scan more rows; for ranges >= 180 days prefer\n`weekly` or `monthly` to keep row count bounded. The aggregation\nsum is identical across granularities.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Max rows to return after descending-by-total-tokens sort.\nDefaults to 100. Hard-capped at 500 server-side to bound payload\nsize.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-project aggregated usage for the requested range",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsProjectsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/insights/trends": {
       "get": {
         "tags": [
@@ -9344,6 +9494,43 @@
           "tip"
         ]
       },
+      "InsightsAggregateMeta": {
+        "type": "object",
+        "description": "Shared metadata for `/api/insights/models` and\n`/api/insights/projects`.",
+        "required": [
+          "effectiveRange",
+          "bucket",
+          "rowsRead",
+          "rowsReturned",
+          "legacyPath"
+        ],
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "description": "Bucket granularity that was actually used (input clamped)."
+          },
+          "effectiveRange": {
+            "$ref": "#/components/schemas/EffectiveRangeMeta",
+            "description": "Resolved `[from, to)` unix range that was queried."
+          },
+          "legacyPath": {
+            "type": "boolean",
+            "description": "`true` when the handler fell back to the legacy GROUP BY path\n(`CLAUDE_VIEW_USE_LEGACY_STATS_READ=1`)."
+          },
+          "rowsRead": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Rows read from the rollup table before aggregation.",
+            "minimum": 0
+          },
+          "rowsReturned": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Dimension rows returned (after sort + limit).",
+            "minimum": 0
+          }
+        }
+      },
       "InsightsMeta": {
         "allOf": [
           {
@@ -9390,6 +9577,27 @@
         ],
         "description": "Response metadata."
       },
+      "InsightsModelsResponse": {
+        "type": "object",
+        "description": "Response for `/api/insights/models`.",
+        "required": [
+          "models",
+          "meta"
+        ],
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/InsightsAggregateMeta",
+            "description": "Response metadata."
+          },
+          "models": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModelInsight"
+            },
+            "description": "Per-model totals, sorted by `total_tokens` descending."
+          }
+        }
+      },
       "InsightsOverview": {
         "type": "object",
         "description": "Overview statistics for the insights page.",
@@ -9407,6 +9615,27 @@
           },
           "workBreakdown": {
             "$ref": "#/components/schemas/WorkBreakdown"
+          }
+        }
+      },
+      "InsightsProjectsResponse": {
+        "type": "object",
+        "description": "Response for `/api/insights/projects`.",
+        "required": [
+          "projects",
+          "meta"
+        ],
+        "properties": {
+          "meta": {
+            "$ref": "#/components/schemas/InsightsAggregateMeta",
+            "description": "Response metadata."
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectInsight"
+            },
+            "description": "Per-project totals, sorted by `total_tokens` descending."
           }
         }
       },
@@ -10255,6 +10484,46 @@
           "value": {
             "type": "number",
             "format": "double"
+          }
+        }
+      },
+      "ModelInsight": {
+        "type": "object",
+        "description": "One model's aggregated usage for the requested time range.",
+        "required": [
+          "modelId",
+          "sessionCount",
+          "totalTokens",
+          "promptCount",
+          "avgDurationSeconds"
+        ],
+        "properties": {
+          "avgDurationSeconds": {
+            "type": "number",
+            "format": "double",
+            "description": "Mean session duration in seconds (computed from\n`duration_sum_ms / duration_count / 1000`). Zero when no\nsessions in the range contributed a duration."
+          },
+          "modelId": {
+            "type": "string",
+            "description": "Model identifier (e.g. `claude-opus-4-7`, `claude-sonnet-4-6`)."
+          },
+          "promptCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sum of user-prompt counts across sessions.",
+            "minimum": 0
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions that had this as their primary model.",
+            "minimum": 0
+          },
+          "totalTokens": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sum of input + output + cache-read + cache-creation tokens.",
+            "minimum": 0
           }
         }
       },
@@ -11297,6 +11566,63 @@
           "totalSeconds": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "ProjectInsight": {
+        "type": "object",
+        "description": "One project's aggregated usage for the requested time range.",
+        "required": [
+          "projectId",
+          "sessionCount",
+          "totalTokens",
+          "promptCount",
+          "avgDurationSeconds",
+          "linesAdded",
+          "linesRemoved",
+          "commitCount"
+        ],
+        "properties": {
+          "avgDurationSeconds": {
+            "type": "number",
+            "format": "double"
+          },
+          "commitCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Distinct commit count attributed to this project.",
+            "minimum": 0
+          },
+          "linesAdded": {
+            "type": "integer",
+            "format": "int64",
+            "description": "AI-attributed lines added — populated from the PR 4.8\ncontribution_snapshots fold for history, and from Phase 5\nSessionFlags going forward.",
+            "minimum": 0
+          },
+          "linesRemoved": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "projectId": {
+            "type": "string",
+            "description": "Project identifier (directory-mangled form, matching\n`session_stats.project_id`)."
+          },
+          "promptCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "sessionCount": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sessions whose `project_id` matched this row.",
+            "minimum": 0
+          },
+          "totalTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

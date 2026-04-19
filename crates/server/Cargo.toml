@@ -51,6 +51,11 @@ claude-view-observability = { path = "../observability" }
 claude-view-types = { workspace = true }
 claude-view-db = { workspace = true }
 claude-view-search = { workspace = true }
+# Phase 4 PR 4.5 — read-side access to the rollup tables populated by
+# Stage C. Used by `routes/insights/handler_models.rs` +
+# `handler_projects.rs` for `/api/insights/models` +
+# `/api/insights/projects`.
+claude-view-stats-rollup = { path = "../stats-rollup" }
 claude-view-server-sidecar = { workspace = true }
 claude-view-server-insights = { workspace = true }
 claude-view-server-jobs = { workspace = true }

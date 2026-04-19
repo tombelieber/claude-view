@@ -888,6 +888,7 @@ dependencies = [
  "claude-view-server-sidecar",
  "claude-view-server-teams",
  "claude-view-server-types",
+ "claude-view-stats-rollup",
  "claude-view-types",
  "core-foundation 0.10.1",
  "core-foundation-sys",

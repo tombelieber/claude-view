@@ -862,4 +862,220 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert!(json["dataPoints"].is_array());
     }
+
+    // ========================================================================
+    // Phase 4 PR 4.5 — /api/insights/models + /api/insights/projects
+    // ========================================================================
+
+    async fn seed_session_stats(
+        db: &Database,
+        session_id: &str,
+        project_id: &str,
+        primary_model: Option<&str>,
+        git_branch: Option<&str>,
+        total_input_tokens: i64,
+        prompt_count: i64,
+        duration_seconds: i64,
+        ts_unix: i64,
+    ) {
+        let file_path = format!("/tmp/{session_id}.jsonl");
+        sqlx::query(
+            r"INSERT INTO session_stats (
+                session_id, source_content_hash, source_size,
+                parser_version, stats_version, indexed_at,
+                total_input_tokens, total_output_tokens,
+                cache_read_tokens, cache_creation_tokens,
+                user_prompt_count, duration_seconds,
+                first_message_at, last_message_at,
+                primary_model, git_branch,
+                project_id, file_path, is_compressed, source_mtime
+            ) VALUES (?, X'01', 0, 1, 1, 0,
+                      ?, 0, 0, 0,
+                      ?, ?,
+                      ?, ?,
+                      ?, ?,
+                      ?, ?, 0, ?)",
+        )
+        .bind(session_id)
+        .bind(total_input_tokens)
+        .bind(prompt_count)
+        .bind(duration_seconds)
+        .bind(ts_unix)
+        .bind(ts_unix)
+        .bind(primary_model)
+        .bind(git_branch)
+        .bind(project_id)
+        .bind(&file_path)
+        .bind(ts_unix)
+        .execute(db.pool())
+        .await
+        .expect("seed session_stats");
+    }
+
+    async fn seed_contribution_snapshot(
+        db: &Database,
+        date: &str,
+        project_id: &str,
+        branch: Option<&str>,
+        ai_lines_added: i64,
+        ai_lines_removed: i64,
+        commits_count: i64,
+    ) {
+        sqlx::query(
+            r"INSERT INTO contribution_snapshots (
+                date, project_id, branch,
+                ai_lines_added, ai_lines_removed, commits_count,
+                commit_insertions, commit_deletions
+            ) VALUES (?, ?, ?, ?, ?, ?, 0, 0)",
+        )
+        .bind(date)
+        .bind(project_id)
+        .bind(branch)
+        .bind(ai_lines_added)
+        .bind(ai_lines_removed)
+        .bind(commits_count)
+        .execute(db.pool())
+        .await
+        .expect("seed contribution_snapshots");
+    }
+
+    #[tokio::test]
+    async fn test_insights_models_empty_db_rollup_path() {
+        let db = test_db().await;
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/insights/models").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert!(json["models"].is_array());
+        assert_eq!(json["models"].as_array().unwrap().len(), 0);
+        assert_eq!(json["meta"]["legacyPath"], false);
+        assert_eq!(json["meta"]["bucket"], "daily");
+    }
+
+    #[tokio::test]
+    async fn test_insights_models_reads_from_rollup_after_rebuild() {
+        let db = test_db().await;
+        let apr19 = chrono::NaiveDate::from_ymd_opt(2026, 4, 19)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        seed_session_stats(
+            &db,
+            "s-opus",
+            "p-a",
+            Some("claude-opus-4-7"),
+            Some("main"),
+            500,
+            10,
+            600,
+            apr19,
+        )
+        .await;
+        seed_session_stats(
+            &db,
+            "s-sonnet",
+            "p-a",
+            Some("claude-sonnet-4-6"),
+            Some("main"),
+            200,
+            5,
+            300,
+            apr19,
+        )
+        .await;
+        claude_view_db::stage_c::full_rebuild_with_snapshots(db.pool())
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) =
+            do_get(app, "/api/insights/models?from=1776499200&to=1776672000").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let models = json["models"].as_array().unwrap();
+        assert_eq!(models.len(), 2, "expected 2 models from rollup");
+        // Sorted by total_tokens desc — opus (500) > sonnet (200).
+        assert_eq!(models[0]["modelId"], "claude-opus-4-7");
+        assert_eq!(models[0]["totalTokens"], 500);
+        assert_eq!(models[0]["sessionCount"], 1);
+        assert_eq!(models[1]["modelId"], "claude-sonnet-4-6");
+        assert_eq!(models[1]["totalTokens"], 200);
+    }
+
+    #[tokio::test]
+    async fn test_insights_projects_includes_snapshot_fold_data() {
+        let db = test_db().await;
+        let apr19 = chrono::NaiveDate::from_ymd_opt(2026, 4, 19)
+            .unwrap()
+            .and_hms_opt(10, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp();
+        seed_session_stats(
+            &db,
+            "s-compose",
+            "p-compose",
+            Some("claude-opus-4-7"),
+            Some("main"),
+            750,
+            12,
+            900,
+            apr19,
+        )
+        .await;
+        seed_contribution_snapshot(&db, "2026-04-19", "p-compose", Some("main"), 350, 80, 4).await;
+
+        claude_view_db::stage_c::full_rebuild_with_snapshots(db.pool())
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) =
+            do_get(app, "/api/insights/projects?from=1776499200&to=1776672000").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let projects = json["projects"].as_array().unwrap();
+        assert_eq!(projects.len(), 1);
+        let p = &projects[0];
+        assert_eq!(p["projectId"], "p-compose");
+        assert_eq!(p["sessionCount"], 1);
+        assert_eq!(p["totalTokens"], 750);
+        // Snapshot fold populated:
+        assert_eq!(p["linesAdded"], 350);
+        assert_eq!(p["linesRemoved"], 80);
+        assert_eq!(p["commitCount"], 4);
+    }
+
+    #[tokio::test]
+    async fn test_insights_models_bucket_param_accepts_weekly_monthly() {
+        let db = test_db().await;
+        let app = build_app(db);
+
+        for bucket in ["daily", "weekly", "monthly"] {
+            let (status, body) = do_get(
+                app.clone(),
+                &format!("/api/insights/models?bucket={bucket}"),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK, "bucket={bucket}");
+            let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+            assert_eq!(json["meta"]["bucket"], bucket);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_insights_projects_limit_is_clamped_to_cap() {
+        let db = test_db().await;
+        let app = build_app(db);
+        // Request 99_999 — must be clamped to the cap (500) and not
+        // overflow the response size.
+        let (status, body) = do_get(app, "/api/insights/projects?limit=99999").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        // Empty DB → zero rows returned; assert the response still
+        // shaped correctly (the clamp path doesn't trip on empty).
+        assert_eq!(json["projects"].as_array().unwrap().len(), 0);
+    }
 }

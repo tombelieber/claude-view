@@ -294,3 +294,119 @@ pub struct BenchmarksQuery {
     /// Time range: all, 30d, 90d, 1y. Defaults to all.
     pub range: Option<String>,
 }
+
+/// Query parameters shared by `/api/insights/models` and
+/// `/api/insights/projects`. Both endpoints aggregate rollup rows
+/// over `[from, to)` and return per-dimension totals.
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
+pub struct InsightsAggregateQuery {
+    /// Period start (unix seconds). Pair with `to`; omit both for
+    /// all-time.
+    pub from: Option<i64>,
+    /// Period end (unix seconds). Pair with `from`.
+    pub to: Option<i64>,
+    /// Rollup bucket granularity. Valid: `daily`, `weekly`, `monthly`.
+    /// Defaults to `daily`.
+    ///
+    /// Smaller buckets scan more rows; for ranges >= 180 days prefer
+    /// `weekly` or `monthly` to keep row count bounded. The aggregation
+    /// sum is identical across granularities.
+    pub bucket: Option<String>,
+    /// Max rows to return after descending-by-total-tokens sort.
+    /// Defaults to 100. Hard-capped at 500 server-side to bound payload
+    /// size.
+    pub limit: Option<u32>,
+}
+
+// ============================================================================
+// Phase 4 PR 4.5 — /api/insights/models + /api/insights/projects
+//
+// Both endpoints sum rollup rows from `daily_*_stats` (or weekly /
+// monthly) by dimension and return per-dimension totals. They do NOT
+// expose fields that Phase 5 will fill (`lines_added`, `lines_removed`,
+// `commit_count`, `commit_insertions`, `commit_deletions`) unless PR
+// 4.8 has folded snapshot data — see the field docs for the exact
+// populated vs zero semantics per field.
+// ============================================================================
+
+/// One model's aggregated usage for the requested time range.
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ModelInsight {
+    /// Model identifier (e.g. `claude-opus-4-7`, `claude-sonnet-4-6`).
+    pub model_id: String,
+    /// Sessions that had this as their primary model.
+    pub session_count: u64,
+    /// Sum of input + output + cache-read + cache-creation tokens.
+    pub total_tokens: u64,
+    /// Sum of user-prompt counts across sessions.
+    pub prompt_count: u64,
+    /// Mean session duration in seconds (computed from
+    /// `duration_sum_ms / duration_count / 1000`). Zero when no
+    /// sessions in the range contributed a duration.
+    pub avg_duration_seconds: f64,
+}
+
+/// Response for `/api/insights/models`.
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsModelsResponse {
+    /// Per-model totals, sorted by `total_tokens` descending.
+    pub models: Vec<ModelInsight>,
+    /// Response metadata.
+    pub meta: InsightsAggregateMeta,
+}
+
+/// One project's aggregated usage for the requested time range.
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectInsight {
+    /// Project identifier (directory-mangled form, matching
+    /// `session_stats.project_id`).
+    pub project_id: String,
+    /// Sessions whose `project_id` matched this row.
+    pub session_count: u64,
+    pub total_tokens: u64,
+    pub prompt_count: u64,
+    pub avg_duration_seconds: f64,
+    /// AI-attributed lines added — populated from the PR 4.8
+    /// contribution_snapshots fold for history, and from Phase 5
+    /// SessionFlags going forward.
+    pub lines_added: u64,
+    pub lines_removed: u64,
+    /// Distinct commit count attributed to this project.
+    pub commit_count: u64,
+}
+
+/// Response for `/api/insights/projects`.
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsProjectsResponse {
+    /// Per-project totals, sorted by `total_tokens` descending.
+    pub projects: Vec<ProjectInsight>,
+    /// Response metadata.
+    pub meta: InsightsAggregateMeta,
+}
+
+/// Shared metadata for `/api/insights/models` and
+/// `/api/insights/projects`.
+#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct InsightsAggregateMeta {
+    /// Resolved `[from, to)` unix range that was queried.
+    pub effective_range: EffectiveRangeMeta,
+    /// Bucket granularity that was actually used (input clamped).
+    pub bucket: String,
+    /// Rows read from the rollup table before aggregation.
+    pub rows_read: u64,
+    /// Dimension rows returned (after sort + limit).
+    pub rows_returned: u64,
+    /// `true` when the handler fell back to the legacy GROUP BY path
+    /// (`CLAUDE_VIEW_USE_LEGACY_STATS_READ=1`).
+    pub legacy_path: bool,
+}
