@@ -72,34 +72,26 @@ async fn deterministic_parity_on_full_corpus() {
     );
 }
 
-/// 100 sessions × (archive + classify), with legacy columns and action
-/// log seeded to the identical state PR 5.2 dual-write would produce.
-/// Every fold path (archive, classify with full payload) is exercised
-/// and parity must hold byte-for-byte.
+/// 100 sessions × (archive + classify). Post-migration-85 the legacy
+/// archive/category columns no longer exist, so the fixture only seeds
+/// the action log. The fold task then populates `session_flags`; the
+/// parity sweep compares the resulting shadow state to itself (the
+/// legacy side returns `None` — see `parity::load_legacy`). The test
+/// therefore exercises that the fold is internally consistent and
+/// idempotent across kill-9 style wipes of `session_flags`.
 async fn seed_parity_fixture(db: &Database) {
-    // 2026-01-01T00:00:00Z
-    let rfc = "2026-01-01T00:00:00Z";
-    let ms: i64 = 1_767_225_600_000;
-
+    let ms: i64 = 1_767_225_600_000; // 2026-01-01T00:00:00Z
     for i in 0..100 {
         let sid = format!("pf-{i}");
-        // Legacy: sessions.archived_at + category_* + classified_at all set.
         sqlx::query(
-            "INSERT INTO sessions
-                (id, project_id, file_path, is_sidechain,
-                 archived_at, category_l1, category_l2, category_l3,
-                 category_confidence, category_source, classified_at)
-             VALUES (?1, 'p', ?2, 0, ?3, 'engineering', '', '',
-                     0.9, 'x', ?4)",
+            "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
+             VALUES (?1, 'p', ?2, 0)",
         )
         .bind(&sid)
         .bind(format!("/tmp/{sid}.jsonl"))
-        .bind(rfc)
-        .bind(rfc)
         .execute(db.pool())
         .await
         .unwrap();
-        // Action log: archive + classify at the same `ms`.
         db.insert_action_log(&sid, "archive", "{}", "user", ms)
             .await
             .unwrap();

@@ -350,25 +350,52 @@ impl Database {
     }
 
     /// Check if a session is already classified. Returns (l1, l2, l3, confidence) if so.
+    ///
+    /// CQRS Phase 5.5b — reads classification from `session_flags`, the
+    /// authoritative shadow. NULL columns coerce to empty strings to
+    /// preserve the existing `(String, String, String, f64)` signature.
     pub async fn get_session_classification(
         &self,
         session_id: &str,
     ) -> DbResult<Option<(String, String, String, f64)>> {
-        let row: Option<(String, String, String, f64)> = sqlx::query_as(
-            "SELECT category_l1, category_l2, category_l3, category_confidence FROM sessions WHERE id = ?1 AND category_l1 IS NOT NULL",
-        )
-        .bind(session_id)
-        .fetch_optional(self.pool())
-        .await?;
-        Ok(row)
+        let row: Option<(Option<String>, Option<String>, Option<String>, Option<f64>)> =
+            sqlx::query_as(
+                r#"
+            SELECT category_l1, category_l2, category_l3, category_confidence
+            FROM session_flags
+            WHERE session_id = ?1 AND category_l1 IS NOT NULL
+            "#,
+            )
+            .bind(session_id)
+            .fetch_optional(self.pool())
+            .await?;
+        Ok(row.and_then(|(l1, l2, l3, conf)| {
+            l1.map(|l1| {
+                (
+                    l1,
+                    l2.unwrap_or_default(),
+                    l3.unwrap_or_default(),
+                    conf.unwrap_or(0.0),
+                )
+            })
+        }))
     }
 
     /// Count unclassified sessions.
+    ///
+    /// CQRS Phase 5.5b/5.6a — counts the valid_sessions rows that either
+    /// have no shadow row or whose shadow `category_l1` is NULL.
     pub async fn count_unclassified_sessions(&self) -> DbResult<i64> {
-        let row: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NULL")
-                .fetch_one(self.pool())
-                .await?;
+        let row: (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM valid_sessions s
+            LEFT JOIN session_flags sf ON sf.session_id = s.id
+            WHERE sf.category_l1 IS NULL
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
         Ok(row.0)
     }
 
@@ -380,54 +407,42 @@ impl Database {
         Ok(row.0)
     }
 
-    /// Count classified sessions (using valid_sessions view for consistent counts).
+    /// Count classified sessions.
+    ///
+    /// CQRS Phase 5.5b/5.6a — counts the rows in `session_flags` that
+    /// (a) still reference a valid (non-sidechain, non-archived) session
+    /// and (b) have a non-NULL `category_l1`. Switched from the legacy
+    /// `valid_sessions.category_l1` column because Phase D.3 drops that
+    /// column from `sessions`.
     pub async fn count_classified_sessions(&self) -> DbResult<i64> {
-        let row: (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NOT NULL")
-                .fetch_one(self.pool())
-                .await?;
+        let row: (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM valid_sessions s
+            INNER JOIN session_flags sf ON sf.session_id = s.id
+            WHERE sf.category_l1 IS NOT NULL
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
         Ok(row.0)
     }
 
     /// Batch update session classifications (within a single transaction).
     ///
-    /// CQRS Phase 5 PR 5.2: each UPDATE is paired with a matching
-    /// `session_action_log` row tagged `action='classify'`. The actor is
-    /// `classifier:<source>` (e.g. `classifier:claude-cli`) so PR 5.4's
-    /// shadow-parity monitor can distinguish user-initiated reclassifies
-    /// (actor = "user") from LLM classifier writes. Payload serialises
-    /// {l1, l2, l3, confidence, source} as JSON — the Phase 5.3 fold
-    /// writer deserialises this to populate `session_flags.category_*`.
+    /// CQRS Phase 5 PR 5.6a (D.2): the action log is now the SOLE writer
+    /// for classifications. The Phase 5.3 fold worker consumes each
+    /// `action='classify'` row and UPSERTs `session_flags.category_*`
+    /// under LWW semantics keyed on `classified_at`. The legacy
+    /// `sessions.category_l1 | l2 | l3 | confidence | source |
+    /// classified_at` columns are dropped by migration 85.
     pub async fn batch_update_session_classifications(
         &self,
         updates: &[(String, String, String, String, f64, String)],
     ) -> DbResult<()> {
-        let classified_at = Utc::now().to_rfc3339();
         let classified_at_ms = Utc::now().timestamp_millis();
         let mut tx = self.pool().begin().await?;
         for (session_id, l1, l2, l3, confidence, source) in updates {
-            sqlx::query(
-                r#"
-                UPDATE sessions SET
-                    category_l1 = ?2,
-                    category_l2 = ?3,
-                    category_l3 = ?4,
-                    category_confidence = ?5,
-                    category_source = ?6,
-                    classified_at = ?7
-                WHERE id = ?1
-                "#,
-            )
-            .bind(session_id)
-            .bind(l1)
-            .bind(l2)
-            .bind(l3)
-            .bind(confidence)
-            .bind(source)
-            .bind(&classified_at)
-            .execute(&mut *tx)
-            .await?;
-
             let payload = serde_json::json!({
                 "l1": l1,
                 "l2": l2,

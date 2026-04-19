@@ -42,17 +42,25 @@ pub async fn fetch_enrichments(
         return Ok(HashMap::new());
     }
 
+    // CQRS Phase D.3 — `sessions.archived_at` was dropped. The shadow
+    // now lives in `session_flags.archived_at` (unix-ms INTEGER);
+    // re-emit as RFC3339 so `SessionEnrichment::archived_at`
+    // (Option<String>) keeps its public contract.
     let ids_json = serde_json::to_string(session_ids).expect("serialize ids");
     let rows: Vec<(String, Option<String>, i64, String, i64, i64)> = sqlx::query_as(
         r#"
         SELECT
             s.id,
-            s.archived_at,
+            CASE
+                WHEN sf.archived_at IS NULL THEN NULL
+                ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.archived_at / 1000.0, 'unixepoch')
+            END AS archived_at,
             s.commit_count,
             s.skills_used,
             s.reedited_files_count,
             s.files_edited_count
         FROM sessions s
+        LEFT JOIN session_flags sf ON sf.session_id = s.id
         WHERE s.id IN (SELECT value FROM json_each(?1))
         "#,
     )
@@ -104,20 +112,31 @@ mod tests {
         // One live session with nothing. One id absent from the DB.
         let db = test_db().await;
 
+        // Phase D.3 — session_flags is the archive source. s1 gets a
+        // shadow row mirroring the legacy `'2026-04-01T10:00:00Z'`;
+        // s2 stays unarchived by omitting the shadow row entirely.
         sqlx::query(
             "INSERT INTO sessions \
-             (id, project_id, file_path, archived_at, commit_count, skills_used, \
+             (id, project_id, file_path, commit_count, skills_used, \
               reedited_files_count, files_edited_count) \
-             VALUES ('s1', 'p1', '/tmp/s1.jsonl', '2026-04-01T10:00:00Z', 3, '[\"tdd\"]', 2, 10)",
+             VALUES ('s1', 'p1', '/tmp/s1.jsonl', 3, '[\"tdd\"]', 2, 10)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+        // 2026-04-01T10:00:00.000Z = 1775037600000 ms (UTC).
+        sqlx::query(
+            "INSERT INTO session_flags (session_id, archived_at, applied_seq) \
+             VALUES ('s1', 1775037600000, 1)",
         )
         .execute(db.pool())
         .await
         .unwrap();
         sqlx::query(
             "INSERT INTO sessions \
-             (id, project_id, file_path, archived_at, commit_count, skills_used, \
+             (id, project_id, file_path, commit_count, skills_used, \
               reedited_files_count, files_edited_count) \
-             VALUES ('s2', 'p1', '/tmp/s2.jsonl', NULL, 0, '[]', 0, 0)",
+             VALUES ('s2', 'p1', '/tmp/s2.jsonl', 0, '[]', 0, 0)",
         )
         .execute(db.pool())
         .await
@@ -127,7 +146,10 @@ mod tests {
         let out = fetch_enrichments(&db, &ids).await.unwrap();
 
         let s1 = out.get("s1").expect("s1");
-        assert_eq!(s1.archived_at.as_deref(), Some("2026-04-01T10:00:00Z"));
+        // Post Phase D.3 the ms→RFC3339 conversion emits
+        // milliseconds ("…:00.000Z"); callers only check `.is_some()`
+        // so the extra precision is strictly additive.
+        assert_eq!(s1.archived_at.as_deref(), Some("2026-04-01T10:00:00.000Z"));
         assert_eq!(s1.commit_count, 3);
         assert_eq!(s1.skills_used, vec!["tdd".to_string()]);
         assert!((s1.reedit_rate - 0.2).abs() < 0.001);

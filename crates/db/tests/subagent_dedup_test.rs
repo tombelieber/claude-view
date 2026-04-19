@@ -9,7 +9,7 @@ use claude_view_db::indexer_parallel::parse_bytes;
 /// Helper: create a minimal JSONL with the given number of tool calls and token usage.
 fn make_session_jsonl(
     user_msg: &str,
-    tools: &[(&str, &str)],       // (tool_name, file_path)
+    tools: &[(&str, &str)], // (tool_name, file_path)
     input_tokens: u64,
     output_tokens: u64,
 ) -> Vec<u8> {
@@ -173,11 +173,10 @@ async fn valid_sessions_view_excludes_sidechains() {
     .unwrap();
 
     // Query valid_sessions — must return only the primary session
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
-            .fetch_one(db.pool())
-            .await
-            .unwrap();
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
     assert_eq!(count, 1, "valid_sessions must exclude sidechain sessions");
 
     // Verify token totals from valid_sessions match parent only (no double-counting)
@@ -197,12 +196,11 @@ async fn valid_sessions_view_excludes_sidechains() {
     );
 
     // Verify tool totals from valid_sessions
-    let (tool_total,): (i64,) = sqlx::query_as(
-        "SELECT COALESCE(SUM(tool_call_count), 0) FROM valid_sessions",
-    )
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
+    let (tool_total,): (i64,) =
+        sqlx::query_as("SELECT COALESCE(SUM(tool_call_count), 0) FROM valid_sessions")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
     assert_eq!(
         tool_total, 6,
         "tool count must only include primary session"
@@ -230,38 +228,42 @@ async fn archived_sessions_excluded_from_valid_sessions() {
     .await
     .unwrap();
 
-    // Insert archived session
+    // Insert archived session.
+    // CQRS Phase D.3 — `sessions.archived_at` was dropped; archive state
+    // lives in `session_flags.archived_at`. The test mirrors the
+    // post-D.3 write path: INSERT the session row, then UPSERT the flag.
     sqlx::query(
         r#"INSERT INTO sessions (
             id, project_id, file_path, preview, project_path,
             total_input_tokens, last_message_at, size_bytes, last_message,
-            archived_at, files_touched, skills_used, files_read, files_edited
+            files_touched, skills_used, files_read, files_edited
         ) VALUES (
             'archived-session', 'proj', '/tmp/archived.jsonl', 'test', '/tmp',
-            3000, ?1, 512, '', '2026-01-01T00:00:00Z',
-            '[]', '[]', '[]', '[]'
+            3000, ?1, 512, '', '[]', '[]', '[]', '[]'
         )"#,
     )
     .bind(now)
     .execute(db.pool())
     .await
     .unwrap();
+    sqlx::query(
+        "INSERT INTO session_flags (session_id, archived_at, applied_seq)
+         VALUES ('archived-session', 1_767_225_600_000, 1)",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
 
-    let (count,): (i64,) =
-        sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+    let (count,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+    assert_eq!(count, 1, "valid_sessions must exclude archived sessions");
+
+    let (total_input,): (i64,) =
+        sqlx::query_as("SELECT COALESCE(SUM(total_input_tokens), 0) FROM valid_sessions")
             .fetch_one(db.pool())
             .await
             .unwrap();
-    assert_eq!(count, 1, "valid_sessions must exclude archived sessions");
-
-    let (total_input,): (i64,) = sqlx::query_as(
-        "SELECT COALESCE(SUM(total_input_tokens), 0) FROM valid_sessions",
-    )
-    .fetch_one(db.pool())
-    .await
-    .unwrap();
-    assert_eq!(
-        total_input, 5000,
-        "token sum must exclude archived session"
-    );
+    assert_eq!(total_input, 5000, "token sum must exclude archived session");
 }

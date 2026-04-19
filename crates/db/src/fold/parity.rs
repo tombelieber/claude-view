@@ -118,40 +118,26 @@ struct ShadowFlags {
     classified_at_ms: Option<i64>,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 fn parse_rfc3339_to_ms(s: &str) -> Option<i64> {
     DateTime::parse_from_rfc3339(s)
         .ok()
         .map(|dt| dt.with_timezone(&Utc).timestamp_millis())
 }
 
-async fn load_legacy(db: &Database, session_id: &str) -> DbResult<Option<LegacyFlags>> {
-    let row: Option<(
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<String>,
-        Option<f64>,
-        Option<String>,
-        Option<String>,
-    )> = sqlx::query_as(
-        "SELECT archived_at, category_l1, category_l2, category_l3,
-                category_confidence, category_source, classified_at
-         FROM sessions
-         WHERE id = ?1",
-    )
-    .bind(session_id)
-    .fetch_optional(db.pool())
-    .await?;
-
-    Ok(row.map(|r| LegacyFlags {
-        archived_at_ms: r.0.as_deref().and_then(parse_rfc3339_to_ms),
-        category_l1: r.1,
-        category_l2: r.2,
-        category_l3: r.3,
-        category_confidence: r.4,
-        category_source: r.5,
-        classified_at_ms: r.6.as_deref().and_then(parse_rfc3339_to_ms),
-    }))
+async fn load_legacy(_db: &Database, _session_id: &str) -> DbResult<Option<LegacyFlags>> {
+    // CQRS Phase D.3 — the legacy `sessions.{archived_at, category_*,
+    // classified_at}` columns were dropped by migration 85. There is no
+    // longer a legacy side to compare against; `session_flags` is the
+    // sole source of truth.
+    //
+    // Returning `None` makes `compare_flags_session` short-circuit with
+    // `Ok(None)` ("no legacy row → nothing to compare"), so the sweep
+    // reports `total_sampled == ids.len()` with `total_diverged == 0`.
+    // This is the intentional shape of the §7.1 exit gate post-D.3:
+    // the parity monitor becomes a no-op until Phase F replaces it
+    // with a proper drift detector against the JSONL source.
+    Ok(None)
 }
 
 async fn load_shadow(db: &Database, session_id: &str) -> DbResult<Option<ShadowFlags>> {
@@ -322,49 +308,13 @@ pub async fn run_parity_sweep(db: &Database, limit: i64) -> DbResult<ParitySweep
 
 #[cfg(test)]
 mod tests {
+    //! CQRS Phase D.3 — post-migration-85 the parity monitor is a no-op.
+    //! `load_legacy` returns `None` unconditionally (see module docs),
+    //! so `compare_flags_session` reports "nothing to compare" and the
+    //! sweep counts `total_sampled` but never adds to `total_diverged`.
+    //! Phase F replaces this with a JSONL-source drift detector.
+
     use super::*;
-
-    async fn seed_legacy(
-        db: &Database,
-        id: &str,
-        archived: Option<&str>,
-        classified: Option<&str>,
-        l1: Option<&str>,
-    ) {
-        sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, is_sidechain,
-                                  archived_at, category_l1, classified_at)
-             VALUES (?1, 'p', ?2, 0, ?3, ?4, ?5)",
-        )
-        .bind(id)
-        .bind(format!("/tmp/{id}.jsonl"))
-        .bind(archived)
-        .bind(l1)
-        .bind(classified)
-        .execute(db.pool())
-        .await
-        .unwrap();
-    }
-
-    async fn seed_shadow(
-        db: &Database,
-        id: &str,
-        archived_ms: Option<i64>,
-        classified_ms: Option<i64>,
-        l1: Option<&str>,
-    ) {
-        sqlx::query(
-            "INSERT INTO session_flags (session_id, archived_at, category_l1, classified_at, applied_seq)
-             VALUES (?1, ?2, ?3, ?4, 0)",
-        )
-        .bind(id)
-        .bind(archived_ms)
-        .bind(l1)
-        .bind(classified_ms)
-        .execute(db.pool())
-        .await
-        .unwrap();
-    }
 
     #[tokio::test]
     async fn compare_returns_none_when_legacy_row_missing() {
@@ -374,141 +324,59 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compare_reports_missing_shadow_as_drift_on_every_populated_field() {
+    async fn compare_is_noop_post_d3() {
+        // Seed a session + its shadow. Post-D.3 the legacy side is
+        // structurally absent, so `compare_flags_session` must return
+        // `None` regardless of the shadow state.
         let db = Database::new_in_memory().await.unwrap();
-        seed_legacy(
-            &db,
-            "no-shadow",
-            Some("2026-01-01T00:00:00Z"),
-            Some("2026-01-01T00:00:00Z"),
-            Some("engineering"),
+        sqlx::query(
+            "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
+             VALUES ('s1', 'p', '/tmp/s1.jsonl', 0)",
         )
-        .await;
+        .execute(db.pool())
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO session_flags (session_id, archived_at, category_l1,
+                 classified_at, applied_seq)
+             VALUES ('s1', 1700000000000, 'engineering', 1700000000000, 1)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
 
-        let report = compare_flags_session(&db, "no-shadow")
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(!report.is_clean(), "missing shadow = drift");
-        let fields: Vec<&str> = report.diffs.iter().map(|d| d.field).collect();
-        assert!(fields.contains(&"archived_at"));
-        assert!(fields.contains(&"category_l1"));
-        assert!(fields.contains(&"classified_at"));
-    }
-
-    #[tokio::test]
-    async fn compare_reports_clean_when_legacy_and_shadow_match() {
-        let db = Database::new_in_memory().await.unwrap();
-        let rfc = "2026-01-01T00:00:00.000Z";
-        let ms = parse_rfc3339_to_ms(rfc).unwrap();
-        seed_legacy(&db, "match", Some(rfc), Some(rfc), Some("engineering")).await;
-        seed_shadow(&db, "match", Some(ms), Some(ms), Some("engineering")).await;
-
-        let report = compare_flags_session(&db, "match").await.unwrap().unwrap();
+        let report = compare_flags_session(&db, "s1").await.unwrap();
         assert!(
-            report.is_clean(),
-            "matching rows should be clean; got {:?}",
-            report.diffs
+            report.is_none(),
+            "post-D.3 parity is a no-op; legacy side returns None"
         );
     }
 
     #[tokio::test]
-    async fn compare_tolerates_sub_second_timestamp_drift() {
-        // RFC3339 parse + Utc::now().timestamp_millis() can differ by
-        // ~1-50 ms in prod because they come from two Utc::now() calls.
+    async fn sweep_reports_zero_drift_post_d3() {
         let db = Database::new_in_memory().await.unwrap();
-        let rfc = "2026-01-01T00:00:00.000Z";
-        let shadow_ms = parse_rfc3339_to_ms(rfc).unwrap() + 42; // 42 ms drift
-        seed_legacy(&db, "within-tol", Some(rfc), None, None).await;
-        seed_shadow(&db, "within-tol", Some(shadow_ms), None, None).await;
-
-        let report = compare_flags_session(&db, "within-tol")
+        for i in 0..3 {
+            let sid = format!("p-{i}");
+            sqlx::query(
+                "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
+                 VALUES (?1, 'p', ?2, 0)",
+            )
+            .bind(&sid)
+            .bind(format!("/tmp/{sid}.jsonl"))
+            .execute(db.pool())
             .await
-            .unwrap()
             .unwrap();
-        assert!(
-            report.is_clean(),
-            "sub-second drift is clock jitter, not drift"
-        );
-    }
-
-    #[tokio::test]
-    async fn compare_flags_timestamp_drift_beyond_tolerance() {
-        let db = Database::new_in_memory().await.unwrap();
-        let rfc = "2026-01-01T00:00:00.000Z";
-        let shadow_ms = parse_rfc3339_to_ms(rfc).unwrap() + 5_000; // 5s > 1s tol
-        seed_legacy(&db, "beyond-tol", Some(rfc), None, None).await;
-        seed_shadow(&db, "beyond-tol", Some(shadow_ms), None, None).await;
-
-        let report = compare_flags_session(&db, "beyond-tol")
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(!report.is_clean());
-        let fields: Vec<&str> = report.diffs.iter().map(|d| d.field).collect();
-        assert!(fields.contains(&"archived_at"));
-    }
-
-    #[tokio::test]
-    async fn compare_flags_category_string_mismatch() {
-        let db = Database::new_in_memory().await.unwrap();
-        seed_legacy(&db, "cat", None, None, Some("engineering")).await;
-        seed_shadow(&db, "cat", None, None, Some("marketing")).await;
-
-        let report = compare_flags_session(&db, "cat").await.unwrap().unwrap();
-        let diff = report
-            .diffs
-            .iter()
-            .find(|d| d.field == "category_l1")
-            .unwrap();
-        assert_eq!(diff.legacy, "Some(\"engineering\")");
-        assert_eq!(diff.shadow, "Some(\"marketing\")");
-    }
-
-    #[tokio::test]
-    async fn sweep_aggregates_per_field_counts() {
-        let db = Database::new_in_memory().await.unwrap();
-        // Two sessions with category drift, one clean.
-        seed_legacy(&db, "a", None, None, Some("x")).await;
-        seed_shadow(&db, "a", None, None, Some("y")).await;
-        seed_legacy(&db, "b", None, None, Some("p")).await;
-        seed_shadow(&db, "b", None, None, Some("q")).await;
-        seed_legacy(&db, "c", None, None, Some("m")).await;
-        seed_shadow(&db, "c", None, None, Some("m")).await;
+        }
 
         let summary = run_parity_sweep(&db, 100).await.unwrap();
         assert_eq!(summary.total_sampled, 3);
-        assert_eq!(summary.total_diverged, 2);
-        assert_eq!(summary.per_field_counts["category_l1"], 2);
-        assert_eq!(summary.per_field_counts["archived_at"], 0);
-    }
-
-    #[tokio::test]
-    async fn sweep_returns_zero_counts_when_all_match() {
-        let db = Database::new_in_memory().await.unwrap();
-        seed_legacy(&db, "clean", None, None, Some("x")).await;
-        seed_shadow(&db, "clean", None, None, Some("x")).await;
-
-        let summary = run_parity_sweep(&db, 100).await.unwrap();
         assert_eq!(summary.total_diverged, 0);
+        assert_eq!(summary.total_missing_shadow, 0);
         for &field in FLAG_FIELDS {
             assert_eq!(
                 summary.per_field_counts[field], 0,
-                "{field} should have 0 drift count"
+                "{field} drift must be 0 post-D.3"
             );
         }
-    }
-
-    #[tokio::test]
-    async fn sweep_counts_missing_shadow_rows() {
-        let db = Database::new_in_memory().await.unwrap();
-        seed_legacy(&db, "lonely", Some("2026-01-01T00:00:00Z"), None, None).await;
-        // No shadow row
-
-        let summary = run_parity_sweep(&db, 100).await.unwrap();
-        assert_eq!(summary.total_sampled, 1);
-        assert_eq!(summary.total_diverged, 1);
-        assert_eq!(summary.total_missing_shadow, 1);
-        assert_eq!(summary.per_field_counts["archived_at"], 1);
     }
 }

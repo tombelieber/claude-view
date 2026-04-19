@@ -134,4 +134,47 @@ CREATE TABLE stage_c_outbox (
 ) STRICT;
 CREATE INDEX idx_stage_c_outbox_pending ON stage_c_outbox(seq) WHERE applied_at IS NULL;
 COMMIT;"#,
+    // Migration 85: IRREVERSIBLE — drop the legacy archive/category
+    // columns from `sessions` and rewire the `valid_sessions` view to
+    // filter on `session_flags.archived_at`.
+    //
+    // Gated by `scripts/rehearse-phase-5-6.sh` (manual run): the script
+    // greps for any reader still touching `sessions.{archived_at,
+    // category_*, classified_at}` and fails hard if it finds one. This
+    // migration can only be committed once the grep is clean.
+    //
+    // Post-migration:
+    //   - `session_flags` is the SOLE source of truth for archive /
+    //     classification state (authoritative reads + the fold writer
+    //     are already in place from PR 5.3 + Phase C).
+    //   - `valid_sessions` still carries every non-flag column from
+    //     `sessions.*`; the join adds the flag-side filter without
+    //     reshaping the row type.
+    //   - `sessions.archived_at | category_l1 | category_l2 |
+    //     category_l3 | category_confidence | category_source |
+    //     classified_at` are removed. Any forgotten reader fails
+    //     loudly instead of silently returning stale data.
+    //
+    // `DROP INDEX` on `idx_sessions_category_l1` and
+    // `idx_sessions_classified` is load-bearing: SQLite refuses
+    // `ALTER TABLE DROP COLUMN` while an index references the column.
+    //
+    // IRREVERSIBLE: SQLite does not undo `ALTER TABLE DROP COLUMN`.
+    // Back up `~/.claude-view/claude-view.db` before running.
+    r#"BEGIN;
+DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS
+  SELECT s.* FROM sessions s
+  LEFT JOIN session_flags sf ON sf.session_id = s.id
+  WHERE s.is_sidechain = 0 AND sf.archived_at IS NULL;
+DROP INDEX IF EXISTS idx_sessions_category_l1;
+DROP INDEX IF EXISTS idx_sessions_classified;
+ALTER TABLE sessions DROP COLUMN archived_at;
+ALTER TABLE sessions DROP COLUMN category_l1;
+ALTER TABLE sessions DROP COLUMN category_l2;
+ALTER TABLE sessions DROP COLUMN category_l3;
+ALTER TABLE sessions DROP COLUMN category_confidence;
+ALTER TABLE sessions DROP COLUMN category_source;
+ALTER TABLE sessions DROP COLUMN classified_at;
+COMMIT;"#,
 ];

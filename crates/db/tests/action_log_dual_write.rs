@@ -1,10 +1,11 @@
-//! CQRS Phase 5 PR 5.2 — dual-write verification.
+//! CQRS Phase 5 PR 5.6a — action-log writer verification.
 //!
 //! Every archive / unarchive / classify mutation must land a matching
-//! row in `session_action_log` inside the same transaction as the
-//! legacy `sessions.*` column UPDATE. These tests assert the shape of
-//! each row so the Phase 5.3 fold writer and Phase 5.4 parity monitor
-//! can rely on it.
+//! row in `session_action_log`. As of Phase D.2 the log is the SOLE
+//! writer — the legacy `sessions.*` UPDATE is gone and `session_flags`
+//! is populated exclusively by the Phase 5.3 fold task. Tests that
+//! need to observe shadow effects drain the fold with
+//! `run_fold_batch`.
 //!
 //! Tests use `Database::new_in_memory()` + raw `INSERT` seeds, matching
 //! the style of `crates/db/tests/archive_sessions.rs`. Tuple-style
@@ -12,7 +13,18 @@
 //! (root `Cargo.toml`) does not enable the `macros` feature, so
 //! `#[derive(sqlx::FromRow)]` is unavailable in integration tests.
 
+use claude_view_db::fold::run_fold_batch;
 use claude_view_db::Database;
+use std::sync::Arc;
+
+async fn drain_fold(db: Arc<Database>) {
+    loop {
+        let summary = run_fold_batch(db.clone()).await.unwrap();
+        if summary.rows_observed == 0 {
+            break;
+        }
+    }
+}
 
 /// (seq, session_id, action, payload, actor, at)
 type ActionRow = (i64, String, String, String, String, i64);
@@ -75,13 +87,15 @@ async fn dual_write_archive_emits_action_log_row() {
 #[tokio::test]
 async fn dual_write_archive_noop_when_already_archived_leaves_log_empty() {
     // Second archive on the same session must NOT log a second row.
-    // The UPDATE ... WHERE archived_at IS NULL is a no-op, and the
-    // dual-write INSERT is gated on that UPDATE returning a row.
-    let db = Database::new_in_memory().await.unwrap();
+    // Post Phase D.2 the gate is `session_flags.archived_at`; the fold
+    // must run between the two calls so the shadow reflects the first
+    // archive by the time the second call checks.
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
     seed_session(&db, "s-arch-noop").await;
 
     db.archive_session("s-arch-noop").await.unwrap();
     assert_eq!(fetch_actions_for(&db, "s-arch-noop").await.len(), 1);
+    drain_fold(db.clone()).await;
 
     db.archive_session("s-arch-noop").await.unwrap();
     assert_eq!(
@@ -93,10 +107,11 @@ async fn dual_write_archive_noop_when_already_archived_leaves_log_empty() {
 
 #[tokio::test]
 async fn dual_write_unarchive_emits_action_log_row() {
-    let db = Database::new_in_memory().await.unwrap();
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
     seed_session(&db, "s-unarch-1").await;
 
     db.archive_session("s-unarch-1").await.unwrap();
+    drain_fold(db.clone()).await;
     db.unarchive_session("s-unarch-1", "/tmp/new.jsonl")
         .await
         .unwrap();
@@ -128,14 +143,16 @@ async fn dual_write_unarchive_noop_leaves_log_untouched() {
 
 #[tokio::test]
 async fn dual_write_bulk_archive_logs_one_row_per_successful_update() {
-    let db = Database::new_in_memory().await.unwrap();
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
     seed_session(&db, "bulk-a").await;
     seed_session(&db, "bulk-b").await;
     seed_session(&db, "bulk-c").await;
-    // Pre-archive one so the UPDATE is a no-op for it in the bulk call;
-    // the bulk dual-write must NOT log a second row for bulk-b.
+    // Pre-archive one so the bulk call sees it as already-archived; the
+    // fold must run so `session_flags.archived_at` reflects it before
+    // archive_sessions_bulk probes the shadow.
     db.archive_session("bulk-b").await.unwrap();
     assert_eq!(fetch_actions_by_action(&db, "archive").await.len(), 1);
+    drain_fold(db.clone()).await;
 
     let ids = vec![
         "bulk-a".to_string(),
@@ -161,12 +178,14 @@ async fn dual_write_bulk_archive_logs_one_row_per_successful_update() {
 
 #[tokio::test]
 async fn dual_write_bulk_unarchive_logs_one_row_per_successful_update() {
-    let db = Database::new_in_memory().await.unwrap();
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
     seed_session(&db, "bulk-u-a").await;
     seed_session(&db, "bulk-u-b").await;
 
     db.archive_session("bulk-u-a").await.unwrap();
     db.archive_session("bulk-u-b").await.unwrap();
+    // Fold must run so unarchive_sessions_bulk sees the archived state.
+    drain_fold(db.clone()).await;
 
     // Third ID never existed — must not produce a log row.
     let paths = vec![

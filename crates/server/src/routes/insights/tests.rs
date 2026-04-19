@@ -30,11 +30,8 @@ mod tests {
     }
 
     async fn insert_session(db: &Database, id: &str, ts: i64, category_l1: Option<&str>) {
-        // Dual-write is still in place (Phase 5.2) so tests mirror the
-        // legacy + shadow storage during the reader-switch window. Once
-        // Phase D.3 drops the legacy columns the `sessions` INSERT here
-        // also loses them; until then we keep both paths populated so the
-        // shadow-read handlers see the fixtures.
+        // CQRS Phase D.3 — the legacy sessions.category_* columns are
+        // gone; categories live in session_flags only.
         sqlx::query(
             r#"
             INSERT INTO sessions (
@@ -43,24 +40,18 @@ mod tests {
                 files_read_count, user_prompt_count, api_call_count,
                 tool_call_count, commit_count, turn_count,
                 last_message_at, size_bytes, last_message,
-                files_touched, skills_used, files_read, files_edited,
-                category_l1, category_l2, category_l3
+                files_touched, skills_used, files_read, files_edited
             )
             VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
                 1800, 5, 1, 5, 10, 10, 20, 1, 10,
-                ?2, 1024, '', '[]', '[]', '[]', '[]',
-                ?3, 'feature', 'new-component')
+                ?2, 1024, '', '[]', '[]', '[]', '[]')
             "#,
         )
         .bind(id)
         .bind(ts)
-        .bind(category_l1)
         .execute(db.pool())
         .await
         .unwrap();
-        // Mirror category into session_flags so the Phase 5.5b readers see
-        // the fixture. Use a deterministic classified_at to keep the LWW
-        // fold path exercised when tests re-run.
         if let Some(l1) = category_l1 {
             sqlx::query(
                 r#"
@@ -408,8 +399,7 @@ mod tests {
         let now = chrono::Utc::now().timestamp();
 
         // Insert sessions with categories.
-        // Phase 5.5b — readers now pull categories from session_flags, so
-        // each fixture also UPSERTs the shadow row.
+        // Phase D.3 — categories live exclusively in session_flags.
         for i in 0..20 {
             let id = format!("cat-{}", i);
             let (l1, l2, l3) = match i % 5 {
@@ -429,21 +419,16 @@ mod tests {
                     files_read_count, user_prompt_count, api_call_count,
                     tool_call_count, commit_count, turn_count,
                     last_message_at, size_bytes, last_message,
-                    files_touched, skills_used, files_read, files_edited,
-                    category_l1, category_l2, category_l3
+                    files_touched, skills_used, files_read, files_edited
                 )
                 VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
                     1800, 5, 1, 5, 10, 10, 20, ?2, 10,
-                    ?3, 1024, '', '[]', '[]', '[]', '[]',
-                    ?4, ?5, ?6)
+                    ?3, 1024, '', '[]', '[]', '[]', '[]')
                 "#,
             )
             .bind(&id)
             .bind(if i % 2 == 0 { 1 } else { 0 })
             .bind(ts)
-            .bind(l1)
-            .bind(l2)
-            .bind(l3)
             .execute(db.pool())
             .await
             .unwrap();
@@ -499,7 +484,7 @@ mod tests {
         let now = chrono::Utc::now().timestamp();
 
         // Insert sessions: some recent, some old.
-        // Phase 5.5b — categories read from session_flags; mirror them.
+        // Phase D.3 — categories live exclusively in session_flags.
         for i in 0..10 {
             let id = format!("tf-{}", i);
             let ts = if i < 5 {
@@ -516,13 +501,11 @@ mod tests {
                     files_read_count, user_prompt_count, api_call_count,
                     tool_call_count, commit_count, turn_count,
                     last_message_at, size_bytes, last_message,
-                    files_touched, skills_used, files_read, files_edited,
-                    category_l1, category_l2, category_l3
+                    files_touched, skills_used, files_read, files_edited
                 )
                 VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
                     1800, 5, 1, 5, 10, 10, 20, 1, 10,
-                    ?2, 1024, '', '[]', '[]', '[]', '[]',
-                    'code_work', 'feature', 'new-component')
+                    ?2, 1024, '', '[]', '[]', '[]', '[]')
                 "#,
             )
             .bind(&id)

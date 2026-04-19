@@ -88,6 +88,11 @@ impl Database {
     ///
     /// The `project` value is the effective project identity: `COALESCE(NULLIF(git_root, ''), project_id)`.
     /// This matches what the sidebar sends as the project filter, so search scope filters align.
+    ///
+    /// CQRS Phase 5.5a — `archived_at` now joins from `session_flags`
+    /// (unix-ms INTEGER) and is converted back to RFC3339 via
+    /// `strftime` so the existing callers (which only look at
+    /// `.is_some()`) keep working.
     pub async fn get_sessions_needing_deep_index(
         &self,
     ) -> DbResult<
@@ -105,7 +110,16 @@ impl Database {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String, Option<String>)> =
             sqlx::query_as(
-                "SELECT id, file_path, file_size_at_index, file_mtime_at_index, deep_indexed_at, parse_version, COALESCE(NULLIF(git_root, ''), project_id, ''), archived_at FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+                r#"SELECT s.id, s.file_path, s.file_size_at_index, s.file_mtime_at_index,
+                          s.deep_indexed_at, s.parse_version,
+                          COALESCE(NULLIF(s.git_root, ''), s.project_id, ''),
+                          CASE
+                            WHEN sf.archived_at IS NULL THEN NULL
+                            ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.archived_at / 1000.0, 'unixepoch')
+                          END AS archived_at
+                   FROM sessions s
+                   LEFT JOIN session_flags sf ON sf.session_id = s.id
+                   WHERE s.file_path IS NOT NULL AND s.file_path != ''"#,
             )
             .fetch_all(self.pool())
             .await?;

@@ -6,7 +6,14 @@ set -euo pipefail
 echo "== Phase 5.6 rehearsal =="
 
 echo "[1/3] grep for sessions.archived_at / category_* / classified_at readers..."
-LEAKS=$(grep -rn "sessions\.archived_at\|sessions\.category_l1\|sessions\.category_l2\|sessions\.category_l3\|sessions\.category_confidence\|sessions\.category_source\|sessions\.classified_at" crates/server/ || true)
+# Match only lines that USE the legacy columns (SQL refs or dot-access),
+# ignoring lines where the identifier appears only inside a Rust `//` or
+# `///` comment. Phase 5.5 landed the shadow-only reader; the comments
+# are documentation and must not block the rehearsal.
+LEAKS=$(grep -rn "sessions\.archived_at\|sessions\.category_l1\|sessions\.category_l2\|sessions\.category_l3\|sessions\.category_confidence\|sessions\.category_source\|sessions\.classified_at" crates/server/ crates/db/src/ \
+  | grep -vE '^\s*[^:]+:[0-9]+:\s*//' \
+  | grep -vE '^\s*[^:]+:[0-9]+:.*//.*(archived_at|category_l1|category_l2|category_l3|category_confidence|category_source|classified_at)' \
+  || true)
 if [[ -n "$LEAKS" ]]; then
   echo "FAIL: legacy column readers still present:"
   echo "$LEAKS"

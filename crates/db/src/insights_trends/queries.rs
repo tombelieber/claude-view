@@ -72,34 +72,43 @@ impl Database {
         to: i64,
         granularity: &str,
     ) -> DbResult<Option<Vec<CategoryDataPoint>>> {
-        // Check if any sessions have classification data
-        let (classified_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE category_l1 IS NOT NULL")
-                .fetch_one(self.pool())
-                .await?;
+        // Check if any sessions have classification data.
+        // CQRS Phase 5.5b — category state is authoritatively in
+        // `session_flags`; Phase D.3 drops the legacy column entirely.
+        let (classified_count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM valid_sessions s
+            INNER JOIN session_flags sf ON sf.session_id = s.id
+            WHERE sf.category_l1 IS NOT NULL
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
 
         if classified_count == 0 {
             return Ok(None);
         }
 
         let group_by = match granularity {
-            "day" => "date(last_message_at, 'unixepoch')",
-            "week" => "strftime('%Y-W%W', last_message_at, 'unixepoch')",
-            "month" => "strftime('%Y-%m', last_message_at, 'unixepoch')",
-            _ => "strftime('%Y-W%W', last_message_at, 'unixepoch')",
+            "day" => "date(s.last_message_at, 'unixepoch')",
+            "week" => "strftime('%Y-W%W', s.last_message_at, 'unixepoch')",
+            "month" => "strftime('%Y-%m', s.last_message_at, 'unixepoch')",
+            _ => "strftime('%Y-W%W', s.last_message_at, 'unixepoch')",
         };
 
         let sql = format!(
             r#"
             SELECT
                 {group_by} as period,
-                CAST(SUM(CASE WHEN category_l1 = 'code_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as code_work,
-                CAST(SUM(CASE WHEN category_l1 = 'support_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as support_work,
-                CAST(SUM(CASE WHEN category_l1 = 'thinking_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as thinking_work
-            FROM valid_sessions
-            WHERE last_message_at >= ?1
-              AND last_message_at <= ?2
-              AND category_l1 IS NOT NULL
+                CAST(SUM(CASE WHEN sf.category_l1 = 'code_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as code_work,
+                CAST(SUM(CASE WHEN sf.category_l1 = 'support_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as support_work,
+                CAST(SUM(CASE WHEN sf.category_l1 = 'thinking_work' THEN 1 ELSE 0 END) AS REAL) / COUNT(*) as thinking_work
+            FROM valid_sessions s
+            INNER JOIN session_flags sf ON sf.session_id = s.id
+            WHERE s.last_message_at >= ?1
+              AND s.last_message_at <= ?2
+              AND sf.category_l1 IS NOT NULL
             GROUP BY period
             ORDER BY period
             "#,

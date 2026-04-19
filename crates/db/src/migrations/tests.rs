@@ -359,30 +359,25 @@ async fn test_migration13_classification_columns_exist() {
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
-    assert!(
-        column_names.contains(&"category_l1"),
-        "Missing category_l1 column"
-    );
-    assert!(
-        column_names.contains(&"category_l2"),
-        "Missing category_l2 column"
-    );
-    assert!(
-        column_names.contains(&"category_l3"),
-        "Missing category_l3 column"
-    );
-    assert!(
-        column_names.contains(&"category_confidence"),
-        "Missing category_confidence column"
-    );
-    assert!(
-        column_names.contains(&"category_source"),
-        "Missing category_source column"
-    );
-    assert!(
-        column_names.contains(&"classified_at"),
-        "Missing classified_at column"
-    );
+    // CQRS Phase D.3 — migration 85 dropped the legacy classification
+    // columns from `sessions`. They now live exclusively on
+    // `session_flags`; asserting their absence here guards against
+    // accidental re-introduction. Previous assertions (migration 13
+    // added category_l1..classified_at on `sessions`) moved to
+    // `test_migration85_legacy_columns_dropped`.
+    for legacy in [
+        "category_l1",
+        "category_l2",
+        "category_l3",
+        "category_confidence",
+        "category_source",
+        "classified_at",
+    ] {
+        assert!(
+            !column_names.contains(&legacy),
+            "{legacy} should be dropped by Migration 85",
+        );
+    }
     // prompt_word_count, correction_count, same_file_edit_count were dropped
     // in Migration 63 (CQRS Phase 0 Step 5) — asserting absence instead.
     assert!(
@@ -764,14 +759,10 @@ async fn test_migration13_indexes_created() {
 
     let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
-    assert!(
-        index_names.contains(&"idx_sessions_category_l1"),
-        "Missing idx_sessions_category_l1 index"
-    );
-    assert!(
-        index_names.contains(&"idx_sessions_classified"),
-        "Missing idx_sessions_classified index"
-    );
+    // CQRS Phase D.3 — migration 85 drops `idx_sessions_category_l1`
+    // and `idx_sessions_classified` together with the underlying columns
+    // on `sessions`. The assertions that used to live here have moved
+    // into `test_migration85_category_and_classified_indexes_dropped`.
     assert!(
         index_names.contains(&"idx_classification_jobs_status"),
         "Missing idx_classification_jobs_status index"
@@ -2592,5 +2583,47 @@ async fn test_migration84_stage_c_outbox_is_strict() {
     assert!(
         sql.contains("STRICT"),
         "stage_c_outbox must be STRICT; got:\n{sql}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration85_legacy_columns_dropped() {
+    let pool = setup_db().await;
+    let cols: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
+    for dropped in [
+        "archived_at",
+        "category_l1",
+        "category_l2",
+        "category_l3",
+        "category_confidence",
+        "category_source",
+        "classified_at",
+    ] {
+        assert!(
+            !names.contains(&dropped),
+            "column {dropped} must be dropped by migration 85"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_migration85_valid_sessions_view_joins_session_flags() {
+    let pool = setup_db().await;
+    let (sql,): (String,) =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type='view' AND name='valid_sessions'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        sql.contains("JOIN session_flags"),
+        "valid_sessions must JOIN session_flags after migration 85; got:\n{sql}"
+    );
+    assert!(
+        sql.contains("sf.archived_at IS NULL"),
+        "valid_sessions must filter on sf.archived_at IS NULL; got:\n{sql}"
     );
 }

@@ -211,16 +211,19 @@ impl Database {
 
     /// Query sessions in a date range for report context building.
     /// Returns Vec of (id, project_display_name, preview, category_l2, duration_seconds, git_branch).
+    ///
+    /// CQRS Phase 5.5b — `category_l2` now lives on `session_flags`.
     pub async fn get_sessions_in_range(
         &self,
         start_ts: i64,
         end_ts: i64,
     ) -> DbResult<Vec<(String, String, String, Option<String>, i64, Option<String>)>> {
         let rows = sqlx::query_as(
-            r#"SELECT id, project_display_name, preview, category_l2, duration_seconds, git_branch
-               FROM valid_sessions
-               WHERE first_message_at >= ? AND first_message_at <= ?
-               ORDER BY project_display_name, git_branch, first_message_at"#,
+            r#"SELECT s.id, s.project_display_name, s.preview, sf.category_l2, s.duration_seconds, s.git_branch
+               FROM valid_sessions s
+               LEFT JOIN session_flags sf ON sf.session_id = s.id
+               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
+               ORDER BY s.project_display_name, s.git_branch, s.first_message_at"#,
         )
         .bind(start_ts)
         .bind(end_ts)

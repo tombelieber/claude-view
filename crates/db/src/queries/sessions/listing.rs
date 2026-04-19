@@ -20,6 +20,11 @@ impl Database {
 
         // All token/model data is denormalized on the sessions table.
         // No LEFT JOIN on turns needed.
+        //
+        // CQRS Phase 5.5bc / D.3 — `category_*` and `classified_at` now
+        // live on `session_flags`; reads join + alias to the legacy
+        // column names so `SessionRow::from_row` keeps working. Timestamp
+        // conversion ms→RFC3339 preserves the existing string shape.
         let rows: Vec<SessionRow> = sqlx::query_as(
             r#"
             SELECT
@@ -46,13 +51,21 @@ impl Database {
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
                 s.lines_added, s.lines_removed, s.loc_source,
                 s.summary_text, s.parse_version,
-                s.category_l1, s.category_l2, s.category_l3,
-                s.category_confidence, s.category_source, s.classified_at,
+                sf.category_l1 AS category_l1,
+                sf.category_l2 AS category_l2,
+                sf.category_l3 AS category_l3,
+                sf.category_confidence AS category_confidence,
+                sf.category_source AS category_source,
+                CASE
+                    WHEN sf.classified_at IS NULL THEN NULL
+                    ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.classified_at / 1000.0, 'unixepoch')
+                END AS classified_at,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
                 s.slug,
                 s.entrypoint
             FROM valid_sessions s
+            LEFT JOIN session_flags sf ON sf.session_id = s.id
             ORDER BY s.last_message_at DESC
             "#,
         )
@@ -114,6 +127,10 @@ impl Database {
     ///
     /// Used by the cost estimation endpoint to fetch session metadata
     /// (token counts, model, timestamps) for a specific session.
+    ///
+    /// CQRS Phase D.3 — category / classified fields join from
+    /// `session_flags`; timestamp formatting matches the legacy RFC3339
+    /// shape for API compatibility.
     pub async fn get_session_by_id(&self, id: &str) -> DbResult<Option<SessionInfo>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"SELECT
@@ -140,13 +157,22 @@ impl Database {
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
                 s.lines_added, s.lines_removed, s.loc_source,
                 s.summary_text, s.parse_version,
-                s.category_l1, s.category_l2, s.category_l3,
-                s.category_confidence, s.category_source, s.classified_at,
+                sf.category_l1 AS category_l1,
+                sf.category_l2 AS category_l2,
+                sf.category_l3 AS category_l3,
+                sf.category_confidence AS category_confidence,
+                sf.category_source AS category_source,
+                CASE
+                    WHEN sf.classified_at IS NULL THEN NULL
+                    ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.classified_at / 1000.0, 'unixepoch')
+                END AS classified_at,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
                 s.slug,
                 s.entrypoint
-            FROM sessions s WHERE s.id = ?1"#,
+            FROM sessions s
+            LEFT JOIN session_flags sf ON sf.session_id = s.id
+            WHERE s.id = ?1"#,
         )
         .bind(id)
         .fetch_optional(self.pool())
