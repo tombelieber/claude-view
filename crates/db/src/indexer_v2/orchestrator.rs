@@ -202,6 +202,23 @@ pub fn spawn_delta_consumer(db: Arc<Database>) -> (mpsc::Sender<StatsDelta>, Joi
                     "indexer_v2: delta consumer upsert failed"
                 );
             }
+            // CQRS Phase 4 PR 4.2b — Stage C rollup fan-out on the same
+            // delta. Serialized behind `upsert_session_stats` so rollups
+            // see the durable mirror first. Errors log but do not halt
+            // the consumer — a single bad delta can't stall the stream.
+            //
+            // When the `session_flags` fold arrives (Phase 5) a second
+            // writer will push `FlagDelta`s through `stage_c_outbox`;
+            // this consumer remains single-purpose for stats deltas.
+            if let Err(e) = crate::stage_c::apply_stats_delta(db.pool(), &delta).await {
+                tracing::warn!(
+                    session_id = %delta.session_id,
+                    source = source_label,
+                    seq = delta.seq,
+                    error = %e,
+                    "indexer_v2: Stage C rollup apply failed"
+                );
+            }
         }
         tracing::info!("indexer_v2: StatsDelta consumer exiting (channel closed)");
     });
