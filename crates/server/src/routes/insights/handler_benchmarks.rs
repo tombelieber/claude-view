@@ -156,15 +156,17 @@ pub async fn get_benchmarks(
 
     let user_average_reedit_rate = overall_reedit.0;
 
+    // CQRS Phase 5.5b — category_l1 now reads from session_flags.
     let cat_rows: Vec<(String, f64)> = sqlx::query_as(
         r#"
         SELECT
-            category_l1,
-            COALESCE(AVG(CAST(reedited_files_count AS REAL) / NULLIF(files_edited_count, 0)), 0.0)
-        FROM valid_sessions
-        WHERE last_message_at >= ?1 AND last_message_at <= ?2
-          AND category_l1 IS NOT NULL
-        GROUP BY category_l1
+            sf.category_l1,
+            COALESCE(AVG(CAST(s.reedited_files_count AS REAL) / NULLIF(s.files_edited_count, 0)), 0.0)
+        FROM valid_sessions s
+        INNER JOIN session_flags sf ON sf.session_id = s.id
+        WHERE s.last_message_at >= ?1 AND s.last_message_at <= ?2
+          AND sf.category_l1 IS NOT NULL
+        GROUP BY sf.category_l1
         ORDER BY 2 ASC
         "#,
     )

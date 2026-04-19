@@ -119,6 +119,9 @@ pub async fn get_categories(
 }
 
 /// Fetch category counts grouped by L1/L2/L3 from the database.
+///
+/// CQRS Phase 5.5b — category columns now live on `session_flags` and are
+/// joined rather than read from `valid_sessions`. Keeps the same shape.
 async fn fetch_category_counts(
     pool: &sqlx::SqlitePool,
     from: Option<i64>,
@@ -129,19 +132,20 @@ async fn fetch_category_counts(
         sqlx::query_as(
             r#"
             SELECT
-                category_l1,
-                category_l2,
-                category_l3,
+                sf.category_l1,
+                sf.category_l2,
+                sf.category_l3,
                 COUNT(*) as count,
-                AVG(CAST(reedited_files_count AS REAL) / NULLIF(files_edited_count, 0)) as avg_reedit_rate,
-                AVG(duration_seconds) as avg_duration,
-                AVG(user_prompt_count) as avg_prompts,
-                SUM(CASE WHEN commit_count > 0 THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(*) as commit_rate
-            FROM valid_sessions
-            WHERE category_l1 IS NOT NULL
-              AND (?1 IS NULL OR last_message_at >= ?1)
-              AND (?2 IS NULL OR last_message_at <= ?2)
-            GROUP BY category_l1, category_l2, category_l3
+                AVG(CAST(s.reedited_files_count AS REAL) / NULLIF(s.files_edited_count, 0)) as avg_reedit_rate,
+                AVG(s.duration_seconds) as avg_duration,
+                AVG(s.user_prompt_count) as avg_prompts,
+                SUM(CASE WHEN s.commit_count > 0 THEN 1.0 ELSE 0.0 END) * 100.0 / COUNT(*) as commit_rate
+            FROM valid_sessions s
+            INNER JOIN session_flags sf ON sf.session_id = s.id
+            WHERE sf.category_l1 IS NOT NULL
+              AND (?1 IS NULL OR s.last_message_at >= ?1)
+              AND (?2 IS NULL OR s.last_message_at <= ?2)
+            GROUP BY sf.category_l1, sf.category_l2, sf.category_l3
             ORDER BY count DESC
             "#,
         )
@@ -169,6 +173,10 @@ async fn fetch_category_counts(
 }
 
 /// Fetch count of sessions without categories.
+///
+/// CQRS Phase 5.5b — treats sessions with no session_flags row OR a row
+/// whose `category_l1` is NULL as uncategorized (LEFT JOIN makes both
+/// cases fall into the `sf.category_l1 IS NULL` branch).
 async fn fetch_uncategorized_count(
     pool: &sqlx::SqlitePool,
     from: Option<i64>,
@@ -176,10 +184,12 @@ async fn fetch_uncategorized_count(
 ) -> ApiResult<u32> {
     let row: (i64,) = sqlx::query_as(
         r#"
-        SELECT COUNT(*) FROM valid_sessions
-        WHERE category_l1 IS NULL
-          AND (?1 IS NULL OR last_message_at >= ?1)
-          AND (?2 IS NULL OR last_message_at <= ?2)
+        SELECT COUNT(*)
+        FROM valid_sessions s
+        LEFT JOIN session_flags sf ON sf.session_id = s.id
+        WHERE sf.category_l1 IS NULL
+          AND (?1 IS NULL OR s.last_message_at >= ?1)
+          AND (?2 IS NULL OR s.last_message_at <= ?2)
         "#,
     )
     .bind(from)

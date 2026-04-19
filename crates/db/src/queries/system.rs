@@ -177,18 +177,33 @@ impl Database {
     }
 
     /// Get classification status summary for the system page.
+    ///
+    /// CQRS Phase 5.5c — `classified_at` now reads from `session_flags`.
+    /// Sessions without a shadow row are treated as unclassified (LEFT JOIN
+    /// yields `sf.classified_at IS NULL`). Phase D.3 drops the legacy
+    /// column entirely; the logic here is schema-ready.
     pub async fn get_classification_status(&self) -> DbResult<ClassificationStatus> {
-        // Count classified sessions
-        let (classified_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NOT NULL")
-                .fetch_one(self.pool())
-                .await?;
+        let (classified_count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM valid_sessions s
+            INNER JOIN session_flags sf ON sf.session_id = s.id
+            WHERE sf.classified_at IS NOT NULL
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
 
-        // Count unclassified sessions
-        let (unclassified_count,): (i64,) =
-            sqlx::query_as("SELECT COUNT(*) FROM valid_sessions WHERE classified_at IS NULL")
-                .fetch_one(self.pool())
-                .await?;
+        let (unclassified_count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM valid_sessions s
+            LEFT JOIN session_flags sf ON sf.session_id = s.id
+            WHERE sf.classified_at IS NULL
+            "#,
+        )
+        .fetch_one(self.pool())
+        .await?;
 
         // Get the most recent completed job
         #[allow(clippy::type_complexity)]

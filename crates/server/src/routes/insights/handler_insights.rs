@@ -84,7 +84,12 @@ pub async fn get_insights(
     let time_range_days = ((to_ts - from_ts) / 86400).max(1) as u32;
     let pool = state.db.pool();
 
-    // 1. Fetch lightweight session data for pattern computation
+    // 1. Fetch lightweight session data for pattern computation.
+    //
+    // CQRS Phase 5.5b — read category_l1 from session_flags (the shadow
+    // that Phase D.3 keeps after the legacy sessions.category_l1 column is
+    // dropped). LightSession.from_row still reads "category_l1", so the
+    // query aliases `sf.category_l1` to that name.
     let rows: Vec<LightSession> = sqlx::query_as(
         r#"
         SELECT
@@ -96,9 +101,10 @@ pub async fn get_insights(
             s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
             s.total_input_tokens, s.total_output_tokens,
             s.git_branch, s.files_edited, s.files_read,
-            s.category_l1, s.size_bytes,
+            sf.category_l1 AS category_l1, s.size_bytes,
             s.primary_model
         FROM valid_sessions s
+        LEFT JOIN session_flags sf ON sf.session_id = s.id
         WHERE s.last_message_at >= ?1 AND s.last_message_at <= ?2
         "#,
     )
@@ -359,13 +365,17 @@ fn compute_best_time(sessions: &[SessionInfo]) -> (String, String, f64) {
 }
 
 /// Get classification status from the database.
+///
+/// CQRS Phase 5.5b — classification state now reads from session_flags
+/// so Phase D.3's legacy column drop does not break the coverage badge.
 async fn get_classification_status(pool: &sqlx::SqlitePool) -> ApiResult<ClassificationCoverage> {
     let row: (i64, i64) = sqlx::query_as(
         r#"
         SELECT
             COUNT(*) as total,
-            COUNT(CASE WHEN category_l1 IS NOT NULL THEN 1 END) as classified
-        FROM valid_sessions
+            COUNT(CASE WHEN sf.category_l1 IS NOT NULL THEN 1 END) as classified
+        FROM valid_sessions s
+        LEFT JOIN session_flags sf ON sf.session_id = s.id
         "#,
     )
     .fetch_one(pool)

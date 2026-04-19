@@ -14,6 +14,12 @@ impl Database {
     ///
     /// Flat query — no project grouping, no turns JOIN.
     /// Returns sessions sorted by `last_message_at` DESC.
+    ///
+    /// CQRS Phase 5.5b + 5.5c — category_* and classified_at now live on
+    /// `session_flags`. `sf.classified_at` is unix-ms (INTEGER), while
+    /// `SessionRow::classified_at` is `Option<String>` (RFC3339). The
+    /// query converts with `strftime('%Y-%m-%dT%H:%M:%fZ', ts_ms / 1000,
+    /// 'unixepoch')` so the row type stays unchanged.
     pub async fn list_all_sessions(&self) -> DbResult<Vec<SessionInfo>> {
         let rows: Vec<SessionRow> = sqlx::query_as(
             r#"
@@ -41,13 +47,21 @@ impl Database {
                 s.bash_progress_count, s.hook_progress_count, s.mcp_progress_count,
                 s.lines_added, s.lines_removed, s.loc_source,
                 s.summary_text, s.parse_version,
-                s.category_l1, s.category_l2, s.category_l3,
-                s.category_confidence, s.category_source, s.classified_at,
+                sf.category_l1 AS category_l1,
+                sf.category_l2 AS category_l2,
+                sf.category_l3 AS category_l3,
+                sf.category_confidence AS category_confidence,
+                sf.category_source AS category_source,
+                CASE
+                    WHEN sf.classified_at IS NULL THEN NULL
+                    ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.classified_at / 1000.0, 'unixepoch')
+                END AS classified_at,
                 s.total_task_time_seconds, s.longest_task_seconds, s.longest_task_preview,
                 s.total_cost_usd,
                 s.slug,
                 s.entrypoint
             FROM valid_sessions s
+            LEFT JOIN session_flags sf ON sf.session_id = s.id
             ORDER BY s.last_message_at DESC
             "#,
         )

@@ -30,6 +30,11 @@ mod tests {
     }
 
     async fn insert_session(db: &Database, id: &str, ts: i64, category_l1: Option<&str>) {
+        // Dual-write is still in place (Phase 5.2) so tests mirror the
+        // legacy + shadow storage during the reader-switch window. Once
+        // Phase D.3 drops the legacy columns the `sessions` INSERT here
+        // also loses them; until then we keep both paths populated so the
+        // shadow-read handlers see the fixtures.
         sqlx::query(
             r#"
             INSERT INTO sessions (
@@ -53,6 +58,33 @@ mod tests {
         .execute(db.pool())
         .await
         .unwrap();
+        // Mirror category into session_flags so the Phase 5.5b readers see
+        // the fixture. Use a deterministic classified_at to keep the LWW
+        // fold path exercised when tests re-run.
+        if let Some(l1) = category_l1 {
+            sqlx::query(
+                r#"
+                INSERT INTO session_flags (
+                    session_id, category_l1, category_l2, category_l3,
+                    category_confidence, category_source, classified_at, applied_seq
+                )
+                VALUES (?1, ?2, 'feature', 'new-component', 0.9, 'test', ?3, 0)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    category_l1 = excluded.category_l1,
+                    category_l2 = excluded.category_l2,
+                    category_l3 = excluded.category_l3,
+                    category_confidence = excluded.category_confidence,
+                    category_source = excluded.category_source,
+                    classified_at = excluded.classified_at
+                "#,
+            )
+            .bind(id)
+            .bind(l1)
+            .bind(ts)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        }
     }
 
     async fn mark_session_sidechain(db: &Database, id: &str) {
@@ -375,7 +407,9 @@ mod tests {
         let db = test_db().await;
         let now = chrono::Utc::now().timestamp();
 
-        // Insert sessions with categories
+        // Insert sessions with categories.
+        // Phase 5.5b — readers now pull categories from session_flags, so
+        // each fixture also UPSERTs the shadow row.
         for i in 0..20 {
             let id = format!("cat-{}", i);
             let (l1, l2, l3) = match i % 5 {
@@ -385,6 +419,7 @@ mod tests {
                 3 => ("support_work", "docs", "readme-guides"),
                 _ => ("thinking_work", "planning", "brainstorming"),
             };
+            let ts = now - (i as i64 * 3600);
 
             sqlx::query(
                 r#"
@@ -405,10 +440,28 @@ mod tests {
             )
             .bind(&id)
             .bind(if i % 2 == 0 { 1 } else { 0 })
-            .bind(now - (i as i64 * 3600))
+            .bind(ts)
             .bind(l1)
             .bind(l2)
             .bind(l3)
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+            sqlx::query(
+                r#"
+                INSERT INTO session_flags (
+                    session_id, category_l1, category_l2, category_l3,
+                    category_confidence, category_source, classified_at, applied_seq
+                )
+                VALUES (?1, ?2, ?3, ?4, 0.9, 'test', ?5, 0)
+                "#,
+            )
+            .bind(&id)
+            .bind(l1)
+            .bind(l2)
+            .bind(l3)
+            .bind(ts)
             .execute(db.pool())
             .await
             .unwrap();
@@ -445,7 +498,8 @@ mod tests {
         let db = test_db().await;
         let now = chrono::Utc::now().timestamp();
 
-        // Insert sessions: some recent, some old
+        // Insert sessions: some recent, some old.
+        // Phase 5.5b — categories read from session_flags; mirror them.
         for i in 0..10 {
             let id = format!("tf-{}", i);
             let ts = if i < 5 {
@@ -469,6 +523,21 @@ mod tests {
                     1800, 5, 1, 5, 10, 10, 20, 1, 10,
                     ?2, 1024, '', '[]', '[]', '[]', '[]',
                     'code_work', 'feature', 'new-component')
+                "#,
+            )
+            .bind(&id)
+            .bind(ts)
+            .execute(db.pool())
+            .await
+            .unwrap();
+
+            sqlx::query(
+                r#"
+                INSERT INTO session_flags (
+                    session_id, category_l1, category_l2, category_l3,
+                    category_confidence, category_source, classified_at, applied_seq
+                )
+                VALUES (?1, 'code_work', 'feature', 'new-component', 0.9, 'test', ?2, 0)
                 "#,
             )
             .bind(&id)
