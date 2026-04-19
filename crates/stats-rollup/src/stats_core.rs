@@ -21,7 +21,7 @@
 use claude_view_stats_rollup_derive::RollupTable;
 
 /// Central rollup-shape declaration. See module doc.
-#[derive(Debug, Clone, RollupTable)]
+#[derive(Debug, Clone, PartialEq, RollupTable)]
 #[rollup(buckets = [daily, weekly, monthly])]
 #[rollup(dimensions = [
     global,

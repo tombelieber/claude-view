@@ -13,6 +13,7 @@
 //! §2.2 (Phase 1 scaffold) + §6.2 (Phase 4 macro expansion)`.
 
 pub mod bucket;
+pub mod dashboard;
 pub mod merge;
 pub mod period;
 pub mod rollup;
@@ -20,6 +21,7 @@ pub mod stats_core;
 
 pub use bucket::Bucket;
 pub use claude_view_session_parser::{RollupVersion, ROLLUP_VERSION};
+pub use dashboard::sum_global_stats_in_range;
 pub use merge::merge;
 pub use period::PeriodStats;
 pub use rollup::rollup;
