@@ -14,6 +14,11 @@ mod migrations;
 pub mod pricing;
 mod queries;
 pub mod snapshots;
+/// CQRS Phase 4 Stage C — rollup-table writer. Applies `StatsDelta`
+/// into the 12 relevant rollup tables (global / project / branch /
+/// model × daily / weekly / monthly). Category dimension deferred to
+/// Phase 5 (needs `SessionFlags` fold).
+pub mod stage_c;
 pub mod test_support;
 pub mod trends;
 

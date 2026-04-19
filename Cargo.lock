@@ -1087,6 +1087,7 @@ dependencies = [
 name = "claude-view-stats-rollup"
 version = "0.38.0"
 dependencies = [
+ "chrono",
  "claude-view-core",
  "claude-view-session-parser",
  "claude-view-stats-rollup-derive",

@@ -15,6 +15,7 @@ license.workspace = true
 [dependencies]
 serde = { workspace = true }
 sqlx = { workspace = true }
+chrono = { workspace = true }
 claude-view-core = { workspace = true }
 claude-view-session-parser = { workspace = true }
 claude-view-stats-rollup-derive = { path = "../stats-rollup-derive" }
