@@ -103,4 +103,35 @@ CREATE TABLE fold_state (
 ) STRICT;
 INSERT INTO fold_state (id, applied_seq) VALUES (0, 0);
 COMMIT;"#,
+    // Migration 84: stage_c_outbox — durable delivery channel for
+    // `FlagDelta` events produced by the PR 5.3 fold writer. The fold
+    // writer INSERTs one row here in the SAME TX as each
+    // `session_flags` UPSERT; Stage C's drainer task reads pending
+    // rows (WHERE applied_at IS NULL), applies compensating rollup
+    // UPDATEs, then marks applied_at. Crash-safe by construction —
+    // neither side can acknowledge work the other didn't commit.
+    //
+    // Design: `private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md §6.2`.
+    //
+    // Columns:
+    //   seq          — AUTOINCREMENT, same rationale as session_action_log
+    //   delta_type   — 'flag_delta' today; future-proofed for other
+    //                  compensating delta kinds (e.g. project rename)
+    //   payload_json — serialized FlagDelta { session_id, kind,
+    //                  before, after, at_ms }
+    //   applied_at   — NULL until drainer commits the apply
+    //
+    // Indexes:
+    //   idx_stage_c_outbox_pending — partial on (seq) WHERE
+    //                  applied_at IS NULL. Keeps the drainer's scan
+    //                  O(pending) instead of O(total).
+    r#"BEGIN;
+CREATE TABLE stage_c_outbox (
+    seq          INTEGER PRIMARY KEY AUTOINCREMENT,
+    delta_type   TEXT    NOT NULL,
+    payload_json TEXT    NOT NULL,
+    applied_at   INTEGER
+) STRICT;
+CREATE INDEX idx_stage_c_outbox_pending ON stage_c_outbox(seq) WHERE applied_at IS NULL;
+COMMIT;"#,
 ];

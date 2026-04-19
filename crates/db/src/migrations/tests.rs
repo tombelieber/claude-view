@@ -2541,3 +2541,56 @@ async fn test_migration82_session_action_log_rejects_null_required_fields() {
         );
     }
 }
+
+#[tokio::test]
+async fn test_migration84_stage_c_outbox_columns_exist() {
+    let pool = setup_db().await;
+    let cols: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as(
+        "SELECT cid, name, type, \"notnull\", dflt_value, pk
+         FROM pragma_table_info('stage_c_outbox')",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    let by_name: std::collections::HashMap<&str, &str> = cols
+        .iter()
+        .map(|(_, n, t, _, _, _)| (n.as_str(), t.as_str()))
+        .collect();
+    assert_eq!(by_name.get("seq"), Some(&"INTEGER"));
+    assert_eq!(by_name.get("delta_type"), Some(&"TEXT"));
+    assert_eq!(by_name.get("payload_json"), Some(&"TEXT"));
+    assert_eq!(by_name.get("applied_at"), Some(&"INTEGER"));
+    assert_eq!(cols.len(), 4);
+}
+
+#[tokio::test]
+async fn test_migration84_stage_c_outbox_partial_index() {
+    let pool = setup_db().await;
+    let (sql,): (String,) = sqlx::query_as(
+        "SELECT sql FROM sqlite_master
+         WHERE type='index' AND name='idx_stage_c_outbox_pending'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        sql.contains("WHERE applied_at IS NULL"),
+        "pending-index must be partial; got:\n{sql}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration84_stage_c_outbox_is_strict() {
+    let pool = setup_db().await;
+    let (sql,): (String,) = sqlx::query_as(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='stage_c_outbox'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert!(
+        sql.contains("STRICT"),
+        "stage_c_outbox must be STRICT; got:\n{sql}"
+    );
+}
