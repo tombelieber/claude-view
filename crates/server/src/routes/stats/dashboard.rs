@@ -6,6 +6,7 @@ use std::time::Instant;
 use axum::extract::{Query, State};
 use axum::Json;
 use claude_view_core::{AnalyticsScopeMeta, EffectiveRangeMeta, EffectiveRangeSource};
+use claude_view_stats_rollup::{sum_global_stats_in_range, Bucket};
 
 use crate::error::ApiResult;
 use crate::metrics::{
@@ -19,6 +20,8 @@ use super::types::{
     CurrentPeriodMetrics, DashboardMeta, DashboardQuery, DashboardRangesMeta, DashboardTrends,
     ExtendedDashboardStats,
 };
+
+use crate::routes::insights::rollup_read::legacy_stats_read_enabled;
 
 /// GET /api/stats/dashboard - Pre-computed dashboard statistics with time range filtering.
 ///
@@ -219,13 +222,40 @@ pub async fn dashboard_stats(
             }
         }
     } else {
-        // All-time view: show aggregate stats but no trends
+        // All-time view: show aggregate stats but no trends.
+        //
+        // CQRS Phase 4 PR 4.3 — when there is no project/branch filter and
+        // the legacy-stats env var is unset, read session_count + total_tokens
+        // from the `daily_global_stats` rollup. The remaining two fields
+        // (files_edited_count, commit_count) stay on the legacy path until
+        // Phase 5 `SessionFlags` fold populates them on rollup rows.
+        // Filtered requests continue to use the legacy GROUP BY over
+        // valid_sessions — no project/branch rollup for unified metrics yet.
+        let use_rollup =
+            !legacy_stats_read_enabled() && query.project.is_none() && query.branch.is_none();
         match state
             .db
             .get_all_time_metrics(query.project.as_deref(), query.branch.as_deref())
             .await
         {
-            Ok((session_count, total_tokens, total_files_edited, commit_count)) => {
+            Ok((session_count_legacy, total_tokens_legacy, total_files_edited, commit_count)) => {
+                let (session_count, total_tokens) = if use_rollup {
+                    match sum_global_stats_in_range(state.db.pool(), Bucket::Daily, 0, i64::MAX)
+                        .await
+                    {
+                        Ok(stats) => (stats.session_count, stats.total_tokens),
+                        Err(e) => {
+                            tracing::warn!(
+                                endpoint = "dashboard_stats",
+                                error = %e,
+                                "daily_global_stats rollup read failed — falling back to legacy values"
+                            );
+                            (session_count_legacy, total_tokens_legacy)
+                        }
+                    }
+                } else {
+                    (session_count_legacy, total_tokens_legacy)
+                };
                 let current = CurrentPeriodMetrics {
                     session_count,
                     total_tokens,

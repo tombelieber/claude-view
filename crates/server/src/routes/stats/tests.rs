@@ -1309,4 +1309,37 @@ mod tests {
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
         assert_eq!(json["filesCreated"], 0);
     }
+
+    /// CQRS Phase 4 PR 4.3 — dashboard all-time view reads session_count
+    /// + total_tokens from the `daily_global_stats` rollup when no
+    /// project/branch filter is set.
+    #[tokio::test]
+    async fn test_dashboard_reads_from_daily_global_stats_rollup() {
+        let db = test_db().await;
+
+        // Seed a rollup row — 42 sessions, 100_000 tokens.
+        db.pool()
+            .execute(sqlx::query(
+                "INSERT INTO daily_global_stats (
+                    period_start, session_count, total_tokens, total_cost_cents,
+                    prompt_count, file_count, lines_added, lines_removed,
+                    commit_count, commit_insertions, commit_deletions,
+                    duration_sum_ms, duration_count, reedit_rate_sum,
+                    reedit_rate_count
+                 ) VALUES (1700000000000, 42, 100000, 0,
+                           500, 0, 0, 0,
+                           0, 0, 0,
+                           600000, 42, 0.0,
+                           0)",
+            ))
+            .await
+            .unwrap();
+
+        let app = build_app(db);
+        let (status, body) = do_get(app, "/api/stats/dashboard").await;
+        assert_eq!(status, StatusCode::OK);
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(json["currentWeek"]["sessionCount"], 42);
+        assert_eq!(json["currentWeek"]["totalTokens"], 100000);
+    }
 }
