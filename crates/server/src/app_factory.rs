@@ -521,14 +521,19 @@ pub fn create_app_full(
     // under its own TX so one bad payload never blocks the queue.
     claude_view_db::stage_c::spawn_outbox_drainer(fold_db.clone());
 
-    // CQRS Phase 5 PR 5.4 — spawn the shadow parity monitor. Every
-    // 15 min it samples the 10 k most recent sessions and logs
-    // `shadow_flags_diff_total{field}` counts at INFO (all-zero) or
-    // WARN (any drift). §6.4 soak gate = 48 h continuous all-zero
-    // before Phase 5 readers may cut over (PR 5.5). Phase 7 adds
-    // /metrics so these counts feed Prometheus alerts directly; until
-    // then `tracing::warn!` is the alert channel.
-    claude_view_db::fold::spawn_parity_monitor(fold_db);
+    // CQRS Phase 5 PR 5.4 — spawn the shadow parity monitor. Post
+    // Phase D.3 this is a structural no-op (the legacy columns are
+    // gone so there is nothing to diff against), but we keep the task
+    // in place so its tracing footprint survives; Phase F's sampler
+    // task below is the authoritative /metrics publisher.
+    claude_view_db::fold::spawn_parity_monitor(fold_db.clone());
+
+    // CQRS Phase 7 PR 7.a — spawn the /metrics sampler. Every 60 s
+    // runs the parity sweep, reads fold lag, counts pending outbox
+    // rows, and writes them to Prometheus gauges. Separate from
+    // the /metrics handler so scrape latency stays ~µs regardless of
+    // DB size.
+    crate::startup::spawn_cqrs_sampler(fold_db);
 
     let (
         manager,

@@ -77,6 +77,40 @@ fn describe_metrics() {
 
     // Storage metrics
     describe_gauge!("storage_bytes", "Storage usage in bytes by type");
+
+    // CQRS Phase 7 — shadow observability.
+    describe_gauge!(
+        "shadow_flags_diff_total",
+        "Per-field drift count from the session_flags parity sweep. \
+         Phase D.3 makes this a no-op but the gauge is kept so dashboards \
+         stay schema-stable across the transition."
+    );
+    describe_gauge!(
+        "flag_fold_lag_seq",
+        "Pending session_action_log rows: max(seq) - fold_state.applied_seq."
+    );
+    describe_gauge!(
+        "stage_c_outbox_pending_total",
+        "Unapplied FlagDelta rows in stage_c_outbox (applied_at IS NULL)."
+    );
+}
+
+/// Record the current CQRS shadow observability sample.
+///
+/// Called by the Phase 7 background sampler task every 60 s. The
+/// gauge values reflect the most recent snapshot; the sampler task
+/// overwrites them in-place so `/metrics` always serves fresh data
+/// without synchronously hitting the DB on every scrape.
+pub fn record_cqrs_shadow_sample(
+    per_field_counts: &std::collections::BTreeMap<&'static str, u64>,
+    fold_lag: i64,
+    outbox_pending: i64,
+) {
+    for (field, count) in per_field_counts {
+        gauge!("shadow_flags_diff_total", "field" => (*field).to_string()).set(*count as f64);
+    }
+    gauge!("flag_fold_lag_seq").set(fold_lag as f64);
+    gauge!("stage_c_outbox_pending_total").set(outbox_pending as f64);
 }
 
 /// Render current metrics in Prometheus text format.
