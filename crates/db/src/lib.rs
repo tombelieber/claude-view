@@ -123,6 +123,42 @@ impl Database {
             .journal_mode(SqliteJournalMode::Wal)
             .synchronous(SqliteSynchronous::Normal)
             .busy_timeout(std::time::Duration::from_secs(30))
+            // CQRS Phase 4 PR 4.0.5 — starter PRAGMA tuning for the
+            // post-Phase-7 writer set (indexer-v2, fold job, git-sync,
+            // drift-detector, action handlers, hook-event inserter,
+            // Stage C rollup, live-tail = 8 concurrent writers).
+            //
+            // Rationale anchored to the 2026-04-18 baseline bench
+            // (private/config/docs/plans/benchmarks/2026-04-18-baseline.md)
+            // which logged a 6.5 s slow-statement warning on `UPDATE
+            // sessions` under just 1–2 concurrent writers. Under 8
+            // writers the checkpoint stall would be catastrophic. These
+            // starter values buy headroom; PR 4.0.5's full synthetic-
+            // writer harness (tracked in 2026-04-19-cqrs-phase-4-gate-
+            // reframe.md) will land bench-tuned values after Stage C
+            // and Phase 5 writers exist to drive real load.
+            //
+            //   `mmap_size = 256 MiB` — memory-mapped I/O for reads;
+            //   every read-side Phase 3 endpoint benefits. 256 MiB is
+            //   the SQLite-recommended ceiling below which the OS page
+            //   cache dominates anyway.
+            //
+            //   `journal_size_limit = 128 MiB` — caps WAL growth so a
+            //   long-running reader cannot pin unbounded WAL storage.
+            //   Without this, a stuck txn at Phase 5 fold-apply time
+            //   could balloon WAL past user disk budget.
+            //
+            //   `wal_autocheckpoint = 2000` — doubled from default 1000
+            //   pages. Fewer checkpoints at higher cost each; under
+            //   sustained write load this reduces the per-write stall
+            //   frequency at the cost of a slightly longer tail.
+            //
+            // If PR 4.0.5's bench shows p99 > 10 ms, these values move
+            // with bench-driven citations. Do not change without
+            // committing a new bench log.
+            .pragma("mmap_size", "268435456")
+            .pragma("journal_size_limit", "134217728")
+            .pragma("wal_autocheckpoint", "2000")
             .log_slow_statements(
                 tracing::log::LevelFilter::Warn,
                 std::time::Duration::from_secs(5),
@@ -454,5 +490,49 @@ mod tests {
         let path = default_db_path().expect("should resolve default path");
         assert!(path.to_string_lossy().contains("claude-view"));
         assert!(path.to_string_lossy().ends_with("claude-view.db"));
+    }
+
+    /// CQRS Phase 4 PR 4.0.5 — pins the starter PRAGMA tuning values so
+    /// an accidental edit to `Database::new()` doesn't silently reset
+    /// them to defaults. If you intentionally change the values, update
+    /// this test at the same time AND add a new bench log.
+    ///
+    /// File-based path only — in-memory DBs ignore `mmap_size` /
+    /// `journal_size_limit` / `wal_autocheckpoint` since they have no
+    /// backing file or WAL. This keeps the test honest about what it's
+    /// measuring.
+    #[tokio::test]
+    async fn pragma_tuning_values_applied_on_file_db() {
+        let tmp = tempfile::tempdir().expect("should create temp dir");
+        let db_path = tmp.path().join("pragma_tuning.db");
+        let db = Database::new(&db_path)
+            .await
+            .expect("should create file-based database");
+
+        let (mmap,): (i64,) = sqlx::query_as("PRAGMA mmap_size")
+            .fetch_one(db.pool())
+            .await
+            .expect("mmap_size pragma");
+        assert_eq!(mmap, 268_435_456, "mmap_size should be 256 MiB");
+
+        let (jlim,): (i64,) = sqlx::query_as("PRAGMA journal_size_limit")
+            .fetch_one(db.pool())
+            .await
+            .expect("journal_size_limit pragma");
+        assert_eq!(jlim, 134_217_728, "journal_size_limit should be 128 MiB");
+
+        let (wal_cp,): (i64,) = sqlx::query_as("PRAGMA wal_autocheckpoint")
+            .fetch_one(db.pool())
+            .await
+            .expect("wal_autocheckpoint pragma");
+        assert_eq!(wal_cp, 2000, "wal_autocheckpoint should be 2000");
+
+        // Sanity: WAL journal mode is actually active (a wrong
+        // SqliteJournalMode::Wal wouldn't trigger a compile error).
+        let (jm,): (String,) = sqlx::query_as("PRAGMA journal_mode")
+            .fetch_one(db.pool())
+            .await
+            .expect("journal_mode pragma");
+        assert_eq!(jm.to_lowercase(), "wal");
     }
 }
