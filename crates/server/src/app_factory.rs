@@ -449,6 +449,44 @@ pub fn create_app_full(
     let (stats_delta_tx, _stats_delta_consumer_handle) =
         claude_view_db::indexer_v2::spawn_delta_consumer(Arc::new(db.clone()));
 
+    // CQRS Phase 4 PR 4.2c — kick off a full rebuild of rollup tables
+    // from `session_stats` in the background. Runs asynchronously so
+    // server binding is not delayed; rollup reader endpoints (Phase 4.3+)
+    // may observe empty tables for the first few seconds after startup
+    // until this task completes (4.8k sessions × ~0.3 ms ≈ 1.5 s on the
+    // author's M5 Max; scales linearly with session count).
+    //
+    // Idempotent: re-running over the same session_stats produces the
+    // same rollup state (`full_rebuild_from_session_stats` truncates
+    // before re-folding). Safe to run concurrently with the live
+    // Stage C incremental path above — live deltas see
+    // session_count += 1 on first observation; rebuild's first-
+    // observation mode also writes session_count = 1; the UPSERT
+    // pointwise-sum semantics absorb the overlap idempotently
+    // because rebuild truncates first.
+    //
+    // Logs summary on completion; errors log but do not kill the
+    // task's spawned tokio runtime slot (matches the consumer's
+    // "log + continue" pattern).
+    let rebuild_db = Arc::new(db.clone());
+    tokio::spawn(async move {
+        let started = std::time::Instant::now();
+        match claude_view_db::stage_c::full_rebuild_from_session_stats(rebuild_db.pool()).await {
+            Ok(summary) => tracing::info!(
+                rows_observed = summary.rows_observed,
+                rows_applied = summary.rows_applied,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "Stage C startup full_rebuild complete"
+            ),
+            Err(e) => tracing::warn!(
+                error = %e,
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "Stage C startup full_rebuild failed — rollup endpoints \
+                 will populate incrementally as new deltas arrive"
+            ),
+        }
+    });
+
     let (
         manager,
         live_sessions,
