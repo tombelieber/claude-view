@@ -1,6 +1,7 @@
 // crates/db/src/queries/mod.rs
 // Session CRUD operations for the claude-view SQLite database.
 
+mod action_log;
 mod ai_generation;
 mod catalog;
 mod classification;

@@ -178,10 +178,29 @@ pub async fn dismiss_session(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let mut ring = state.closed_ring.write().await;
-    let before = ring.len();
-    ring.retain(|s| s.id != id);
-    if ring.len() < before {
+    let dismissed = {
+        let mut ring = state.closed_ring.write().await;
+        let before = ring.len();
+        ring.retain(|s| s.id != id);
+        ring.len() < before
+    };
+
+    if dismissed {
+        // CQRS Phase 5 PR 5.2: log the dismissal to the action log so the
+        // PR 5.3 fold writer can populate `session_flags.dismissed_at`.
+        // Best-effort — a persistence failure must not flip the user's
+        // visible state, because the ring update already succeeded and
+        // any retry would double-dismiss. A WARN trace is sufficient;
+        // Phase 5.4's shadow-parity monitor will flag repeated gaps.
+        let at_ms = chrono::Utc::now().timestamp_millis();
+        if let Err(e) = state
+            .db
+            .insert_action_log(&id, "dismiss", "{}", "user", at_ms)
+            .await
+        {
+            tracing::warn!(session_id = %id, error = %e, "failed to log dismiss to session_action_log");
+        }
+
         (
             axum::http::StatusCode::OK,
             Json(serde_json::json!({"dismissed": true})),
@@ -201,8 +220,29 @@ pub async fn dismiss_session(
     )
 )]
 pub async fn dismiss_all_closed(State(state): State<Arc<AppState>>) -> impl IntoResponse {
-    let mut ring = state.closed_ring.write().await;
-    let count = ring.len();
-    ring.clear();
+    // Capture the IDs BEFORE clearing so Phase 5's action-log inserts
+    // can reference each dismissed session by ID; after `ring.clear()`
+    // that information is gone.
+    let ids: Vec<String> = {
+        let mut ring = state.closed_ring.write().await;
+        let ids = ring.iter().map(|s| s.id.clone()).collect::<Vec<_>>();
+        ring.clear();
+        ids
+    };
+
+    let count = ids.len();
+    if count > 0 {
+        let at_ms = chrono::Utc::now().timestamp_millis();
+        for id in &ids {
+            if let Err(e) = state
+                .db
+                .insert_action_log(id, "dismiss", "{}", "user", at_ms)
+                .await
+            {
+                tracing::warn!(session_id = %id, error = %e, "failed to log bulk dismiss to session_action_log");
+            }
+        }
+    }
+
     Json(serde_json::json!({"dismissedCount": count}))
 }

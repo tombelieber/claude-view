@@ -1,6 +1,7 @@
 // crates/db/src/queries/classification.rs
 // Classification job and index run CRUD operations (Theme 4).
 
+use super::action_log::insert_action_log_tx;
 use super::row_types::{ClassificationJobRow, IndexRunRow};
 use super::IndexRunIntegrityCounters;
 use crate::{Database, DbResult};
@@ -389,11 +390,20 @@ impl Database {
     }
 
     /// Batch update session classifications (within a single transaction).
+    ///
+    /// CQRS Phase 5 PR 5.2: each UPDATE is paired with a matching
+    /// `session_action_log` row tagged `action='classify'`. The actor is
+    /// `classifier:<source>` (e.g. `classifier:claude-cli`) so PR 5.4's
+    /// shadow-parity monitor can distinguish user-initiated reclassifies
+    /// (actor = "user") from LLM classifier writes. Payload serialises
+    /// {l1, l2, l3, confidence, source} as JSON — the Phase 5.3 fold
+    /// writer deserialises this to populate `session_flags.category_*`.
     pub async fn batch_update_session_classifications(
         &self,
         updates: &[(String, String, String, String, f64, String)],
     ) -> DbResult<()> {
         let classified_at = Utc::now().to_rfc3339();
+        let classified_at_ms = Utc::now().timestamp_millis();
         let mut tx = self.pool().begin().await?;
         for (session_id, l1, l2, l3, confidence, source) in updates {
             sqlx::query(
@@ -416,6 +426,25 @@ impl Database {
             .bind(source)
             .bind(&classified_at)
             .execute(&mut *tx)
+            .await?;
+
+            let payload = serde_json::json!({
+                "l1": l1,
+                "l2": l2,
+                "l3": l3,
+                "confidence": confidence,
+                "source": source,
+            })
+            .to_string();
+            let actor = format!("classifier:{source}");
+            insert_action_log_tx(
+                &mut *tx,
+                session_id,
+                "classify",
+                &payload,
+                &actor,
+                classified_at_ms,
+            )
             .await?;
         }
         tx.commit().await?;
