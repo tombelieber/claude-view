@@ -1,8 +1,46 @@
 #![allow(deprecated)]
 //! Integration tests for Database AI generation stats query methods.
+//!
+//! Per-model token breakdown is sourced from `session_stats.per_model_tokens_json`
+//! (the wide-row CQRS replacement for the retired `turns` table).
 
 use claude_view_db::Database;
 use sqlx::Executor;
+
+/// Insert a minimal `session_stats` row so the ai-generation per-model aggregation
+/// finds the session and its `per_model_tokens_json` blob.
+async fn seed_session_stats_with_per_model(
+    db: &Database,
+    session_id: &str,
+    project_id: &str,
+    file_path: &str,
+    last_message_at: i64,
+    per_model_tokens_json: &str,
+) {
+    db.pool()
+        .execute(
+            sqlx::query(
+                r#"INSERT INTO session_stats (
+                       session_id, source_content_hash, source_size,
+                       parser_version, stats_version, indexed_at,
+                       project_id, file_path, last_message_at,
+                       per_model_tokens_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(session_id)
+            .bind(vec![0x01u8])
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(project_id)
+            .bind(file_path)
+            .bind(last_message_at)
+            .bind(per_model_tokens_json),
+        )
+        .await
+        .unwrap();
+}
 
 #[tokio::test]
 async fn test_get_ai_generation_stats() {
@@ -79,71 +117,25 @@ async fn test_get_ai_generation_stats() {
         .await
         .unwrap();
 
-    // Ground-truth model usage comes from turns.model_id.
-    db.pool()
-        .execute(sqlx::query(
-            r#"
-                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
-                VALUES ('claude-opus-4-5-20251101', 'anthropic', 'opus', 0, 0)
-                "#,
-        ))
-        .await
-        .unwrap();
-    db.pool()
-        .execute(sqlx::query(
-            r#"
-                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
-                VALUES ('claude-sonnet-4-20250514', 'anthropic', 'sonnet', 0, 0)
-                "#,
-        ))
-        .await
-        .unwrap();
-
-    db.pool()
-        .execute(
-            sqlx::query(
-                r#"
-                INSERT INTO turns (
-                    session_id, uuid, seq, model_id, input_tokens, output_tokens,
-                    cache_read_tokens, cache_creation_tokens, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind("ai-gen-1")
-            .bind("turn-ai-gen-1")
-            .bind(1)
-            .bind("claude-opus-4-5-20251101")
-            .bind(3000)
-            .bind(2000)
-            .bind(0)
-            .bind(0)
-            .bind(1000),
-        )
-        .await
-        .unwrap();
-
-    db.pool()
-        .execute(
-            sqlx::query(
-                r#"
-                INSERT INTO turns (
-                    session_id, uuid, seq, model_id, input_tokens, output_tokens,
-                    cache_read_tokens, cache_creation_tokens, timestamp
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                "#,
-            )
-            .bind("ai-gen-2")
-            .bind("turn-ai-gen-2")
-            .bind(1)
-            .bind("claude-sonnet-4-20250514")
-            .bind(1000)
-            .bind(500)
-            .bind(0)
-            .bind(0)
-            .bind(2000),
-        )
-        .await
-        .unwrap();
+    // Ground-truth model usage is sourced from session_stats.per_model_tokens_json.
+    seed_session_stats_with_per_model(
+        &db,
+        "ai-gen-1",
+        "proj-ai",
+        "/tmp/ai1.jsonl",
+        1000,
+        r#"{"claude-opus-4-5-20251101":{"inputTokens":3000,"outputTokens":2000,"cacheReadTokens":0,"cacheCreationTokens":0,"cacheCreation5mTokens":0,"cacheCreation1hrTokens":0,"totalTokens":5000}}"#,
+    )
+    .await;
+    seed_session_stats_with_per_model(
+        &db,
+        "ai-gen-2",
+        "proj-ai2",
+        "/tmp/ai2.jsonl",
+        2000,
+        r#"{"claude-sonnet-4-20250514":{"inputTokens":1000,"outputTokens":500,"cacheReadTokens":0,"cacheCreationTokens":0,"cacheCreation5mTokens":0,"cacheCreation1hrTokens":0,"totalTokens":1500}}"#,
+    )
+    .await;
 
     // Test all-time (no range filter)
     let stats = db

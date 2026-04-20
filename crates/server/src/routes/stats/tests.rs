@@ -30,6 +30,49 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).unwrap())
     }
 
+    /// Upsert a session_stats row with `per_model_tokens_json` populated from a
+    /// single (model_id, input, output, cache_read, cache_creation) tuple —
+    /// the CQRS replacement for seeding `turns` rows in these tests.
+    async fn upsert_session_stats_with_per_model(
+        db: &Database,
+        session_id: &str,
+        last_message_at: i64,
+        model_id: &str,
+        input_tokens: u64,
+        output_tokens: u64,
+        cache_read_tokens: u64,
+        cache_creation_tokens: u64,
+    ) {
+        let json = format!(
+            r#"{{"{model}":{{"inputTokens":{i},"outputTokens":{o},"cacheReadTokens":{cr},"cacheCreationTokens":{cc},"cacheCreation5mTokens":0,"cacheCreation1hrTokens":0,"totalTokens":{t}}}}}"#,
+            model = model_id,
+            i = input_tokens,
+            o = output_tokens,
+            cr = cache_read_tokens,
+            cc = cache_creation_tokens,
+            t = input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens,
+        );
+        db.pool()
+            .execute(
+                sqlx::query(
+                    r#"INSERT INTO session_stats (
+                           session_id, source_content_hash, source_size,
+                           parser_version, stats_version, indexed_at,
+                           last_message_at, per_model_tokens_json
+                       ) VALUES (?, ?, 0, 1, 1, 0, ?, ?)
+                       ON CONFLICT(session_id) DO UPDATE SET
+                           last_message_at = excluded.last_message_at,
+                           per_model_tokens_json = excluded.per_model_tokens_json"#,
+                )
+                .bind(session_id)
+                .bind(vec![0x01u8])
+                .bind(last_message_at)
+                .bind(json),
+            )
+            .await
+            .unwrap();
+    }
+
     fn session_fixture(id: &str, modified_at: i64, is_sidechain: bool) -> SessionInfo {
         SessionInfo {
             id: id.to_string(),
@@ -658,37 +701,18 @@ mod tests {
             .unwrap();
 
         // Unknown model exists in DB but has no pricing entry.
-        db.pool()
-            .execute(sqlx::query(
-                r#"
-                INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
-                VALUES ('unknown-model-without-pricing', 'unknown', 'unknown', 0, 0)
-                "#,
-            ))
-            .await
-            .unwrap();
-        db.pool()
-            .execute(
-                sqlx::query(
-                    r#"
-                    INSERT INTO turns (
-                        session_id, uuid, seq, model_id, input_tokens, output_tokens,
-                        cache_read_tokens, cache_creation_tokens, timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                )
-                .bind("sess-aigen-unpriced")
-                .bind("turn-unpriced-1")
-                .bind(1)
-                .bind("unknown-model-without-pricing")
-                .bind(5_000)
-                .bind(1_000)
-                .bind(0)
-                .bind(0)
-                .bind(now - 60),
-            )
-            .await
-            .unwrap();
+        // Ground-truth model rollups live in session_stats.per_model_tokens_json.
+        upsert_session_stats_with_per_model(
+            &db,
+            "sess-aigen-unpriced",
+            now - 60,
+            "unknown-model-without-pricing",
+            5_000,
+            1_000,
+            0,
+            0,
+        )
+        .await;
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/stats/ai-generation").await;
@@ -852,38 +876,18 @@ mod tests {
             .await
             .unwrap();
 
-        // Ground-truth model rollups are sourced from turns.model_id.
-        db.pool()
-            .execute(sqlx::query(
-                r#"
-                    INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen)
-                    VALUES ('claude-3-5-sonnet-20241022', 'anthropic', 'sonnet', 0, 0)
-                    "#,
-            ))
-            .await
-            .unwrap();
-        db.pool()
-            .execute(
-                sqlx::query(
-                    r#"
-                    INSERT INTO turns (
-                        session_id, uuid, seq, model_id, input_tokens, output_tokens,
-                        cache_read_tokens, cache_creation_tokens, timestamp
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    "#,
-                )
-                .bind("sess-ai-1")
-                .bind("turn-ai-1")
-                .bind(1)
-                .bind("claude-3-5-sonnet-20241022")
-                .bind(150000)
-                .bind(250000)
-                .bind(10000)
-                .bind(5000)
-                .bind(now - 86400),
-            )
-            .await
-            .unwrap();
+        // Ground-truth model rollups live in session_stats.per_model_tokens_json.
+        upsert_session_stats_with_per_model(
+            &db,
+            "sess-ai-1",
+            now - 86400,
+            "claude-3-5-sonnet-20241022",
+            150000,
+            250000,
+            10000,
+            5000,
+        )
+        .await;
 
         let app = build_app(db);
         let (status, body) = do_get(app, "/api/stats/ai-generation").await;

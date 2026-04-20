@@ -166,8 +166,9 @@ async fn test_get_all_time_metrics() {
         db.get_all_time_metrics(None, None).await.unwrap();
 
     assert_eq!(session_count, 2, "Should have 2 sessions");
-    // Tokens come from turns table, which we didn't populate
-    assert_eq!(total_tokens, 0, "No turns data, so 0 tokens");
+    // Tokens come from valid_sessions.total_input_tokens+total_output_tokens;
+    // this test seeds neither, so the sum is 0.
+    assert_eq!(total_tokens, 0, "No token data seeded, so 0 tokens");
     // files_edited_count: 3 + 2 = 5
     assert_eq!(total_files_edited, 5, "Sum of files_edited_count");
     // commit_count from session_commits table (not populated in this test)

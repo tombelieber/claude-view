@@ -48,8 +48,8 @@ impl Database {
     /// Internal: Get trend metrics comparing two arbitrary periods.
     ///
     /// Consolidated from 12 sequential queries to 3 via conditional aggregation.
-    /// Query A: sessions table metrics (sessions, prompts, files_edited, reedited) x 2 periods
-    /// Query B: tokens from turns table x 2 periods
+    /// Query A: valid_sessions metrics (sessions, prompts, files_edited, reedited) x 2 periods
+    /// Query B: tokens from valid_sessions x 2 periods
     /// Query C: commits from session_commits x 2 periods
     async fn get_trends_for_periods(
         &self,
