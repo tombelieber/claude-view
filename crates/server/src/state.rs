@@ -146,9 +146,9 @@ pub struct AppState {
     /// for rows that haven't been reindexed since migration 66.
     pub session_catalog: claude_view_core::session_catalog::SessionCatalog,
     /// Phase 3 read-side adapter over `session_stats`. Route handlers
-    /// use this as the default read surface; `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1`
-    /// routes every call to `session_catalog` instead. Clone is cheap
-    /// (Arc<Database> + Arc<RwLock> internals).
+    /// use this as the sole read surface (CQRS Phase 7.d retired the
+    /// `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ` escape hatch). Clone is
+    /// cheap (Arc<Database> + Arc<RwLock> internals).
     pub session_catalog_adapter: crate::session_catalog_adapter::SessionCatalogAdapter,
     /// Supabase JWKS cache for JWT validation (sharing feature).
     /// `None` when SUPABASE_URL is not set (auth disabled / dev mode).

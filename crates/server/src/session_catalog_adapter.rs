@@ -6,19 +6,16 @@
 //! 3 (PRs 3.1 → 3.7).
 //!
 //! The adapter carries a handle to the legacy in-memory
-//! `SessionCatalog` so it can:
+//! `SessionCatalog` so it can fall back gracefully on rows with NULL
+//! project_id / file_path. Rows indexed before migration 66 stay NULL
+//! until the next re-index; in the meantime the adapter looks them up
+//! from the in-memory map and fills in the gap. A one-shot
+//! `full_rebuild` at startup (Phase 2 exit gate, shipped) typically
+//! clears this in minutes.
 //!
-//! 1. **Fall back gracefully on rows with NULL project_id / file_path.**
-//!    Rows indexed before migration 66 stay NULL until the next
-//!    re-index; in the meantime the adapter looks them up from the
-//!    in-memory map and fills in the gap. A one-shot `full_rebuild` at
-//!    startup (Phase 2 exit gate, shipped) typically clears this in
-//!    minutes.
-//!
-//! 2. **Honour `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1` at runtime.**
-//!    When the env var is set, every method delegates straight to the
-//!    legacy `SessionCatalog` — the DB query never runs. This is the
-//!    emergency rollback lever. Phase 7 deletes it.
+//! CQRS Phase 7.d — the `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ` env-var
+//! escape hatch has been retired now that session_stats reads are soak-
+//! tested. The adapter is the sole read surface.
 //!
 //! The adapter is `Clone`-cheap (`Arc<Database>` + `SessionCatalog` are
 //! both `Clone` + `Send + Sync`). Pass it through `AppState` by value.
@@ -29,30 +26,12 @@ use claude_view_core::session_catalog::{
 use claude_view_db::{CatalogFilter, CatalogSort, Database, FullSessionStatsRow, StatsCatalogRow};
 use std::collections::HashMap;
 
-/// Env-var name that flips the adapter into legacy-passthrough mode.
-///
-/// Set `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1` in the server process to
-/// skip `session_stats` reads entirely and serve every request from the
-/// in-memory `SessionCatalog`. Intended as an emergency rollback during
-/// Phase 3 cutover and soak. Phase 7 removes this gate.
-pub const LEGACY_READ_ENV_VAR: &str = "CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ";
-
-/// Returns true if the legacy-read env var is currently set to `1`.
-///
-/// Evaluated per-call so operators can flip the flag without a restart.
-/// The cost is a `std::env::var` read — microseconds, negligible against
-/// the SQLite query it gates.
-pub fn legacy_read_enabled() -> bool {
-    std::env::var(LEGACY_READ_ENV_VAR).as_deref() == Ok("1")
-}
-
 /// Read-side catalog adapter used by every Phase 3 endpoint cutover.
 ///
-/// Legacy vs new path selection:
+/// Path selection:
 ///
 /// | Condition                                                | Path used     |
 /// |----------------------------------------------------------|---------------|
-/// | env `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1`             | Legacy only   |
 /// | DB returns row with `project_id IS NOT NULL`             | DB row        |
 /// | DB returns row with `project_id IS NULL` (pre-migration) | Legacy lookup |
 /// | DB returns nothing                                       | Legacy lookup |
@@ -80,9 +59,6 @@ impl SessionCatalogAdapter {
 
     /// Single session lookup by id. Mirrors `SessionCatalog::get`.
     pub async fn get(&self, session_id: &str) -> Option<CatalogRow> {
-        if legacy_read_enabled() {
-            return self.legacy.get(session_id);
-        }
         match self.db.get_session_catalog_entry(session_id).await {
             Ok(Some(row)) => match stats_row_to_catalog_row(&row) {
                 Some(cr) => Some(cr),
@@ -112,10 +88,6 @@ impl SessionCatalogAdapter {
     /// whole request. This keeps dev + test environments that don't
     /// invoke the indexer working by default.
     pub async fn list(&self, filter: &CatFilter, sort: CatSort, limit: usize) -> Vec<CatalogRow> {
-        if legacy_read_enabled() {
-            return self.legacy.list(filter, sort, limit);
-        }
-
         let db_filter = CatalogFilter {
             project_id: filter.project_id.clone(),
             min_last_ts: filter.min_last_ts,
@@ -163,10 +135,6 @@ impl SessionCatalogAdapter {
 
     /// Projects-with-counts map. Mirrors `SessionCatalog::projects`.
     pub async fn projects(&self) -> HashMap<ProjectId, usize> {
-        if legacy_read_enabled() {
-            return self.legacy.projects();
-        }
-
         let from_db = match self.db.list_projects_with_counts().await {
             Ok(m) => m,
             Err(err) => {
@@ -194,20 +162,14 @@ impl SessionCatalogAdapter {
     /// parsing the JSONL. Filters, sorts, limits match
     /// [`Self::list`] semantics.
     ///
-    /// Error / env-var behaviour: returns `Err(())` if the env-var
-    /// gate is on, signalling the caller should fall back to the
-    /// legacy path. DB errors fall through as `Err(())` too — the
-    /// caller decides whether to fail the request or serve stale data.
+    /// DB errors fall through as `Err(())` — the caller decides whether
+    /// to fail the request or serve stale data.
     pub async fn list_full(
         &self,
         filter: &CatFilter,
         sort: CatSort,
         limit: usize,
     ) -> Result<Vec<FullSessionStatsRow>, ()> {
-        if legacy_read_enabled() {
-            return Err(());
-        }
-
         let db_filter = CatalogFilter {
             project_id: filter.project_id.clone(),
             min_last_ts: filter.min_last_ts,
@@ -232,9 +194,6 @@ impl SessionCatalogAdapter {
 
     /// Phase 3 PR 3.3 — single-session full-row load.
     pub async fn get_full(&self, session_id: &str) -> Result<Option<FullSessionStatsRow>, ()> {
-        if legacy_read_enabled() {
-            return Err(());
-        }
         self.db
             .get_full_session_stats(session_id)
             .await
@@ -254,21 +213,8 @@ impl SessionCatalogAdapter {
     /// need legacy semantics should use `projects()` + per-project
     /// `list(filter, LastTsDesc, 1)`.
     pub async fn projects_with_last_activity(&self) -> HashMap<ProjectId, Option<i64>> {
-        if legacy_read_enabled() {
-            // Legacy path doesn't expose this directly — synthesize it
-            // by listing projects + taking one row per project.
-            let mut out = HashMap::new();
-            for (pid, _count) in self.legacy.projects() {
-                let newest = self
-                    .legacy
-                    .list(&CatFilter::by_project(&pid), CatSort::LastTsDesc, 1)
-                    .first()
-                    .map(|row| row.mtime);
-                out.insert(pid, newest);
-            }
-            return out;
-        }
-
+        // CQRS Phase 7.d removed the legacy-only passthrough for this
+        // method; the DB is now always the source of truth.
         match self.db.list_projects_with_last_activity().await {
             Ok(m) => m,
             Err(err) => {
@@ -432,37 +378,9 @@ mod tests {
         assert_eq!(row.project_id, "proj-legacy");
     }
 
-    #[tokio::test]
-    async fn legacy_env_var_forces_in_memory_path() {
-        let db = fresh_db().await;
-        seed_stats(
-            &db,
-            "sess-1",
-            Some("proj-db"),
-            Some("/db/proj-db/sess-1.jsonl"),
-            Some(1_800_000_000),
-        )
-        .await;
-        let legacy = SessionCatalog::new();
-        seed_legacy(&legacy, "sess-1", "proj-legacy-forced", 100);
-        let adapter = SessionCatalogAdapter::new(db, legacy);
-
-        // SAFETY: env vars are process-global but this test uses a unique
-        // (sess-1, proj-legacy-forced) combo that the other tests don't
-        // assert on. The flag is cleared before the function returns.
-        // SAFETY: single-threaded Rust test with #[tokio::test] default (current_thread)
-        unsafe {
-            std::env::set_var(LEGACY_READ_ENV_VAR, "1");
-        }
-        let row = adapter.get("sess-1").await.unwrap();
-        unsafe {
-            std::env::remove_var(LEGACY_READ_ENV_VAR);
-        }
-        assert_eq!(
-            row.project_id, "proj-legacy-forced",
-            "env-var flip must force the legacy path even when DB has a populated row"
-        );
-    }
+    // CQRS Phase 7.d — retired `legacy_env_var_forces_in_memory_path`:
+    // the `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ` escape hatch was removed
+    // after soak proved the session_stats read path is stable.
 
     #[tokio::test]
     async fn list_returns_db_rows_sorted() {

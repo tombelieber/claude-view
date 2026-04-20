@@ -34,9 +34,9 @@ pub async fn list_projects(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<ProjectSummary>>> {
     // Phase 3 PR 3.1: read from `session_stats` via the catalog adapter
-    // instead of the in-memory `SessionCatalog`. The adapter internally
-    // honours `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ=1` and falls back to
-    // the in-memory map when session_stats has NULL project_id rows.
+    // instead of the in-memory `SessionCatalog`. Phase 7.d retired the
+    // legacy-read env var; the adapter still falls back to the in-memory
+    // map for rows whose `project_id` is NULL (pre-migration-66).
     //
     // Two parallel reads — one count, one last-activity — are issued to
     // the DB in sequence. The design targets ≤5 ms p99; two indexed

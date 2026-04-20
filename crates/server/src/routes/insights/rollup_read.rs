@@ -24,9 +24,9 @@ use claude_view_stats_rollup::Bucket;
 /// `valid_sessions`.
 ///
 /// Intended as an emergency rollback during Phase 4 cutover soak.
-/// Phase 7 removes the gate. Keeps the symmetric shape of the Phase 3
-/// `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ` gate — operators only have
-/// to remember one concept.
+/// Phase 7.d retired the sibling `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ`
+/// (the session-side catalog is now unconditionally on session_stats);
+/// this gate stays until the rollup-read B.4 cutover soak completes.
 pub const LEGACY_STATS_READ_ENV_VAR: &str = "CLAUDE_VIEW_USE_LEGACY_STATS_READ";
 
 /// Returns true if `CLAUDE_VIEW_USE_LEGACY_STATS_READ=1` is set.
