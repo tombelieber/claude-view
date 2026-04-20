@@ -6,7 +6,6 @@
 //! Pass 2 (deep JSONL parsing) runs in parallel with a TUI progress spinner.
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
@@ -15,6 +14,12 @@ use clap::Parser;
 use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
 use claude_view_db::Database;
 use claude_view_server::auth::supabase::fetch_decoding_key;
+use claude_view_server::startup::background::{
+    format_bytes, run_git_sync_logged, run_snapshot_generation,
+};
+use claude_view_server::startup::install::{detect_install_source, ping_install_beacon};
+use claude_view_server::startup::paths::get_static_dir;
+use claude_view_server::startup::port::{get_port, try_reclaim_port};
 use claude_view_server::state::ShareConfig;
 use claude_view_server::{
     create_app_full, init_metrics, record_sync, FacetIngestState, IndexingState, IndexingStatus,
@@ -23,227 +28,6 @@ use claude_view_server::{
 use indicatif::{ProgressBar, ProgressStyle};
 
 mod cli;
-
-/// Default port for the server.
-const DEFAULT_PORT: u16 = 47892;
-
-/// Get the server port from environment or use default.
-fn get_port() -> u16 {
-    std::env::var("CLAUDE_VIEW_PORT")
-        .ok()
-        .or_else(|| std::env::var("PORT").ok())
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(DEFAULT_PORT)
-}
-
-/// Check if a process holding a port is a stale claude-view instance.
-///
-/// Returns true if the process name contains "claude-view" or "claude_view".
-/// If we can't determine the process name, returns false (don't kill unknowns).
-fn is_claude_view_process(pid: &str) -> bool {
-    // macOS: `ps -p <pid> -o comm=` gives the binary name
-    let output = std::process::Command::new("ps")
-        .args(["-p", pid, "-o", "comm="])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() => {
-            let name = String::from_utf8_lossy(&o.stdout).to_lowercase();
-            name.contains("claude-view") || name.contains("claude_view")
-        }
-        _ => false,
-    }
-}
-
-/// Try to reclaim a port from a stale claude-view process.
-///
-/// Returns true if the port was freed (stale process killed).
-/// Returns false if the port is held by a non-claude-view process.
-fn try_reclaim_port(port: u16) -> bool {
-    let output = std::process::Command::new("lsof")
-        .args(["-ti", &format!(":{port}")])
-        .output();
-
-    let pids = match output {
-        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).to_string(),
-        _ => return false,
-    };
-
-    let my_pid = std::process::id().to_string();
-    let mut killed_any = false;
-
-    for pid in pids.split_whitespace() {
-        if pid == my_pid {
-            continue;
-        }
-        if is_claude_view_process(pid) {
-            eprintln!("  killing stale claude-view (PID {pid}) on port {port}");
-            let _ = std::process::Command::new("kill")
-                .args(["-9", pid])
-                .status();
-            killed_any = true;
-        } else {
-            eprintln!("  port {port} held by another app (PID {pid}), skipping");
-        }
-    }
-    killed_any
-}
-
-/// Detect how the server was installed/launched.
-///
-/// Returns one of: "plugin", "install_sh", "npx".
-fn detect_install_source() -> &'static str {
-    // Plugin sets CLAUDE_PLUGIN_ROOT when launching via hooks
-    if std::env::var("CLAUDE_PLUGIN_ROOT").is_ok() {
-        return "plugin";
-    }
-    // install.sh puts the binary under ~/.cache/claude-view/
-    if let Ok(exe) = std::env::current_exe() {
-        let exe_str = exe.to_string_lossy();
-        if exe_str.contains(".cache/claude-view") {
-            return "install_sh";
-        }
-    }
-    "npx"
-}
-
-/// Fire-and-forget ping to CF Worker for unified install tracking.
-fn ping_install_beacon(source: &str) {
-    let url = format!(
-        "https://get.claudeview.ai/ping?source={}&v={}",
-        source,
-        env!("CARGO_PKG_VERSION"),
-    );
-    tokio::spawn(async move {
-        let _ = reqwest::Client::new()
-            .get(&url)
-            .timeout(Duration::from_secs(3))
-            .send()
-            .await;
-    });
-}
-
-/// Get the static directory for serving frontend files.
-///
-/// Priority:
-/// 1. STATIC_DIR environment variable (explicit override)
-/// 2. Binary-relative ./dist (npx distribution: binary + dist/ are siblings)
-/// 3. CWD-relative ./apps/web/dist (monorepo dev layout via cargo run)
-/// 4. CWD-relative ./dist (legacy flat layout)
-/// 5. None (API-only mode)
-fn get_static_dir() -> Option<PathBuf> {
-    // 1. Explicit override always wins
-    if let Ok(dir) = std::env::var("STATIC_DIR") {
-        let p = PathBuf::from(&dir);
-        if p.exists() {
-            return Some(p);
-        }
-        tracing::warn!(static_dir = %dir, "STATIC_DIR set but directory does not exist");
-        return None;
-    }
-
-    // 2. Binary-relative: resolves symlinks (Homebrew), works regardless of CWD
-    if let Ok(exe) = std::env::current_exe() {
-        if let Ok(canonical) = exe.canonicalize() {
-            if let Some(exe_dir) = canonical.parent() {
-                let bin_dist = exe_dir.join("dist");
-                if bin_dist.exists() {
-                    return Some(bin_dist);
-                }
-            }
-        }
-    }
-
-    // 3. CWD-relative: monorepo layout (cargo run from repo root)
-    let monorepo_dist = PathBuf::from("apps/web/dist");
-    if monorepo_dist.exists() {
-        return Some(monorepo_dist);
-    }
-
-    // 4. CWD-relative: flat layout fallback
-    let dist = PathBuf::from("dist");
-    dist.exists().then_some(dist)
-}
-
-/// Run git sync with structured logging. Used by both initial and periodic sync.
-async fn run_git_sync_logged(db: &Database, label: &str) {
-    let start = Instant::now();
-    tracing::info!(sync_type = label, "Starting git sync");
-
-    match claude_view_db::git_correlation::run_git_sync(db, |_| {}).await {
-        Ok(r) => {
-            let duration = start.elapsed();
-            if r.repos_scanned > 0 || r.links_created > 0 {
-                tracing::info!(
-                    sync_type = label,
-                    repos_scanned = r.repos_scanned,
-                    commits_found = r.commits_found,
-                    links_created = r.links_created,
-                    duration_secs = duration.as_secs_f64(),
-                    "Git sync complete"
-                );
-            } else {
-                tracing::debug!(
-                    sync_type = label,
-                    duration_secs = duration.as_secs_f64(),
-                    "Git sync: no changes"
-                );
-            }
-            if !r.errors.is_empty() {
-                tracing::warn!(
-                    sync_type = label,
-                    error_count = r.errors.len(),
-                    errors = ?r.errors,
-                    "Git sync had errors"
-                );
-            }
-            // Record sync metrics
-            record_sync("git", duration, Some(r.commits_found as u64));
-        }
-        Err(e) => {
-            let duration = start.elapsed();
-            tracing::warn!(
-                sync_type = label,
-                error = %e,
-                duration_secs = duration.as_secs_f64(),
-                "Git sync failed (non-fatal)"
-            );
-            // Still record metrics for failed syncs
-            record_sync("git", duration, None);
-        }
-    }
-}
-
-/// Generate contribution snapshots for historical days.
-/// Initial run refreshes 365 days; periodic runs refresh 2 days (today + yesterday).
-async fn run_snapshot_generation(db: &Database, label: &str) {
-    let days_back = if label == "initial" { 365 } else { 2 };
-    match db.generate_missing_snapshots(days_back).await {
-        Ok(count) => {
-            if count > 0 {
-                tracing::info!("{} snapshot refresh: {} snapshots updated", label, count);
-            } else {
-                tracing::debug!("{} snapshot refresh: no active dates in range", label);
-            }
-        }
-        Err(e) => {
-            tracing::warn!("{} snapshot generation failed (non-fatal): {}", label, e);
-        }
-    }
-}
-
-/// Format a byte count as a human-readable string (e.g. "23.4 GB", "512 MB").
-fn format_bytes(bytes: u64) -> String {
-    const GB: u64 = 1_000_000_000;
-    const MB: u64 = 1_000_000;
-    if bytes >= GB {
-        format!("{:.1} GB", bytes as f64 / GB as f64)
-    } else if bytes >= MB {
-        format!("{:.0} MB", bytes as f64 / MB as f64)
-    } else {
-        format!("{} bytes", bytes)
-    }
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
