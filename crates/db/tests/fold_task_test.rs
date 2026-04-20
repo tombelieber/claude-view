@@ -437,3 +437,94 @@ async fn fold_applied_seq_reflects_session_flags_applied_seq() {
         "session_flags.applied_seq must equal source seq"
     );
 }
+
+#[tokio::test]
+async fn fold_emits_outbox_row_per_applied_event() {
+    // Archive + classify → two fold-applied events → two outbox rows.
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
+    seed_session(&db, "s-outbox-1").await;
+    seed_action(&db, "s-outbox-1", "archive", "{}", "user", 1000).await;
+    seed_action(
+        &db,
+        "s-outbox-1",
+        "classify",
+        r#"{"l1":"a","l2":"","l3":"","confidence":0.5,"source":"x"}"#,
+        "classifier:x",
+        1001,
+    )
+    .await;
+
+    run_fold_batch(db.clone()).await.unwrap();
+
+    let (pending,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM stage_c_outbox WHERE applied_at IS NULL")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(pending, 2, "archive + classify = 2 outbox rows");
+}
+
+#[tokio::test]
+async fn fold_outbox_payload_is_valid_flagdelta_json() {
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
+    seed_session(&db, "s-outbox-2").await;
+    seed_action(
+        &db,
+        "s-outbox-2",
+        "classify",
+        r#"{"l1":"engineering","l2":"","l3":"","confidence":0.9,"source":"x"}"#,
+        "classifier:x",
+        5000,
+    )
+    .await;
+
+    run_fold_batch(db.clone()).await.unwrap();
+
+    let (payload,): (String,) = sqlx::query_as("SELECT payload_json FROM stage_c_outbox LIMIT 1")
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&payload).unwrap();
+    assert_eq!(parsed["kind"], "Classify");
+    assert_eq!(parsed["session_id"], "s-outbox-2");
+    assert_eq!(parsed["after_category_l1"], "engineering");
+    assert_eq!(parsed["before_category_l1"], serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn fold_lww_skipped_classify_emits_no_outbox_row() {
+    // Classify at t=1000 lands. Reclassify at t=500 is LWW-skipped.
+    // The skipped event must NOT emit an outbox row — Stage C would
+    // otherwise apply a phantom compensating delta for work the
+    // session_flags UPSERT never performed.
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
+    seed_session(&db, "s-lww").await;
+    seed_action(
+        &db,
+        "s-lww",
+        "classify",
+        r#"{"l1":"new","l2":"","l3":"","confidence":0.9,"source":"x"}"#,
+        "classifier:x",
+        1000,
+    )
+    .await;
+    seed_action(
+        &db,
+        "s-lww",
+        "classify",
+        r#"{"l1":"stale","l2":"","l3":"","confidence":0.9,"source":"x"}"#,
+        "classifier:x",
+        500,
+    )
+    .await;
+
+    run_fold_batch(db.clone()).await.unwrap();
+
+    let (pending,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM stage_c_outbox WHERE applied_at IS NULL")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
+    assert_eq!(pending, 1, "only the applied classify must enqueue outbox");
+}

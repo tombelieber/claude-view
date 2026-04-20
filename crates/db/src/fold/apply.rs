@@ -19,6 +19,8 @@
 use sqlx::{Sqlite, Transaction};
 
 use super::types::{ActionEvent, ClassifyPayload};
+use crate::stage_c::flag_delta::FlagDelta;
+use crate::stage_c::outbox::insert_flag_delta_tx;
 use crate::DbResult;
 
 /// Dispatch a single action event. Returns (applied, lww_skipped).
@@ -27,6 +29,11 @@ use crate::DbResult;
 /// `lww_skipped = true`: the event was ignored because a newer one
 /// already wrote `session_flags.classified_at`. Only meaningful for
 /// classify actions.
+///
+/// On applied=true, ALSO inserts the corresponding FlagDelta into
+/// `stage_c_outbox` within the same TX so Stage C's drainer can later
+/// fan out compensating rollup UPDATEs. The TX commits both rows or
+/// neither — transactional-outbox crash-safety (§6.2 design doc).
 pub(crate) async fn fold_event_tx(
     tx: &mut Transaction<'_, Sqlite>,
     event: &ActionEvent,
@@ -34,22 +41,74 @@ pub(crate) async fn fold_event_tx(
     match event.action.as_str() {
         "archive" => {
             fold_archive_tx(tx, event).await?;
+            insert_flag_delta_tx(
+                &mut **tx,
+                &FlagDelta::Archive {
+                    session_id: event.session_id.clone(),
+                    at_ms: event.at,
+                },
+            )
+            .await?;
             Ok((true, false))
         }
         "unarchive" => {
             fold_unarchive_tx(tx, event).await?;
+            insert_flag_delta_tx(
+                &mut **tx,
+                &FlagDelta::Unarchive {
+                    session_id: event.session_id.clone(),
+                    at_ms: event.at,
+                },
+            )
+            .await?;
             Ok((true, false))
         }
         "dismiss" => {
             fold_dismiss_tx(tx, event).await?;
+            insert_flag_delta_tx(
+                &mut **tx,
+                &FlagDelta::Dismiss {
+                    session_id: event.session_id.clone(),
+                    at_ms: event.at,
+                },
+            )
+            .await?;
             Ok((true, false))
         }
         "classify" | "reclassify" => {
+            let before_category = read_category_l1(tx, &event.session_id).await?;
             let lww_skipped = fold_classify_tx(tx, event).await?;
+            if !lww_skipped {
+                let after_category = serde_json::from_str::<ClassifyPayload>(&event.payload)
+                    .ok()
+                    .map(|p| p.l1);
+                insert_flag_delta_tx(
+                    &mut **tx,
+                    &FlagDelta::Classify {
+                        session_id: event.session_id.clone(),
+                        before_category_l1: before_category,
+                        after_category_l1: after_category,
+                        at_ms: event.at,
+                    },
+                )
+                .await?;
+            }
             Ok((!lww_skipped, lww_skipped))
         }
         _ => Ok((false, false)),
     }
+}
+
+async fn read_category_l1(
+    tx: &mut Transaction<'_, Sqlite>,
+    session_id: &str,
+) -> DbResult<Option<String>> {
+    let row: Option<Option<String>> =
+        sqlx::query_scalar("SELECT category_l1 FROM session_flags WHERE session_id = ?1")
+            .bind(session_id)
+            .fetch_optional(&mut **tx)
+            .await?;
+    Ok(row.flatten())
 }
 
 async fn fold_archive_tx(tx: &mut Transaction<'_, Sqlite>, event: &ActionEvent) -> DbResult<()> {
