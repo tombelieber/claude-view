@@ -73,7 +73,8 @@ fn migration_order_invariants() {
     let sub_total = super::core::MIGRATIONS.len()
         + super::indexer::MIGRATIONS.len()
         + super::features::MIGRATIONS.len()
-        + super::rollups::MIGRATIONS.len();
+        + super::rollups::MIGRATIONS.len()
+        + super::events::MIGRATIONS.len();
     assert_eq!(
         sub_total,
         m.len(),
@@ -2235,4 +2236,234 @@ async fn test_phase4_daily_branch_stats_composite_pk() {
         sql.contains("PRIMARY KEY (period_start, project_id, branch)"),
         "daily_branch_stats missing expected composite PK; got:\n{sql}"
     );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// CQRS Phase 5 PR 5.1 — Migration 82: session_action_log.
+//
+// Append-only event log for session mutations (archive / unarchive /
+// classify / dismiss / reclassify). Consumed by the Phase 5 fold task
+// (PR 5.3) into `session_flags`. These tests assert the schema shape
+// the Rust fold writer + handlers rely on. A drift here breaks PR 5.2
+// dual-write + PR 5.3 fold advance.
+//
+// See design doc §7.1 and `crates/db/src/migrations/events.rs` for the
+// per-column rationale.
+// ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_migration82_session_action_log_columns_exist() {
+    let pool = setup_db().await;
+
+    let cols: Vec<(i64, String, String, i64, Option<String>, i64)> = sqlx::query_as(
+        "SELECT cid, name, type, \"notnull\", dflt_value, pk
+         FROM pragma_table_info('session_action_log')",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    let by_name: std::collections::HashMap<&str, (&str, i64, i64)> = cols
+        .iter()
+        .map(|(_, name, ty, notnull, _, pk)| (name.as_str(), (ty.as_str(), *notnull, *pk)))
+        .collect();
+
+    // Column set + types + NOT NULL must match the §7.1 schema byte-for-byte.
+    for (col, expected_type, expected_notnull, expected_pk) in [
+        ("seq", "INTEGER", 0_i64, 1_i64), // PK column; NOT NULL is implicit via PK
+        ("session_id", "TEXT", 1, 0),
+        ("action", "TEXT", 1, 0),
+        ("payload", "TEXT", 1, 0),
+        ("actor", "TEXT", 1, 0),
+        ("at", "INTEGER", 1, 0),
+    ] {
+        let (ty, notnull, pk) = by_name
+            .get(col)
+            .copied()
+            .unwrap_or_else(|| panic!("missing session_action_log.{col}"));
+        assert_eq!(ty, expected_type, "session_action_log.{col} type drift");
+        assert_eq!(
+            notnull, expected_notnull,
+            "session_action_log.{col} NOT NULL drift"
+        );
+        assert_eq!(
+            pk, expected_pk,
+            "session_action_log.{col} primary-key drift"
+        );
+    }
+
+    assert_eq!(
+        cols.len(),
+        6,
+        "session_action_log column count drifted — fold writer + dual-write handlers will break silently"
+    );
+}
+
+#[tokio::test]
+async fn test_migration82_session_action_log_is_strict() {
+    // STRICT protects the INTEGER `at` + `seq` columns from silent type
+    // widening. Without STRICT a buggy handler that bound a string to
+    // `at` would land, and the fold task's `ORDER BY at` would mix
+    // string-sort with integer-sort. Loud failure at INSERT is correct.
+    let pool = setup_db().await;
+    let (sql,): (String,) = sqlx::query_as(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='session_action_log'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert!(
+        sql.contains("STRICT"),
+        "session_action_log must be STRICT; got:\n{sql}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration82_session_action_log_seq_autoincrements() {
+    // `seq` must strictly increase across inserts so the fold task can
+    // treat it as a watermark and `applied_seq < seq` is monotonic.
+    // AUTOINCREMENT in SQLite is stricter than ROWID: deleted rows'
+    // sequence numbers are not reused. The fold writer relies on that.
+    let pool = setup_db().await;
+
+    for (sid, action, at) in [
+        ("sess-a", "archive", 1_700_000_000_000_i64),
+        ("sess-b", "classify", 1_700_000_000_001),
+        ("sess-a", "unarchive", 1_700_000_000_002),
+    ] {
+        sqlx::query(
+            "INSERT INTO session_action_log (session_id, action, payload, actor, at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(sid)
+        .bind(action)
+        .bind("{}")
+        .bind("user")
+        .bind(at)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let seqs: Vec<(i64,)> = sqlx::query_as("SELECT seq FROM session_action_log ORDER BY rowid ASC")
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+    assert_eq!(seqs.len(), 3);
+
+    // Strictly increasing under AUTOINCREMENT.
+    let flat: Vec<i64> = seqs.iter().map(|(s,)| *s).collect();
+    assert!(
+        flat.windows(2).all(|w| w[0] < w[1]),
+        "seq must be strictly increasing under AUTOINCREMENT; got {flat:?}"
+    );
+
+    // Seq starts at 1 on an empty table (sqlite_sequence contract).
+    assert_eq!(flat[0], 1, "seq must start at 1 on a fresh DB");
+}
+
+#[tokio::test]
+async fn test_migration82_session_action_log_indexes_created() {
+    // Both covering indexes must exist with the expected column
+    // ordering — the fold task's `WHERE seq > ? ORDER BY seq` scan and
+    // the UI's per-session audit query both depend on them. A rename
+    // here will silently degrade both queries to full-table scans.
+    let pool = setup_db().await;
+
+    let indexes: Vec<(String, Option<String>)> = sqlx::query_as(
+        "SELECT name, sql FROM sqlite_master
+         WHERE type='index' AND tbl_name='session_action_log'
+           AND name NOT LIKE 'sqlite_autoindex_%'",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+
+    let by_name: std::collections::HashMap<&str, Option<&str>> = indexes
+        .iter()
+        .map(|(n, s)| (n.as_str(), s.as_deref()))
+        .collect();
+
+    let session = by_name
+        .get("idx_action_session")
+        .copied()
+        .flatten()
+        .expect("missing idx_action_session");
+    assert!(
+        session.contains("(session_id, at)") || session.contains("(session_id,at)"),
+        "idx_action_session must index (session_id, at) in that order; got:\n{session}"
+    );
+
+    let actor = by_name
+        .get("idx_action_actor_at")
+        .copied()
+        .flatten()
+        .expect("missing idx_action_actor_at");
+    assert!(
+        actor.contains("(actor, at)") || actor.contains("(actor,at)"),
+        "idx_action_actor_at must index (actor, at) in that order; got:\n{actor}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration82_session_action_log_rejects_null_required_fields() {
+    // Every NOT NULL column must be enforced. Bind a NULL for each and
+    // confirm the INSERT fails. Guards against a future migration
+    // accidentally dropping NOT NULL on the audit trail (which would let
+    // a bad handler silently land a zero-action row).
+    let pool = setup_db().await;
+
+    let each_null: &[(&str, &[&str])] = &[
+        ("session_id", &["session_id"]),
+        ("action", &["action"]),
+        ("payload", &["payload"]),
+        ("actor", &["actor"]),
+        ("at", &["at"]),
+    ];
+
+    for (label, null_cols) in each_null {
+        let sid = if null_cols.contains(&"session_id") {
+            None
+        } else {
+            Some("s")
+        };
+        let act = if null_cols.contains(&"action") {
+            None
+        } else {
+            Some("archive")
+        };
+        let pay = if null_cols.contains(&"payload") {
+            None
+        } else {
+            Some("{}")
+        };
+        let who = if null_cols.contains(&"actor") {
+            None
+        } else {
+            Some("user")
+        };
+        let at: Option<i64> = if null_cols.contains(&"at") {
+            None
+        } else {
+            Some(1)
+        };
+
+        let result = sqlx::query(
+            "INSERT INTO session_action_log (session_id, action, payload, actor, at)
+             VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(sid)
+        .bind(act)
+        .bind(pay)
+        .bind(who)
+        .bind(at)
+        .execute(&pool)
+        .await;
+
+        assert!(
+            result.is_err(),
+            "NULL {label} must be rejected; INSERT unexpectedly succeeded"
+        );
+    }
 }
