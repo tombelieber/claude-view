@@ -499,6 +499,19 @@ pub fn create_app_full(
         }
     });
 
+    // CQRS Phase 5 PR 5.3 — spawn the `session_action_log` →
+    // `session_flags` fold task. Runs for the life of the process,
+    // polling the action log every 200 ms on empty and advancing
+    // `fold_state.applied_seq` in the same TX as each batch's
+    // `session_flags` UPSERTs. Crash-safe by construction (§7.2
+    // kill-9 property): a restart re-selects from `applied_seq` and
+    // any partially-committed batch was rolled back at shutdown.
+    //
+    // Until PR 5.5 flips readers onto `session_flags`, this is a
+    // shadow writer — the legacy `sessions.*` columns remain the
+    // source of truth and PR 5.4's parity monitor compares the two.
+    claude_view_db::fold::spawn_flags_fold(Arc::new(db.clone()));
+
     let (
         manager,
         live_sessions,

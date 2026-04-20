@@ -2406,6 +2406,80 @@ async fn test_migration82_session_action_log_indexes_created() {
     );
 }
 
+// ──────────────────────────────────────────────────────────────────
+// CQRS Phase 5 PR 5.3 — Migration 83: fold_state watermark.
+//
+// Single-row table driving the `session_action_log` fold task (see
+// `crates/db/src/fold/mod.rs`). Tests enforce the contract the fold
+// driver relies on: `id=0` PK + CHECK, `applied_seq` seeded at 0,
+// single-row-ness by schema. A drift here breaks the fold's advance
+// step, which would silently stall the entire Phase 5 pipeline.
+// ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_migration83_fold_state_seeded_with_single_zero_row() {
+    let pool = setup_db().await;
+
+    let rows: Vec<(i64, i64)> =
+        sqlx::query_as("SELECT id, applied_seq FROM fold_state ORDER BY id ASC")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        rows.len(),
+        1,
+        "fold_state must be seeded with exactly one row"
+    );
+    assert_eq!(rows[0], (0, 0), "seed row must be (id=0, applied_seq=0)");
+}
+
+#[tokio::test]
+async fn test_migration83_fold_state_rejects_non_zero_id() {
+    // CHECK (id = 0) enforces single-row-ness at the schema layer — a
+    // future migration or a buggy script cannot accidentally split the
+    // watermark by inserting id=1.
+    let pool = setup_db().await;
+
+    let result = sqlx::query("INSERT INTO fold_state (id, applied_seq) VALUES (1, 0)")
+        .execute(&pool)
+        .await;
+    assert!(
+        result.is_err(),
+        "id != 0 must be rejected by CHECK constraint"
+    );
+}
+
+#[tokio::test]
+async fn test_migration83_fold_state_applied_seq_update_roundtrips() {
+    let pool = setup_db().await;
+
+    sqlx::query("UPDATE fold_state SET applied_seq = ?1 WHERE id = 0")
+        .bind(123_456_i64)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let seq: (i64,) = sqlx::query_as("SELECT applied_seq FROM fold_state WHERE id = 0")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(seq.0, 123_456);
+}
+
+#[tokio::test]
+async fn test_migration83_fold_state_is_strict() {
+    let pool = setup_db().await;
+    let (sql,): (String,) =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type='table' AND name='fold_state'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        sql.contains("STRICT"),
+        "fold_state must be STRICT; got:\n{sql}"
+    );
+}
+
 #[tokio::test]
 async fn test_migration82_session_action_log_rejects_null_required_fields() {
     // Every NOT NULL column must be enforced. Bind a NULL for each and

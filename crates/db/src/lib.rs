@@ -6,6 +6,13 @@
     clippy::derivable_impls
 )]
 
+/// CQRS Phase 5 PR 5.3 — `session_action_log` → `session_flags` fold.
+/// Consumes the append-only action log produced by PR 5.2 and
+/// materialises current archive / dismiss / classify state onto
+/// `session_flags`, advancing the `fold_state.applied_seq` watermark
+/// in the same transaction. Runs as a background task from server
+/// startup (see `crates/server/src/app_factory.rs`).
+pub mod fold;
 pub mod git_correlation;
 pub mod indexer_parallel;
 pub mod indexer_v2;

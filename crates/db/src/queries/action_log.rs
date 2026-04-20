@@ -17,6 +17,7 @@
 
 use sqlx::{Executor, Sqlite};
 
+use crate::fold::ActionEvent;
 use crate::{Database, DbResult};
 
 /// Insert a row into `session_action_log` on an arbitrary executor.
@@ -69,5 +70,45 @@ impl Database {
         at_ms: i64,
     ) -> DbResult<i64> {
         insert_action_log_tx(self.pool(), session_id, action, payload, actor, at_ms).await
+    }
+
+    /// Select the next batch of events for the PR 5.3 fold task.
+    ///
+    /// Returns up to `limit` rows with `seq > after_seq`, ordered by
+    /// `seq` ASC so the fold's LWW compare (within a classify chain)
+    /// and monotone watermark advance are both respected. `limit`
+    /// bounds TX size — the caller wraps this batch in a single TX
+    /// that UPSERTs `session_flags` and advances `fold_state.applied_seq`
+    /// atomically.
+    pub async fn action_log_select_after_seq(
+        &self,
+        after_seq: i64,
+        limit: i64,
+    ) -> DbResult<Vec<ActionEvent>> {
+        let rows: Vec<(i64, String, String, String, String, i64)> = sqlx::query_as(
+            "SELECT seq, session_id, action, payload, actor, at
+             FROM session_action_log
+             WHERE seq > ?1
+             ORDER BY seq ASC
+             LIMIT ?2",
+        )
+        .bind(after_seq)
+        .bind(limit)
+        .fetch_all(self.pool())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(
+                |(seq, session_id, action, payload, actor, at)| ActionEvent {
+                    seq,
+                    session_id,
+                    action,
+                    payload,
+                    actor,
+                    at,
+                },
+            )
+            .collect())
     }
 }

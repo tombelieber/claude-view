@@ -75,4 +75,32 @@ CREATE TABLE session_action_log (
 CREATE INDEX idx_action_session ON session_action_log(session_id, at);
 CREATE INDEX idx_action_actor_at ON session_action_log(actor, at);
 COMMIT;"#,
+    // Migration 83: fold_state — single-row watermark for PR 5.3's
+    // `spawn_flags_fold` task. Stores the max `session_action_log.seq`
+    // the fold has applied to `session_flags`. Advanced in the SAME
+    // transaction as the `session_flags` UPSERT so a kill-9 mid-batch
+    // cannot leave the fold further ahead than the watermark (§7.2
+    // kill-9 property: fold is resumable and byte-identical to a
+    // one-shot replay).
+    //
+    // Why a single row instead of a COUNT()-derived watermark:
+    //   - SELECT COUNT is O(log N) with sqlite's B-tree, but reading a
+    //     single scalar is O(1) and cheaper by a constant factor.
+    //   - Atomic UPDATE .. WHERE id = 0 keeps the watermark contract
+    //     inside the same TX as the fold UPSERTs; COUNT-derived
+    //     watermarks race with concurrent INSERTs to the log.
+    //   - The `CHECK (id = 0)` constraint prevents accidental
+    //     multi-row inserts that would split the watermark.
+    //
+    // Seeded at `applied_seq = 0`, which matches the default of the
+    // `session_flags.applied_seq` column (migration 65). A fresh DB
+    // that has never applied a fold reads the watermark as 0 and
+    // starts from `seq > 0` — i.e. the first row of the log.
+    r#"BEGIN;
+CREATE TABLE fold_state (
+    id          INTEGER PRIMARY KEY CHECK (id = 0),
+    applied_seq INTEGER NOT NULL DEFAULT 0
+) STRICT;
+INSERT INTO fold_state (id, applied_seq) VALUES (0, 0);
+COMMIT;"#,
 ];
