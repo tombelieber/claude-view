@@ -533,7 +533,13 @@ pub fn create_app_full(
     // rows, and writes them to Prometheus gauges. Separate from
     // the /metrics handler so scrape latency stays ~µs regardless of
     // DB size.
-    crate::startup::spawn_cqrs_sampler(fold_db);
+    crate::startup::spawn_cqrs_sampler(fold_db.clone());
+
+    // CQRS Phase 7 PR 7.b — spawn the drift detector. Random 1 % of
+    // sessions every 15 min are diff'd against their shadow row;
+    // non-clean reports land in `tracing::warn!` so ops can see
+    // per-session drift without installing a bespoke dashboard query.
+    crate::startup::spawn_drift_detector(fold_db);
 
     let (
         manager,

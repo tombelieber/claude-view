@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use claude_view_db::fold::{run_parity_sweep, FLAG_FIELDS};
+use claude_view_db::indexer_v2::compare_session;
 use claude_view_db::Database;
 use claude_view_server_types::metrics::record_cqrs_shadow_sample;
 
@@ -96,6 +97,93 @@ pub fn spawn_cqrs_sampler(db: Arc<Database>) {
     tokio::spawn(run_forever(db));
 }
 
+// ---------------------------------------------------------------------------
+// CQRS Phase 7.b — drift detector
+// ---------------------------------------------------------------------------
+//
+// Sibling to `run_sampler_once`: 1 % of sessions every 15 minutes are
+// diff'd against their legacy row via `compare_session`. Non-clean
+// reports land in `tracing::warn!` so ops can see drift without
+// installing a bespoke dashboard query. Production treats drift > 0 as
+// an actionable signal — the precision floor in `Trust Over Accuracy`
+// only holds if shadow-written rows keep matching the authoritative
+// writer.
+
+const DRIFT_SAMPLE_PERCENT: i64 = 1;
+const DRIFT_INTERVAL_SECS: u64 = 900;
+const DRIFT_SAMPLE_LIMIT: i64 = 1_000;
+
+/// Run one drift-sampler iteration: random 1 % sample, diff each row,
+/// log the aggregate drift count. Exposed for test coverage — callers
+/// that want the loop should use [`spawn_drift_detector`].
+pub async fn run_drift_sampler_once(db: Arc<Database>) {
+    let ids: Vec<(String,)> =
+        match sqlx::query_as("SELECT id FROM sessions WHERE RANDOM() % 100 < ?1 LIMIT ?2")
+            .bind(DRIFT_SAMPLE_PERCENT)
+            .bind(DRIFT_SAMPLE_LIMIT)
+            .fetch_all(db.pool())
+            .await
+        {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::warn!(error = %err, "drift_sampler: failed to pick sample ids");
+                return;
+            }
+        };
+
+    let mut drift_count = 0_usize;
+    let mut compared = 0_usize;
+    for (id,) in &ids {
+        match compare_session(&db, id).await {
+            Ok(Some(report)) => {
+                compared += 1;
+                if !report.is_clean() {
+                    drift_count += 1;
+                    tracing::warn!(
+                        session_id = %report.session_id,
+                        diff_count = report.diffs.len(),
+                        "drift_sampler: session row diverges from shadow"
+                    );
+                }
+            }
+            Ok(None) => {
+                // One side missing a row — not diffable, not a drift signal.
+            }
+            Err(err) => {
+                tracing::warn!(session_id = %id, error = %err,
+                    "drift_sampler: compare_session failed");
+            }
+        }
+    }
+
+    if drift_count > 0 {
+        tracing::warn!(
+            sampled = ids.len(),
+            compared,
+            drift_count,
+            "drift_rate_session_stats non-zero"
+        );
+    } else {
+        tracing::info!(
+            sampled = ids.len(),
+            compared,
+            "drift_rate_session_stats clean"
+        );
+    }
+}
+
+async fn run_drift_forever(db: Arc<Database>) {
+    loop {
+        run_drift_sampler_once(db.clone()).await;
+        tokio::time::sleep(Duration::from_secs(DRIFT_INTERVAL_SECS)).await;
+    }
+}
+
+/// Spawn the 1% × 15 min drift detector on the current tokio runtime.
+pub fn spawn_drift_detector(db: Arc<Database>) {
+    tokio::spawn(run_drift_forever(db));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +196,11 @@ mod tests {
         // either case. The important bit here is that the sampler
         // reaches `record_*` without the DB probes blowing up.
         run_sampler_once(db).await;
+    }
+
+    #[tokio::test]
+    async fn drift_sampler_runs_once_without_panicking_on_empty_db() {
+        let db = Arc::new(Database::new_in_memory().await.unwrap());
+        run_drift_sampler_once(db).await;
     }
 }
