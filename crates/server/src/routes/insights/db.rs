@@ -173,15 +173,17 @@ pub(super) async fn fetch_analytics_scope_meta_for_range(
     from: i64,
     to: i64,
 ) -> ApiResult<AnalyticsScopeMeta> {
+    // CQRS Phase 5.5a — archived_at now reads from session_flags.
     let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
         r#"
         SELECT
-            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
-            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
-        FROM sessions
-        WHERE archived_at IS NULL
-          AND last_message_at >= ?1
-          AND last_message_at <= ?2
+            COALESCE(SUM(CASE WHEN s.is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN s.is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM sessions s
+        LEFT JOIN session_flags sf ON sf.session_id = s.id
+        WHERE sf.archived_at IS NULL
+          AND s.last_message_at >= ?1
+          AND s.last_message_at <= ?2
         "#,
     )
     .bind(from)

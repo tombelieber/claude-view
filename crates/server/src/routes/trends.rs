@@ -40,15 +40,17 @@ pub async fn get_trends(State(state): State<Arc<AppState>>) -> ApiResult<Json<We
     let trends = state.db.get_week_trends().await?;
     let (curr_start, curr_end) = current_week_bounds();
     let (prev_start, _) = previous_week_bounds();
+    // CQRS Phase 5.5a — archived_at now reads from session_flags.
     let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
         r#"
         SELECT
-            COALESCE(SUM(CASE WHEN is_sidechain = 0 THEN 1 ELSE 0 END), 0),
-            COALESCE(SUM(CASE WHEN is_sidechain = 1 THEN 1 ELSE 0 END), 0)
-        FROM sessions
-        WHERE archived_at IS NULL
-          AND last_message_at >= ?1
-          AND last_message_at <= ?2
+            COALESCE(SUM(CASE WHEN s.is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN s.is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM sessions s
+        LEFT JOIN session_flags sf ON sf.session_id = s.id
+        WHERE sf.archived_at IS NULL
+          AND s.last_message_at >= ?1
+          AND s.last_message_at <= ?2
         "#,
     )
     .bind(prev_start)
