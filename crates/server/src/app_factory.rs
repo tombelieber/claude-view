@@ -513,6 +513,14 @@ pub fn create_app_full(
     let fold_db = Arc::new(db.clone());
     claude_view_db::fold::spawn_flags_fold(fold_db.clone());
 
+    // CQRS Phase 4.9 — spawn the stage_c_outbox drainer. Reads
+    // pending FlagDelta rows emitted by the fold writer and applies
+    // compensating rollup UPDATEs across daily/weekly/monthly ×
+    // global/project/branch/model/category buckets, closing the loop
+    // from action log → session_flags → rollups. Each row applies
+    // under its own TX so one bad payload never blocks the queue.
+    claude_view_db::stage_c::spawn_outbox_drainer(fold_db.clone());
+
     // CQRS Phase 5 PR 5.4 — spawn the shadow parity monitor. Every
     // 15 min it samples the 10 k most recent sessions and logs
     // `shadow_flags_diff_total{field}` counts at INFO (all-zero) or

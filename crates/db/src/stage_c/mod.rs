@@ -42,12 +42,14 @@
 //! See `private/config/docs/plans/2026-04-17-cqrs-phase-1-7-design.md §6.2 PR 4.2`.
 
 pub mod consumer;
+pub mod drainer;
 pub mod flag_delta;
 pub mod fold;
 pub(crate) mod outbox;
 pub mod rebuild;
 
 pub use consumer::{apply_stats_delta, resolve_observation_ts, StageCError};
+pub use drainer::{run_drain_batch, spawn_outbox_drainer, DrainBatchSummary};
 pub use flag_delta::FlagDelta;
 pub use fold::{fold_contribution_snapshots_into_rollups, FoldSummary};
 pub use rebuild::{full_rebuild_from_session_stats, RebuildSummary};
