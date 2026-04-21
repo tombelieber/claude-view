@@ -35,24 +35,101 @@ impl Database {
     }
 
     /// Get all models with usage counts (for GET /api/models).
+    ///
+    /// Usage totals (`total_turns`, `total_sessions`) are derived from
+    /// `session_stats.per_model_tokens_json` — the CQRS Phase 6
+    /// replacement for joining `turns`. `total_turns` is approximated by
+    /// the session-level `turn_count` attributed to each model's
+    /// per-session presence (no per-turn-per-model granularity survives
+    /// the wide-row rollup); `total_sessions` is the exact count of
+    /// sessions whose per-model JSON mentions this model.
     pub async fn get_all_models(&self) -> DbResult<Vec<ModelWithStats>> {
-        let rows: Vec<ModelWithStats> = sqlx::query_as(
-            r#"
-            SELECT m.id, m.provider, m.family,
-                   m.display_name, m.description,
-                   m.max_input_tokens, m.max_output_tokens,
-                   m.first_seen, m.last_seen,
-                   COUNT(t.uuid) as total_turns,
-                   COUNT(DISTINCT t.session_id) as total_sessions
-            FROM models m
-            LEFT JOIN turns t ON t.model_id = m.id
-            GROUP BY m.id
-            ORDER BY total_turns DESC
-            "#,
+        use std::collections::HashMap;
+
+        type ModelRow = (
+            String,         // id
+            Option<String>, // provider
+            Option<String>, // family
+            Option<String>, // display_name
+            Option<String>, // description
+            Option<i64>,    // max_input_tokens
+            Option<i64>,    // max_output_tokens
+            Option<i64>,    // first_seen
+            Option<i64>,    // last_seen
+        );
+
+        let models: Vec<ModelRow> = sqlx::query_as(
+            r#"SELECT id, provider, family, display_name, description,
+                      max_input_tokens, max_output_tokens, first_seen, last_seen
+               FROM models"#,
         )
         .fetch_all(self.pool())
         .await?;
 
+        let usage_rows: Vec<(String, Option<String>, i64)> = sqlx::query_as(
+            r#"SELECT per_model_tokens_json, primary_model, COALESCE(turn_count, 0)
+               FROM session_stats"#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+
+        let mut total_sessions: HashMap<String, i64> = HashMap::new();
+        let mut total_turns: HashMap<String, i64> = HashMap::new();
+        for (json, primary_model, turn_count) in usage_rows {
+            let per_model: HashMap<String, claude_view_core::pricing::TokenUsage> =
+                serde_json::from_str(&json).unwrap_or_default();
+            for model_id in per_model.keys() {
+                *total_sessions.entry(model_id.clone()).or_default() += 1;
+            }
+            // Turn-count attribution: credit the session's full turn count
+            // to its `primary_model` only. That matches the legacy
+            // per-turn truth for the model that owns the session — minor
+            // models that also saw traffic keep `total_turns = 0` unless
+            // they were primary in some other session. Lossy vs. the old
+            // per-turn join, but preserves the dashboard ranking order
+            // (primary model first).
+            if let Some(primary) = primary_model {
+                *total_turns.entry(primary).or_default() += turn_count;
+            }
+        }
+
+        let mut rows: Vec<ModelWithStats> = models
+            .into_iter()
+            .map(
+                |(
+                    id,
+                    provider,
+                    family,
+                    display_name,
+                    description,
+                    max_input_tokens,
+                    max_output_tokens,
+                    first_seen,
+                    last_seen,
+                )| {
+                    let total_turns = total_turns.get(&id).copied().unwrap_or(0);
+                    let total_sessions = total_sessions.get(&id).copied().unwrap_or(0);
+                    ModelWithStats {
+                        id,
+                        provider,
+                        family,
+                        display_name,
+                        description,
+                        max_input_tokens,
+                        max_output_tokens,
+                        first_seen,
+                        last_seen,
+                        total_turns,
+                        total_sessions,
+                    }
+                },
+            )
+            .collect();
+        rows.sort_by(|a, b| {
+            b.total_turns
+                .cmp(&a.total_turns)
+                .then_with(|| a.id.cmp(&b.id))
+        });
         Ok(rows)
     }
 

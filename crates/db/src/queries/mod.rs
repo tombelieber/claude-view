@@ -10,6 +10,7 @@ pub mod facets;
 mod fluency;
 pub mod hook_events;
 mod invocables;
+pub mod invocation_agg;
 mod models;
 pub mod reports;
 pub(crate) mod row_types;

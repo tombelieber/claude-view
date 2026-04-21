@@ -45,6 +45,10 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
         .and_then(rfc3339_to_unix);
     let per_model_tokens_json =
         serde_json::to_string(&delta.stats.per_model_tokens).unwrap_or_else(|_| "{}".into());
+    // CQRS PR 6.2: per-invocable counts replace the `invocations` table.
+    // Keyed by `tool_use.name[:sub]` — see `session_stats.rs::invocation_key`.
+    let invocation_counts_json =
+        serde_json::to_string(&delta.stats.invocation_counts).unwrap_or_else(|_| "{}".into());
 
     // Phase 3 PR 3.a: filesystem-mirror columns added in migration 66.
     // The writer persists them on every upsert; the adapter selects
@@ -64,7 +68,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 first_message_at, last_message_at, duration_seconds,
                 primary_model, git_branch, preview, last_message,
                 per_model_tokens_json,
-                project_id, file_path, is_compressed, source_mtime
+                project_id, file_path, is_compressed, source_mtime,
+                invocation_counts
            ) VALUES (
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
@@ -76,7 +81,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 ?, ?, ?,
                 ?, ?, ?, ?,
                 ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?,
+                ?
            )
            ON CONFLICT(session_id) DO UPDATE SET
                 source_content_hash = excluded.source_content_hash,
@@ -113,7 +119,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 project_id = excluded.project_id,
                 file_path = excluded.file_path,
                 is_compressed = excluded.is_compressed,
-                source_mtime = excluded.source_mtime"#,
+                source_mtime = excluded.source_mtime,
+                invocation_counts = excluded.invocation_counts"#,
     )
     .bind(&delta.session_id)
     .bind(&delta.source_content_hash)
@@ -151,6 +158,7 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
     .bind(delta.source_file_path.as_str())
     .bind(is_compressed_int)
     .bind(delta.source_mtime)
+    .bind(invocation_counts_json)
     .execute(db.pool())
     .await?;
 

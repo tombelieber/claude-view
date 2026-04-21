@@ -1,5 +1,6 @@
 //! Report CRUD queries and preview aggregation.
 
+use super::invocation_agg::{load_invocation_totals_in_range, top_n_by_prefix, ToolKind};
 use crate::{Database, DbResult};
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
@@ -254,55 +255,35 @@ impl Database {
     }
 
     /// Query top tools used in a date range.
-    /// Returns Vec of tool names ordered by usage count descending.
+    ///
+    /// Aggregates `session_stats.invocation_counts` across sessions whose
+    /// `first_message_at` falls in the range, filters out Skill/Task
+    /// wrappers (their `:sub` variants belong to `get_top_skills_in_range`
+    /// and the agent breakdown respectively), and returns the top `limit`
+    /// tool names by usage count.
     pub async fn get_top_tools_in_range(
         &self,
         start_ts: i64,
         end_ts: i64,
         limit: i64,
     ) -> DbResult<Vec<String>> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT i.name
-               FROM invocations i
-               JOIN valid_sessions s ON i.session_id = s.id
-               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
-                 AND i.type = 'tool'
-               GROUP BY i.name
-               ORDER BY SUM(i.count) DESC
-               LIMIT ?"#,
-        )
-        .bind(start_ts)
-        .bind(end_ts)
-        .bind(limit)
-        .fetch_all(self.pool())
-        .await?;
-        Ok(rows.into_iter().map(|(n,)| n).collect())
+        let totals = load_invocation_totals_in_range(self.pool(), start_ts, end_ts).await?;
+        Ok(top_n_by_prefix(&totals, ToolKind::Tool, limit))
     }
 
     /// Query top skills used in a date range.
-    /// Returns Vec of skill names ordered by usage count descending.
+    ///
+    /// Returns skill names (without the `Skill:` prefix), ordered by
+    /// usage count descending. Sourced from
+    /// `session_stats.invocation_counts` entries keyed `"Skill:<name>"`.
     pub async fn get_top_skills_in_range(
         &self,
         start_ts: i64,
         end_ts: i64,
         limit: i64,
     ) -> DbResult<Vec<String>> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            r#"SELECT i.name
-               FROM invocations i
-               JOIN valid_sessions s ON i.session_id = s.id
-               WHERE s.first_message_at >= ? AND s.first_message_at <= ?
-                 AND i.type = 'skill'
-               GROUP BY i.name
-               ORDER BY SUM(i.count) DESC
-               LIMIT ?"#,
-        )
-        .bind(start_ts)
-        .bind(end_ts)
-        .bind(limit)
-        .fetch_all(self.pool())
-        .await?;
-        Ok(rows.into_iter().map(|(n,)| n).collect())
+        let totals = load_invocation_totals_in_range(self.pool(), start_ts, end_ts).await?;
+        Ok(top_n_by_prefix(&totals, ToolKind::Skill, limit))
     }
 
     /// Query total input and output tokens for sessions in a date range.

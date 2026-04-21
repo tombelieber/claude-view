@@ -1,9 +1,26 @@
 // crates/db/src/queries/invocables.rs
 // Invocable + Invocation CRUD operations.
 
+use std::collections::HashMap;
+
+use super::invocation_agg::{
+    aggregate_all, classify_key, display_name, load_invocation_totals, ToolKind,
+};
 use super::row_types::batch_insert_invocations_tx;
 use super::{InvocableWithCount, StatsOverview};
 use crate::{Database, DbResult};
+
+/// Best-effort heuristic that maps a JSON `invocation_counts` key to the
+/// `invocables.id` used by the classifier. Used to attach registry
+/// metadata (plugin_name, description) to aggregated counts. Returns the
+/// raw key when nothing better can be inferred.
+fn key_to_invocable_id(key: &str) -> String {
+    match classify_key(key) {
+        ToolKind::Tool => format!("builtin:{key}"),
+        ToolKind::Agent => format!("builtin:{}", display_name(key)),
+        ToolKind::Skill | ToolKind::McpTool => display_name(key).to_string(),
+    }
+}
 
 impl Database {
     /// Insert or update a single invocable.
@@ -59,24 +76,47 @@ impl Database {
 
     /// List all invocables with their invocation counts.
     ///
-    /// Results are ordered by invocation_count DESC, then name ASC.
+    /// Counts are aggregated from `session_stats.invocation_counts` (JSON
+    /// per session) and mapped back onto rows from the `invocables`
+    /// registry via a best-effort key-to-id heuristic. Invocables that
+    /// have never been used simply get `invocation_count = 0`.
+    ///
+    /// Results are ordered by `invocation_count DESC`, then `name ASC`.
+    /// `last_used_at` is no longer available in the CQRS path — the
+    /// column is left as `None` rather than fabricated.
     pub async fn list_invocables_with_counts(&self) -> DbResult<Vec<InvocableWithCount>> {
-        let rows: Vec<InvocableWithCount> = sqlx::query_as(
-            r#"
-            SELECT
-                i.id, i.plugin_name, i.name, i.kind, i.description,
-                COALESCE(COUNT(inv.invocable_id), 0) as invocation_count,
-                MAX(inv.timestamp) as last_used_at
-            FROM invocables i
-            LEFT JOIN invocations inv ON i.id = inv.invocable_id
-            GROUP BY i.id
-            ORDER BY invocation_count DESC, i.name ASC
-            "#,
-        )
-        .fetch_all(self.pool())
-        .await?;
+        let registry_rows: Vec<(String, Option<String>, String, String, String)> =
+            sqlx::query_as(r#"SELECT id, plugin_name, name, kind, description FROM invocables"#)
+                .fetch_all(self.pool())
+                .await?;
 
-        Ok(rows)
+        let totals = load_invocation_totals(self.pool()).await?;
+        let mut by_id: HashMap<String, i64> = HashMap::new();
+        for (key, count) in &totals {
+            *by_id.entry(key_to_invocable_id(key)).or_default() += *count;
+        }
+
+        let mut out: Vec<InvocableWithCount> = registry_rows
+            .into_iter()
+            .map(|(id, plugin_name, name, kind, description)| {
+                let invocation_count = by_id.remove(&id).unwrap_or(0);
+                InvocableWithCount {
+                    id,
+                    plugin_name,
+                    name,
+                    kind,
+                    description,
+                    invocation_count,
+                    last_used_at: None,
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| {
+            b.invocation_count
+                .cmp(&a.invocation_count)
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        Ok(out)
     }
 
     /// Batch insert/update invocables from a registry snapshot.
@@ -120,29 +160,23 @@ impl Database {
 
     /// Get aggregate statistics overview.
     ///
-    /// Returns total sessions, total invocations, unique invocables used,
-    /// and the top 10 invocables by usage count.
+    /// `total_invocations` and `unique_invocables_used` are derived from
+    /// `session_stats.invocation_counts` — the CQRS Phase 6 replacement
+    /// for the legacy `invocations` table scan.
     pub async fn get_stats_overview(&self) -> DbResult<StatsOverview> {
         let (total_sessions,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
             .fetch_one(self.pool())
             .await?;
 
-        let (total_invocations,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM invocations")
-            .fetch_one(self.pool())
-            .await?;
-
-        let (unique_invocables_used,): (i64,) =
-            sqlx::query_as("SELECT COUNT(DISTINCT invocable_id) FROM invocations")
-                .fetch_one(self.pool())
-                .await?;
+        let summary = aggregate_all(self.pool()).await?;
 
         let all = self.list_invocables_with_counts().await?;
         let top_invocables: Vec<InvocableWithCount> = all.into_iter().take(10).collect();
 
         Ok(StatsOverview {
             total_sessions,
-            total_invocations,
-            unique_invocables_used,
+            total_invocations: summary.total_invocations,
+            unique_invocables_used: summary.unique_invocables,
             top_invocables,
         })
     }

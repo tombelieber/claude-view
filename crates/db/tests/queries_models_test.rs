@@ -15,48 +15,33 @@ async fn test_get_stats_overview() {
         .await
         .unwrap();
 
-    // Insert invocables
-    db.upsert_invocable("tool::Read", None, "Read", "tool", "")
+    // Registry ids use the CQRS `builtin:*` convention so the reader's
+    // key→id heuristic (see `queries/invocables.rs::key_to_invocable_id`)
+    // attaches counts to the right registry rows.
+    db.upsert_invocable("builtin:Read", None, "Read", "tool", "")
         .await
         .unwrap();
-    db.upsert_invocable("tool::Edit", None, "Edit", "tool", "")
+    db.upsert_invocable("builtin:Edit", None, "Edit", "tool", "")
         .await
         .unwrap();
 
-    // Insert invocations
-    let invocations = vec![
-        (
-            "f1.jsonl".to_string(),
-            10,
-            "tool::Read".to_string(),
-            "sess-1".to_string(),
-            "p".to_string(),
-            1000,
-        ),
-        (
-            "f1.jsonl".to_string(),
-            20,
-            "tool::Read".to_string(),
-            "sess-1".to_string(),
-            "p".to_string(),
-            1001,
-        ),
-        (
-            "f1.jsonl".to_string(),
-            30,
-            "tool::Edit".to_string(),
-            "sess-1".to_string(),
-            "p".to_string(),
-            1002,
-        ),
-    ];
-    db.batch_insert_invocations(&invocations).await.unwrap();
+    // Seed the session_stats row that backs the CQRS read path.
+    sqlx::query(
+        r#"INSERT INTO session_stats (
+               session_id, source_content_hash, source_size,
+               parser_version, stats_version, indexed_at,
+               invocation_counts
+           ) VALUES ('sess-1', X'01', 0, 1, 1, 0, '{"Read":2,"Edit":1}')"#,
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
 
     let stats = db.get_stats_overview().await.unwrap();
     assert_eq!(stats.total_sessions, 1);
     assert_eq!(stats.total_invocations, 3);
     assert_eq!(stats.unique_invocables_used, 2);
     assert!(stats.top_invocables.len() <= 10);
-    assert_eq!(stats.top_invocables[0].id, "tool::Read");
+    assert_eq!(stats.top_invocables[0].id, "builtin:Read");
     assert_eq!(stats.top_invocables[0].invocation_count, 2);
 }

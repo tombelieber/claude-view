@@ -422,6 +422,27 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
 
     run_scan(&claude_dir, &db).await.unwrap();
 
+    // CQRS Phase 6.2: `get_all_models` aggregates per-model usage from
+    // `session_stats.per_model_tokens_json` + `primary_model`, not from
+    // the legacy `turns` table. The parallel scan path in `run_scan`
+    // doesn't write to `session_stats` — mirror what `indexer_v2` would
+    // have produced so the read path sees the same session's usage.
+    sqlx::query(
+        r#"INSERT INTO session_stats (
+               session_id, source_content_hash, source_size,
+               parser_version, stats_version, indexed_at,
+               primary_model, turn_count,
+               total_input_tokens, total_output_tokens, cache_read_tokens, cache_creation_tokens,
+               per_model_tokens_json
+           ) VALUES ('sess-0-0', X'01', 0, 1, 2, 0,
+                     'claude-opus-4-5', 1,
+                     50, 200, 5000, 1000,
+                     '{"claude-opus-4-5":{"inputTokens":50,"outputTokens":200,"cacheReadTokens":5000,"cacheCreationTokens":1000,"cacheCreation5mTokens":0,"cacheCreation1hrTokens":0,"totalTokens":6250}}')"#,
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
+
     // Verify models table has data
     let models = db.get_all_models().await.unwrap();
     assert!(

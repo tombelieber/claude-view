@@ -248,19 +248,22 @@ mod tests {
             .await
             .unwrap();
 
-        // Insert invocables and invocations
-        db.upsert_invocable("tool::Read", None, "Read", "tool", "Read files")
+        // CQRS Phase 6.2: counts come from `session_stats.invocation_counts`,
+        // and the registry id follows the `builtin:*` convention used by
+        // `classify_tool_use`.
+        db.upsert_invocable("builtin:Read", None, "Read", "tool", "Read files")
             .await
             .unwrap();
-        let invocations = vec![(
-            "f1.jsonl".to_string(),
-            10,
-            "tool::Read".to_string(),
-            "sess-1".to_string(),
-            "p".to_string(),
-            1000,
-        )];
-        db.batch_insert_invocations(&invocations).await.unwrap();
+        sqlx::query(
+            r#"INSERT INTO session_stats (
+                   session_id, source_content_hash, source_size,
+                   parser_version, stats_version, indexed_at,
+                   invocation_counts
+               ) VALUES ('sess-1', X'01', 0, 1, 1, 0, '{"Read":1}')"#,
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
 
         let app = build_app(db);
         let (status, body) = get(app, "/api/stats/overview").await;
@@ -271,6 +274,6 @@ mod tests {
         assert_eq!(json["totalInvocations"], 1);
         assert_eq!(json["uniqueInvocablesUsed"], 1);
         assert_eq!(json["topInvocables"].as_array().unwrap().len(), 1);
-        assert_eq!(json["topInvocables"][0]["id"], "tool::Read");
+        assert_eq!(json["topInvocables"][0]["id"], "builtin:Read");
     }
 }

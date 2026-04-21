@@ -21,7 +21,11 @@ pub const PARSER_VERSION: ParserVersion = ParserVersion(1);
 
 /// Current stats-extraction version. Bump when `extract_stats` changes
 /// the set of fields it emits or how any field is computed.
-pub const STATS_VERSION: StatsVersion = StatsVersion(1);
+///
+/// - v2 (CQRS Phase 6.2): `SessionStats::invocation_counts` populated from
+///   `tool_use` blocks (with `:sub` suffix for Skill / Task / Agent). Older
+///   rows need a re-extract to backfill `session_stats.invocation_counts`.
+pub const STATS_VERSION: StatsVersion = StatsVersion(2);
 
 /// Current rollup version. Bump when a rollup table adds or changes a
 /// metric in a way that requires recomputation.

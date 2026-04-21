@@ -133,18 +133,23 @@ async fn test_batch_insert_invocations_ignores_duplicates() {
 async fn test_list_invocables_with_counts() {
     let db = Database::new_in_memory().await.unwrap();
 
-    db.upsert_invocable("tool::Read", None, "Read", "tool", "Read files")
+    // Registry ids mirror what `classify_tool_use` emits for built-in tools
+    // (`"builtin:<name>"`), which is how the reader's key→id heuristic
+    // bridges `session_stats.invocation_counts` → `invocables`.
+    db.upsert_invocable("builtin:Read", None, "Read", "tool", "Read files")
         .await
         .unwrap();
-    db.upsert_invocable("tool::Edit", None, "Edit", "tool", "Edit files")
+    db.upsert_invocable("builtin:Edit", None, "Edit", "tool", "Edit files")
         .await
         .unwrap();
-    db.upsert_invocable("tool::Bash", None, "Bash", "tool", "Run commands")
+    db.upsert_invocable("builtin:Bash", None, "Bash", "tool", "Run commands")
         .await
         .unwrap();
 
-    // Must insert sessions first (FK constraint on invocations.session_id)
-    for sid in &["s1", "s2"] {
+    // Seed matching sessions + session_stats rows. The reader joins
+    // `valid_sessions` × `session_stats`, so both sides must exist.
+    // Counts: Read x3 (s1=2, s2=1), Edit x1 (s2), Bash x0.
+    for (sid, counts) in &[("s1", r#"{"Read":2}"#), ("s2", r#"{"Read":1,"Edit":1}"#)] {
         claude_view_db::test_support::SessionSeedBuilder::new(*sid)
             .project_id("p")
             .project_display_name("p")
@@ -154,57 +159,33 @@ async fn test_list_invocables_with_counts() {
             .seed(&db)
             .await
             .unwrap();
+        sqlx::query(
+            r#"INSERT INTO session_stats (
+                   session_id, source_content_hash, source_size,
+                   parser_version, stats_version, indexed_at,
+                   invocation_counts
+               ) VALUES (?, X'01', 0, 1, 1, 0, ?)"#,
+        )
+        .bind(sid)
+        .bind(counts)
+        .execute(db.pool())
+        .await
+        .unwrap();
     }
-
-    // Add invocations: Read x3, Edit x1, Bash x0
-    let invocations = vec![
-        (
-            "f1.jsonl".to_string(),
-            10,
-            "tool::Read".to_string(),
-            "s1".to_string(),
-            "p".to_string(),
-            1000,
-        ),
-        (
-            "f1.jsonl".to_string(),
-            20,
-            "tool::Read".to_string(),
-            "s1".to_string(),
-            "p".to_string(),
-            2000,
-        ),
-        (
-            "f2.jsonl".to_string(),
-            10,
-            "tool::Read".to_string(),
-            "s2".to_string(),
-            "p".to_string(),
-            3000,
-        ),
-        (
-            "f2.jsonl".to_string(),
-            20,
-            "tool::Edit".to_string(),
-            "s2".to_string(),
-            "p".to_string(),
-            3001,
-        ),
-    ];
-    db.batch_insert_invocations(&invocations).await.unwrap();
 
     let items = db.list_invocables_with_counts().await.unwrap();
     assert_eq!(items.len(), 3);
 
-    // Ordered by invocation_count DESC, then name ASC
-    assert_eq!(items[0].id, "tool::Read");
+    // Ordered by invocation_count DESC, then name ASC.
+    assert_eq!(items[0].id, "builtin:Read");
     assert_eq!(items[0].invocation_count, 3);
-    assert_eq!(items[0].last_used_at, Some(3000));
+    // `last_used_at` isn't tracked in the JSON column — readers return None.
+    assert_eq!(items[0].last_used_at, None);
 
-    assert_eq!(items[1].id, "tool::Edit");
+    assert_eq!(items[1].id, "builtin:Edit");
     assert_eq!(items[1].invocation_count, 1);
 
-    assert_eq!(items[2].id, "tool::Bash");
+    assert_eq!(items[2].id, "builtin:Bash");
     assert_eq!(items[2].invocation_count, 0);
     assert_eq!(items[2].last_used_at, None);
 }

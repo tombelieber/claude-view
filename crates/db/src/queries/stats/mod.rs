@@ -204,6 +204,11 @@ pub struct FullSessionStatsRow {
     // round-trips it back. Empty map when the column is `'{}'` or
     // invalid JSON (graceful — we never fail the query on a bad blob).
     pub per_model_tokens: HashMap<String, claude_view_core::pricing::TokenUsage>,
+
+    // Per-invocable counts (JSON blob deserialized into HashMap). Same
+    // graceful-fallback semantics as `per_model_tokens` — see
+    // `session_stats::invocation_key` for the key format.
+    pub invocation_counts: HashMap<String, u64>,
 }
 
 const FULL_ROW_SQL_BY_ID: &str = "SELECT \
@@ -215,7 +220,7 @@ const FULL_ROW_SQL_BY_ID: &str = "SELECT \
     files_read_count, files_edited_count, bash_count, agent_spawn_count, \
     first_message_at, last_message_at, duration_seconds, \
     primary_model, git_branch, preview, last_message, \
-    per_model_tokens_json \
+    per_model_tokens_json, invocation_counts \
     FROM session_stats WHERE session_id = ?";
 
 const FULL_ROW_SQL_LIST_PREFIX: &str = "SELECT \
@@ -227,7 +232,7 @@ const FULL_ROW_SQL_LIST_PREFIX: &str = "SELECT \
     files_read_count, files_edited_count, bash_count, agent_spawn_count, \
     first_message_at, last_message_at, duration_seconds, \
     primary_model, git_branch, preview, last_message, \
-    per_model_tokens_json \
+    per_model_tokens_json, invocation_counts \
     FROM session_stats";
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
@@ -239,6 +244,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
         // the whole query on a malformed per-model blob; cost just
         // displays as None for that row.
         let per_model_tokens = serde_json::from_str(&per_model_json).unwrap_or_default();
+        let invocation_counts_json: String = row.try_get("invocation_counts")?;
+        let invocation_counts = serde_json::from_str(&invocation_counts_json).unwrap_or_default();
         Ok(Self {
             session_id: row.try_get("session_id")?,
             project_id: row.try_get("project_id")?,
@@ -270,6 +277,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
             preview: row.try_get("preview")?,
             last_message: row.try_get("last_message")?,
             per_model_tokens,
+            invocation_counts,
         })
     }
 }
@@ -309,6 +317,7 @@ impl From<&FullSessionStatsRow> for claude_view_core::session_stats::SessionStat
             preview: row.preview.clone(),
             last_message: row.last_message.clone(),
             per_model_tokens: row.per_model_tokens.clone(),
+            invocation_counts: row.invocation_counts.clone(),
         }
     }
 }

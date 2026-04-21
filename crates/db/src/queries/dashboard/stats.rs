@@ -1,14 +1,24 @@
 // crates/db/src/queries/dashboard/stats.rs
 // Dashboard statistics, all-time metrics, and invocable top-10 queries.
 
+use std::collections::HashMap;
+
+use crate::queries::invocation_agg::{classify_key, display_name, ToolKind};
 use crate::{Database, DbResult};
 use claude_view_core::{
     DashboardStats, DayActivity, ProjectStat, SessionDurationStat, SkillStat, ToolCounts,
 };
 
 impl Database {
-    /// Fetch top 10 invocables for all 4 kinds in a single query (no time range).
+    /// Fetch top 10 invocables for the four surfaced kinds (no time range).
     /// Returns (skills, commands, mcp_tools, agents) — each Vec has at most 10 entries.
+    ///
+    /// Counts come from `session_stats.invocation_counts` — Commands never
+    /// appear there (slash commands aren't `tool_use` blocks), so the
+    /// commands bucket is always empty until the parser starts surfacing
+    /// them separately. Built-in tools (Bash/Read/…) are excluded from
+    /// this breakdown; they're covered by the dedicated tool-totals
+    /// counts in the main dashboard query.
     async fn all_top_invocables_by_kind(
         &self,
         project: Option<&str>,
@@ -19,17 +29,13 @@ impl Database {
         Vec<SkillStat>,
         Vec<SkillStat>,
     )> {
-        let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        let rows: Vec<(String,)> = sqlx::query_as(
             r#"
-            SELECT inv.kind, inv.name, COUNT(*) as cnt
-            FROM invocations i
-            JOIN invocables inv ON i.invocable_id = inv.id
-            INNER JOIN valid_sessions s ON i.session_id = s.id
-            WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
-              AND (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1) OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?1))
+            SELECT ss.invocation_counts
+            FROM valid_sessions s
+            JOIN session_stats ss ON ss.session_id = s.id
+            WHERE (?1 IS NULL OR s.project_id = ?1 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?1) OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?1))
               AND (?2 IS NULL OR s.git_branch = ?2)
-            GROUP BY inv.kind, inv.name
-            ORDER BY inv.kind, cnt DESC
             "#,
         )
         .bind(project)
@@ -37,7 +43,7 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
 
-        partition_invocables_by_kind(rows)
+        Ok(partition_invocables_from_jsonl(rows))
     }
 
     /// Fetch top 10 invocables for all 4 kinds in a single query (with time range).
@@ -54,18 +60,14 @@ impl Database {
         Vec<SkillStat>,
         Vec<SkillStat>,
     )> {
-        let rows: Vec<(String, String, i64)> = sqlx::query_as(
+        let rows: Vec<(String,)> = sqlx::query_as(
             r#"
-            SELECT inv.kind, inv.name, COUNT(*) as cnt
-            FROM invocations i
-            JOIN invocables inv ON i.invocable_id = inv.id
-            INNER JOIN valid_sessions s ON i.session_id = s.id
-            WHERE inv.kind IN ('skill', 'command', 'mcp_tool', 'agent')
-              AND s.last_message_at >= ?1 AND s.last_message_at <= ?2
+            SELECT ss.invocation_counts
+            FROM valid_sessions s
+            JOIN session_stats ss ON ss.session_id = s.id
+            WHERE s.last_message_at >= ?1 AND s.last_message_at <= ?2
               AND (?3 IS NULL OR s.project_id = ?3 OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3) OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?3))
               AND (?4 IS NULL OR s.git_branch = ?4)
-            GROUP BY inv.kind, inv.name
-            ORDER BY inv.kind, cnt DESC
             "#,
         )
         .bind(from)
@@ -75,7 +77,7 @@ impl Database {
         .fetch_all(self.pool())
         .await?;
 
-        partition_invocables_by_kind(rows)
+        Ok(partition_invocables_from_jsonl(rows))
     }
 
     /// Get pre-computed dashboard statistics.
@@ -427,36 +429,53 @@ impl Database {
     }
 }
 
-/// Partition (kind, name, count) rows into per-kind top-10 vectors.
-fn partition_invocables_by_kind(
-    rows: Vec<(String, String, i64)>,
-) -> DbResult<(
+/// Reduce a batch of per-session `invocation_counts` JSON blobs into the
+/// dashboard's four top-10 lists. Commands never appear in this signal
+/// (slash commands aren't `tool_use` blocks) — their bucket is always
+/// empty until the parser starts emitting them separately.
+fn partition_invocables_from_jsonl(
+    rows: Vec<(String,)>,
+) -> (
     Vec<SkillStat>,
     Vec<SkillStat>,
     Vec<SkillStat>,
     Vec<SkillStat>,
-)> {
-    let mut skills = Vec::new();
-    let mut commands = Vec::new();
-    let mut mcp_tools = Vec::new();
-    let mut agents = Vec::new();
+) {
+    let mut skills: HashMap<String, i64> = HashMap::new();
+    let mcp: HashMap<String, i64> = HashMap::new();
+    let mut mcp = mcp;
+    let mut agents: HashMap<String, i64> = HashMap::new();
 
-    for (kind, name, count) in rows {
-        let stat = SkillStat {
-            name,
-            count: count as usize,
-        };
-        let target = match kind.as_str() {
-            "skill" => &mut skills,
-            "command" => &mut commands,
-            "mcp_tool" => &mut mcp_tools,
-            "agent" => &mut agents,
-            _ => continue,
-        };
-        if target.len() < 10 {
-            target.push(stat);
+    for (json,) in rows {
+        let per_session: HashMap<String, u64> = serde_json::from_str(&json).unwrap_or_default();
+        for (key, count) in per_session {
+            let bucket = match classify_key(&key) {
+                ToolKind::Skill => &mut skills,
+                ToolKind::McpTool => &mut mcp,
+                ToolKind::Agent => &mut agents,
+                ToolKind::Tool => continue,
+            };
+            *bucket.entry(display_name(&key).to_string()).or_default() += count as i64;
         }
     }
 
-    Ok((skills, commands, mcp_tools, agents))
+    let commands: Vec<SkillStat> = Vec::new();
+    (
+        top_10_stats(skills),
+        commands,
+        top_10_stats(mcp),
+        top_10_stats(agents),
+    )
+}
+
+fn top_10_stats(agg: HashMap<String, i64>) -> Vec<SkillStat> {
+    let mut v: Vec<(String, i64)> = agg.into_iter().collect();
+    v.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    v.into_iter()
+        .take(10)
+        .map(|(name, count)| SkillStat {
+            name,
+            count: count.max(0) as usize,
+        })
+        .collect()
 }

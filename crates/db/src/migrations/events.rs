@@ -177,4 +177,13 @@ ALTER TABLE sessions DROP COLUMN category_confidence;
 ALTER TABLE sessions DROP COLUMN category_source;
 ALTER TABLE sessions DROP COLUMN classified_at;
 COMMIT;"#,
+    // Migration 86 (CQRS PR 6.2): add `invocation_counts` JSON column to
+    // `session_stats`. The indexer_v2 writer populates it from every
+    // `tool_use` block at parse time (keyed by tool name with a `:sub`
+    // suffix for `Skill` / `Task` / `Agent`). Replaces the `invocations`
+    // table — readers aggregate per-session JSON blobs directly.
+    //
+    // `STATS_VERSION` is bumped to 2 so the indexer re-extracts any row
+    // whose stats_version is older than 2 on the next scan.
+    r#"ALTER TABLE session_stats ADD COLUMN invocation_counts TEXT NOT NULL DEFAULT '{}';"#,
 ];

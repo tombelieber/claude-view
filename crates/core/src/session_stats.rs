@@ -69,6 +69,19 @@ pub struct SessionStats {
 
     // ── Per-model token breakdown (for accurate cost calculation) ──
     pub per_model_tokens: HashMap<String, TokenUsage>,
+
+    // ── Per-invocable invocation counts (CQRS Phase 6.2 retirement of `invocations`) ──
+    //
+    // Key is the raw tool_use `name` with optional `:sub` suffix:
+    // - built-in / MCP tools → `"Bash"`, `"Read"`, `"mcp__plugin_X__tool_Y"`
+    // - skills (`Skill` tool) → `"Skill:<input.skill>"` (e.g. `"Skill:commit"`)
+    // - agents (`Task`/`Agent` tool) → `"Task:<input.subagent_type>"` /
+    //   `"Agent:<input.subagent_type>"` (e.g. `"Task:general-purpose"`)
+    //
+    // Readers filter by prefix to emulate the legacy `invocables.kind`
+    // grouping; the `invocables` registry is no longer part of the read
+    // path. Writer populates this during parse via `compute_stats`.
+    pub invocation_counts: HashMap<String, u64>,
 }
 
 // ── JSONL deserialization types ──
@@ -203,7 +216,7 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
                         match block.get("type").and_then(|t| t.as_str()) {
                             Some("tool_use") => {
                                 if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
-                                    tool_names.push(name.to_string());
+                                    tool_names.push(invocation_key(name, block.get("input")));
                                 }
                             }
                             Some("thinking") => {
@@ -298,7 +311,11 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
 
         for name in &snap.tool_names {
             stats.tool_call_count += 1;
-            match name.as_str() {
+            *stats.invocation_counts.entry(name.clone()).or_default() += 1;
+            // Tool-breakdown counts match the **base** name (before `:sub`),
+            // so skill/agent variants still roll up under their parent tool.
+            let base = name.split(':').next().unwrap_or(name);
+            match base {
                 "Read" | "NotebookRead" => stats.files_read_count += 1,
                 "Edit" | "Write" | "NotebookEdit" => stats.files_edited_count += 1,
                 "Bash" => stats.bash_count += 1,
@@ -335,6 +352,27 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
     stats.last_message = last_assistant_text.unwrap_or_default();
 
     stats
+}
+
+/// Build the `invocation_counts` map key for a single `tool_use` block.
+///
+/// Base tools return their raw name (e.g. `"Bash"`, `"mcp__plugin_X__tool_Y"`).
+/// `Skill` / `Task` / `Agent` calls get a `:sub` suffix so readers can emulate
+/// the retired `invocables.kind` grouping without the registry join —
+/// e.g. `"Skill:commit"`, `"Task:general-purpose"`. Returns the raw tool
+/// name unchanged when the expected `input` field is absent or not a string.
+fn invocation_key(tool_name: &str, input: Option<&serde_json::Value>) -> String {
+    let sub_field = match tool_name {
+        "Skill" => "skill",
+        "Task" | "Agent" => "subagent_type",
+        _ => return tool_name.to_string(),
+    };
+    input
+        .and_then(|v| v.get(sub_field))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|sub| format!("{tool_name}:{sub}"))
+        .unwrap_or_else(|| tool_name.to_string())
 }
 
 /// Extract text from a user message content field.

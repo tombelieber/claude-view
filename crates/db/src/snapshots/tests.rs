@@ -395,28 +395,17 @@ mod tests {
         .await
         .unwrap();
 
-        // Insert invocables (skills)
+        // Skill invocations now live in session_stats.invocation_counts.
+        // sess1 uses tdd + commit, sess2 uses tdd, sess3 uses nothing.
         sqlx::query(
-            r#"
-            INSERT INTO invocables (id, plugin_name, name, kind, description, status)
-            VALUES
-                ('tdd-skill', 'superpowers', 'tdd', 'skill', 'TDD skill', 'active'),
-                ('commit-skill', 'commit-commands', 'commit', 'skill', 'Commit skill', 'active')
-            "#,
-        )
-        .execute(db.pool())
-        .await
-        .unwrap();
-
-        // Insert invocations: sess1 uses tdd + commit, sess2 uses tdd, sess3 uses nothing
-        sqlx::query(
-            r#"
-            INSERT INTO invocations (source_file, byte_offset, invocable_id, session_id, project, timestamp)
-            VALUES
-                ('/tmp/1.jsonl', 0, 'tdd-skill', 'sess1', 'proj', ?1),
-                ('/tmp/1.jsonl', 100, 'commit-skill', 'sess1', 'proj', ?1),
-                ('/tmp/2.jsonl', 0, 'tdd-skill', 'sess2', 'proj', ?1)
-            "#,
+            r#"INSERT INTO session_stats (
+                   session_id, source_content_hash, source_size,
+                   parser_version, stats_version, indexed_at,
+                   last_message_at, invocation_counts
+               ) VALUES
+                   ('sess1', X'01', 0, 1, 1, 0, ?1, '{"Skill:tdd":1,"Skill:commit":1}'),
+                   ('sess2', X'02', 0, 1, 1, 0, ?1, '{"Skill:tdd":1}'),
+                   ('sess3', X'03', 0, 1, 1, 0, ?1, '{}')"#,
         )
         .bind(now)
         .execute(db.pool())
