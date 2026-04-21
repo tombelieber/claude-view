@@ -50,6 +50,11 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
     let invocation_counts_json =
         serde_json::to_string(&delta.stats.invocation_counts).unwrap_or_else(|_| "{}".into());
 
+    // CQRS Phase 7.c: Phase 7 schema extension columns (migration 88).
+    // skills_used is serialized as JSON array of unique skill names.
+    let skills_used_json =
+        serde_json::to_string(&delta.stats.skills_used).unwrap_or_else(|_| "[]".into());
+
     // Phase 3 PR 3.a: filesystem-mirror columns added in migration 66.
     // The writer persists them on every upsert; the adapter selects
     // them so readers can serve project_id / file_path / mtime without
@@ -69,7 +74,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 primary_model, git_branch, preview, last_message,
                 per_model_tokens_json,
                 project_id, file_path, is_compressed, source_mtime,
-                invocation_counts
+                invocation_counts,
+                is_sidechain, commit_count, reedited_files_count, skills_used
            ) VALUES (
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
@@ -82,7 +88,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 ?, ?, ?, ?,
                 ?,
                 ?, ?, ?, ?,
-                ?
+                ?,
+                ?, ?, ?, ?
            )
            ON CONFLICT(session_id) DO UPDATE SET
                 source_content_hash = excluded.source_content_hash,
@@ -120,7 +127,11 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 file_path = excluded.file_path,
                 is_compressed = excluded.is_compressed,
                 source_mtime = excluded.source_mtime,
-                invocation_counts = excluded.invocation_counts"#,
+                invocation_counts = excluded.invocation_counts,
+                is_sidechain = excluded.is_sidechain,
+                commit_count = excluded.commit_count,
+                reedited_files_count = excluded.reedited_files_count,
+                skills_used = excluded.skills_used"#,
     )
     .bind(&delta.session_id)
     .bind(&delta.source_content_hash)
@@ -159,6 +170,10 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
     .bind(is_compressed_int)
     .bind(delta.source_mtime)
     .bind(invocation_counts_json)
+    .bind(delta.stats.is_sidechain as i64)
+    .bind(delta.stats.commit_count as i64)
+    .bind(delta.stats.reedited_files_count as i64)
+    .bind(skills_used_json)
     .execute(db.pool())
     .await?;
 

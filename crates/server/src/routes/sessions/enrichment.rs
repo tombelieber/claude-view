@@ -46,22 +46,23 @@ pub async fn fetch_enrichments(
     // now lives in `session_flags.archived_at` (unix-ms INTEGER);
     // re-emit as RFC3339 so `SessionEnrichment::archived_at`
     // (Option<String>) keeps its public contract.
+    // CQRS Phase 7.c — commit_count, skills_used, reedited_files_count now on session_stats.
     let ids_json = serde_json::to_string(session_ids).expect("serialize ids");
     let rows: Vec<(String, Option<String>, i64, String, i64, i64)> = sqlx::query_as(
         r#"
         SELECT
-            s.id,
+            ss.session_id,
             CASE
                 WHEN sf.archived_at IS NULL THEN NULL
                 ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.archived_at / 1000.0, 'unixepoch')
             END AS archived_at,
-            s.commit_count,
-            s.skills_used,
-            s.reedited_files_count,
-            s.files_edited_count
-        FROM sessions s
-        LEFT JOIN session_flags sf ON sf.session_id = s.id
-        WHERE s.id IN (SELECT value FROM json_each(?1))
+            ss.commit_count,
+            ss.skills_used,
+            ss.reedited_files_count,
+            ss.files_edited_count
+        FROM session_stats ss
+        LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
+        WHERE ss.session_id IN (SELECT value FROM json_each(?1))
         "#,
     )
     .bind(&ids_json)
@@ -124,6 +125,17 @@ mod tests {
         .execute(db.pool())
         .await
         .unwrap();
+        // Also insert into session_stats (primary read table for enrichment)
+        sqlx::query(
+            "INSERT INTO session_stats \
+             (session_id, source_content_hash, source_size, parser_version, \
+              stats_version, indexed_at, commit_count, skills_used, \
+              reedited_files_count, files_edited_count) \
+             VALUES ('s1', X'00', 1024, 1, 3, 0, 3, '[\"tdd\"]', 2, 10)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
         // 2026-04-01T10:00:00.000Z = 1775037600000 ms (UTC).
         sqlx::query(
             "INSERT INTO session_flags (session_id, archived_at, applied_seq) \
@@ -137,6 +149,17 @@ mod tests {
              (id, project_id, file_path, commit_count, skills_used, \
               reedited_files_count, files_edited_count) \
              VALUES ('s2', 'p1', '/tmp/s2.jsonl', 0, '[]', 0, 0)",
+        )
+        .execute(db.pool())
+        .await
+        .unwrap();
+        // Also insert into session_stats for s2
+        sqlx::query(
+            "INSERT INTO session_stats \
+             (session_id, source_content_hash, source_size, parser_version, \
+              stats_version, indexed_at, commit_count, skills_used, \
+              reedited_files_count, files_edited_count) \
+             VALUES ('s2', X'00', 1024, 1, 3, 0, 0, '[]', 0, 0)",
         )
         .execute(db.pool())
         .await

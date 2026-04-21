@@ -82,6 +82,23 @@ pub struct SessionStats {
     // grouping; the `invocables` registry is no longer part of the read
     // path. Writer populates this during parse via `compute_stats`.
     pub invocation_counts: HashMap<String, u64>,
+
+    // ── Primary vs sidechain classification (CQRS Phase 7.c) ──
+    // Derived from JSONL is_sidechain flag. 0 = primary session, 1 = sidechain.
+    pub is_sidechain: u32,
+
+    // ── Git metadata (CQRS Phase 7.c) ──
+    // Commit count mined from git history. 0 for now; will backfill via batch job.
+    pub commit_count: u32,
+
+    // ── File edit patterns (CQRS Phase 7.c) ──
+    // Count of unique files re-edited (touched 2+ times in the session).
+    pub reedited_files_count: u32,
+
+    // ── Skills invoked (CQRS Phase 7.c) ──
+    // JSON array of unique skill names invoked in the session.
+    // Computed from tool_use blocks where tool = 'Skill'. Serialized as JSON.
+    pub skills_used: Vec<String>,
 }
 
 // ── JSONL deserialization types ──
@@ -104,6 +121,8 @@ pub struct StatsLine {
     pub message: Option<StatsMessage>,
     #[serde(default, rename = "gitBranch")]
     pub git_branch: Option<String>,
+    #[serde(default, rename = "isSidechain")]
+    pub is_sidechain: Option<bool>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -175,6 +194,10 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
     let mut first_user_text: Option<String> = None;
     let mut last_assistant_text: Option<String> = None;
 
+    // ── Track new Phase 7.c fields ──
+    let mut file_edit_counts: HashMap<String, u32> = HashMap::new();
+    let mut skills_set: std::collections::HashSet<String> = std::collections::HashSet::new();
+
     for line in lines {
         // Track timestamps
         if let Some(ref ts) = line.timestamp {
@@ -192,6 +215,13 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
                 if !b.is_empty() {
                     stats.git_branch = Some(b.clone());
                 }
+            }
+        }
+
+        // Capture is_sidechain from the first line that has it set.
+        if stats.is_sidechain == 0 {
+            if let Some(true) = line.is_sidechain {
+                stats.is_sidechain = 1;
             }
         }
 
@@ -217,6 +247,30 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
                             Some("tool_use") => {
                                 if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
                                     tool_names.push(invocation_key(name, block.get("input")));
+                                    // Track skills invoked
+                                    if name == "Skill" {
+                                        if let Some(skill_name) = block
+                                            .get("input")
+                                            .and_then(|v| v.get("skill"))
+                                            .and_then(|v| v.as_str())
+                                        {
+                                            if !skill_name.is_empty() {
+                                                skills_set.insert(skill_name.to_string());
+                                            }
+                                        }
+                                    }
+                                    // Track file edits for reedited_files_count
+                                    if name == "Edit" || name == "Write" {
+                                        if let Some(file_path) = block
+                                            .get("input")
+                                            .and_then(|v| v.get("file_path"))
+                                            .and_then(|v| v.as_str())
+                                        {
+                                            *file_edit_counts
+                                                .entry(file_path.to_string())
+                                                .or_default() += 1;
+                                        }
+                                    }
                                 }
                             }
                             Some("thinking") => {
@@ -350,6 +404,21 @@ pub fn compute_stats(lines: &[StatsLine]) -> SessionStats {
     // ── Text content ──
     stats.preview = first_user_text.unwrap_or_default();
     stats.last_message = last_assistant_text.unwrap_or_default();
+
+    // ── Phase 7.c new fields ──
+    // commit_count is set to 0 and will be backfilled via a batch job
+    stats.commit_count = 0;
+
+    // reedited_files_count: count files that were edited 2+ times
+    stats.reedited_files_count = file_edit_counts
+        .values()
+        .filter(|&&count| count >= 2)
+        .count() as u32;
+
+    // skills_used: unique skill names extracted from Skill tool invocations
+    let mut skills_vec: Vec<String> = skills_set.into_iter().collect();
+    skills_vec.sort(); // Deterministic ordering for consistent serialization
+    stats.skills_used = skills_vec;
 
     stats
 }

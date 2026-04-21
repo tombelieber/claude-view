@@ -344,6 +344,40 @@ impl Database {
         .execute(self.pool())
         .await?;
 
+        // Also insert minimal session_stats row for Phase 7.c queries
+        // (reader code now reads from session_stats as primary table)
+        sqlx::query(
+            r#"
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at, last_message_at, is_sidechain,
+                commit_count, reedited_files_count, files_edited_count, git_branch,
+                skills_used
+            )
+            VALUES (?1, X'00', ?2, 1, 3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            ON CONFLICT(session_id) DO UPDATE SET
+                last_message_at = excluded.last_message_at,
+                is_sidechain = excluded.is_sidechain,
+                commit_count = excluded.commit_count,
+                reedited_files_count = excluded.reedited_files_count,
+                files_edited_count = excluded.files_edited_count,
+                git_branch = excluded.git_branch,
+                skills_used = excluded.skills_used
+            "#,
+        )
+        .bind(&session.id)
+        .bind(size_bytes)
+        .bind(indexed_at)
+        .bind(session.modified_at)
+        .bind(session.is_sidechain as i64)
+        .bind(session.commit_count as i64)
+        .bind(session.reedited_files_count as i64)
+        .bind(session.files_edited_count as i64)
+        .bind(&session.git_branch)
+        .bind(&skills_used)
+        .execute(self.pool())
+        .await?;
+
         Ok(())
     }
 }

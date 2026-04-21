@@ -52,6 +52,23 @@ mod tests {
         .execute(db.pool())
         .await
         .unwrap();
+
+        // Also insert into session_stats (primary read table for Phase 7.c queries)
+        sqlx::query(
+            r#"
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at, last_message_at
+            )
+            VALUES (?1, X'00', 1024, 1, 3, 0, ?2)
+            "#,
+        )
+        .bind(id)
+        .bind(ts)
+        .execute(db.pool())
+        .await
+        .unwrap();
+
         if let Some(l1) = category_l1 {
             sqlx::query(
                 r#"
@@ -80,6 +97,12 @@ mod tests {
 
     async fn mark_session_sidechain(db: &Database, id: &str) {
         sqlx::query("UPDATE sessions SET is_sidechain = 1 WHERE id = ?1")
+            .bind(id)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        // Also update session_stats
+        sqlx::query("UPDATE session_stats SET is_sidechain = 1 WHERE session_id = ?1")
             .bind(id)
             .execute(db.pool())
             .await

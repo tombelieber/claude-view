@@ -19,20 +19,22 @@ pub(super) async fn fetch_session_breakdown(
     // CQRS Phase 5.5a — archived_at now reads from session_flags (the
     // authoritative shadow) instead of the legacy sessions.archived_at
     // column which Phase 5.6 drops.
+    // CQRS Phase 7.c: is_sidechain now reads from session_stats; archived_at from session_flags.
     let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
         r#"
         SELECT
-            COALESCE(SUM(CASE WHEN s.is_sidechain = 0 THEN 1 ELSE 0 END), 0) AS primary_sessions,
-            COALESCE(SUM(CASE WHEN s.is_sidechain = 1 THEN 1 ELSE 0 END), 0) AS sidechain_sessions
-        FROM sessions s
-        LEFT JOIN session_flags sf ON sf.session_id = s.id
+            COALESCE(SUM(CASE WHEN ss.is_sidechain = 0 THEN 1 ELSE 0 END), 0) AS primary_sessions,
+            COALESCE(SUM(CASE WHEN ss.is_sidechain = 1 THEN 1 ELSE 0 END), 0) AS sidechain_sessions
+        FROM session_stats ss
+        LEFT JOIN sessions s ON s.id = ss.session_id
+        LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
         WHERE sf.archived_at IS NULL
-          AND (?1 IS NULL OR s.last_message_at >= ?1)
-          AND (?2 IS NULL OR s.last_message_at <= ?2)
+          AND (?1 IS NULL OR ss.last_message_at >= ?1)
+          AND (?2 IS NULL OR ss.last_message_at <= ?2)
           AND (?3 IS NULL OR s.project_id = ?3
                OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3)
                OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?3))
-          AND (?4 IS NULL OR s.git_branch = ?4)
+          AND (?4 IS NULL OR ss.git_branch = ?4)
         "#,
     )
     .bind(from)

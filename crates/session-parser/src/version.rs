@@ -25,7 +25,11 @@ pub const PARSER_VERSION: ParserVersion = ParserVersion(1);
 /// - v2 (CQRS Phase 6.2): `SessionStats::invocation_counts` populated from
 ///   `tool_use` blocks (with `:sub` suffix for Skill / Task / Agent). Older
 ///   rows need a re-extract to backfill `session_stats.invocation_counts`.
-pub const STATS_VERSION: StatsVersion = StatsVersion(2);
+/// - v3 (CQRS Phase 7.c): `SessionStats` extended with `is_sidechain`,
+///   `commit_count`, `reedited_files_count`, `skills_used`. Migration 88
+///   adds these columns to `session_stats`; indexer will re-extract rows
+///   with stats_version < 3 on next scan.
+pub const STATS_VERSION: StatsVersion = StatsVersion(3);
 
 /// Current rollup version. Bump when a rollup table adds or changes a
 /// metric in a way that requires recomputation.

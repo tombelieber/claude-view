@@ -25,13 +25,16 @@ async fn test_get_stats_overview() {
         .await
         .unwrap();
 
-    // Seed the session_stats row that backs the CQRS read path.
+    // Update the session_stats row with invocation_counts (insert_session already created it).
+    // Use ON CONFLICT to merge with the existing row created by insert_session.
     sqlx::query(
         r#"INSERT INTO session_stats (
                session_id, source_content_hash, source_size,
                parser_version, stats_version, indexed_at,
                invocation_counts
-           ) VALUES ('sess-1', X'01', 0, 1, 1, 0, '{"Read":2,"Edit":1}')"#,
+           ) VALUES ('sess-1', X'01', 0, 1, 1, 0, '{"Read":2,"Edit":1}')
+           ON CONFLICT(session_id) DO UPDATE SET
+               invocation_counts = excluded.invocation_counts"#,
     )
     .execute(db.pool())
     .await

@@ -1978,15 +1978,16 @@ async fn test_migration64_session_stats_columns_exist() {
     }
 
     // Total = 8 header + 24 stats (Phase 2 PR 2.1) + 4 filesystem-mirror
-    // (Phase 3 PR 3.a) + 1 invocation_counts (Phase 6.2 migration 86) = 37.
+    // (Phase 3 PR 3.a) + 1 invocation_counts (Phase 6.2 migration 86)
+    // + 4 Phase 7.c fields (is_sidechain, commit_count, reedited_files_count, skills_used) = 41.
     // The design doc (§3.1) said "9 header + 25 stats = 34" but miscounted;
     // our schema and this assertion reflect what actually exists. If this
     // drifts, the writer ownership registry rule (§10.2) likely needs an
     // update.
     assert_eq!(
         names.len(),
-        37,
-        "session_stats column count drifted from the 37 documented in features.rs (got {})",
+        41,
+        "session_stats column count drifted from the 41 documented in features.rs (got {})",
         names.len()
     );
 }
@@ -2633,5 +2634,49 @@ async fn test_migration85_valid_sessions_view_joins_session_flags() {
     assert!(
         sql.contains("sf.archived_at IS NULL"),
         "valid_sessions must filter on sf.archived_at IS NULL; got:\n{sql}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration88_session_stats_new_columns_exist() {
+    let pool = setup_db().await;
+
+    // Check that all four new columns exist on session_stats
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    let col_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
+
+    for col in &[
+        "is_sidechain",
+        "commit_count",
+        "reedited_files_count",
+        "skills_used",
+    ] {
+        assert!(
+            col_names.contains(col),
+            "session_stats must have column {col} after migration 88"
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_migration88_session_stats_columns_are_queryable() {
+    let pool = setup_db().await;
+
+    // Simply verify that we can SELECT the new columns (existence + type check)
+    let result: Result<Option<(i64, i64, i64, String)>, _> = sqlx::query_as(
+        "SELECT is_sidechain, commit_count, reedited_files_count, skills_used FROM session_stats LIMIT 1",
+    )
+    .fetch_optional(&pool)
+    .await;
+
+    // If the query itself succeeds, the columns exist and are of the right type.
+    // An empty table is fine — we just want to verify the columns exist.
+    assert!(
+        result.is_ok(),
+        "Must be able to SELECT new columns from session_stats"
     );
 }

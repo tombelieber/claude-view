@@ -259,7 +259,9 @@ mod tests {
                    session_id, source_content_hash, source_size,
                    parser_version, stats_version, indexed_at,
                    invocation_counts
-               ) VALUES ('sess-1', X'01', 0, 1, 1, 0, '{"Read":1}')"#,
+               ) VALUES ('sess-1', X'01', 0, 1, 1, 0, '{"Read":1}')
+               ON CONFLICT(session_id) DO UPDATE SET
+                   invocation_counts = excluded.invocation_counts"#,
         )
         .execute(db.pool())
         .await

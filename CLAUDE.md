@@ -39,3 +39,30 @@ Project-wide instructions for Claude/Codex-style agents working in this repo.
 - In `happy-dom` / Vitest UI tests, provide a default `fetch` stub for local
   `/api/*` requests in shared test setup. Do not let tests attempt real
   localhost requests just because a component mounted without a focused mock.
+
+## Dialog Centering — ALL Dialogs App-Wide (MANDATORY)
+
+**Every `Dialog.Content` and `AlertDialog.Content` must be centered using inline `style` prop. Never Tailwind translate utilities.**
+
+```tsx
+// CORRECT — always use inline style for centering
+<Dialog.Content
+  className="fixed z-50 w-full max-w-[...] ..."
+  style={{ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}
+>
+```
+
+**NEVER use Tailwind translate utilities** — in Tailwind v4, `-translate-x/y` uses the CSS `translate` property which conflicts with `tw-animate-css` keyframes that use `transform: translate3d()`. They are separate CSS properties that don't compose, pushing dialogs off-center:
+```tsx
+// WRONG — Tailwind v4 translate utilities conflict with tw-animate-css
+<Dialog.Content className="fixed z-50 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 ...">
+```
+
+**NEVER use the flex-wrapper pattern** — it breaks when any ancestor has CSS `transform`, `perspective`, or `will-change`:
+```tsx
+// WRONG — do not use this
+<div className="fixed inset-0 flex items-center justify-center pointer-events-none">
+  <Dialog.Content className="pointer-events-auto ...">
+```
+
+This applies to every dialog in every page, every component, every future PR. When writing or reviewing any dialog, check centering before committing.

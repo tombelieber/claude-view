@@ -204,4 +204,27 @@ COMMIT;"#,
 DROP TABLE IF EXISTS turns;
 DROP TABLE IF EXISTS invocations;
 COMMIT;"#,
+    // Migration 88 (CQRS Phase 7.c): extend `session_stats` with four new
+    // columns required by the remaining `FROM sessions` readers (analytics,
+    // contributions, stats dashboard, trends, enrichment).
+    //
+    // New columns:
+    //   - `is_sidechain` — derives from JSONL is_sidechain flag
+    //   - `commit_count` — mined from git history (will backfill via separate
+    //     batch job); 0 for now
+    //   - `reedited_files_count` — derives from JSONL file edit patterns
+    //   - `skills_used` — JSON array of unique skill names invoked in session
+    //
+    // All columns default to 0 / '[]' so existing code and migrations continue
+    // to work. The indexer_v2 writer will populate them for new parses;
+    // a follow-up pass will backfill older sessions.
+    //
+    // `STATS_VERSION` bumps to 3 so the indexer re-extracts any row whose
+    // stats_version < 3 on the next scan.
+    r#"BEGIN;
+ALTER TABLE session_stats ADD COLUMN is_sidechain INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN commit_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN reedited_files_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN skills_used TEXT NOT NULL DEFAULT '[]';
+COMMIT;"#,
 ];

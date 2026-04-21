@@ -40,17 +40,17 @@ pub async fn get_trends(State(state): State<Arc<AppState>>) -> ApiResult<Json<We
     let trends = state.db.get_week_trends().await?;
     let (curr_start, curr_end) = current_week_bounds();
     let (prev_start, _) = previous_week_bounds();
-    // CQRS Phase 5.5a — archived_at now reads from session_flags.
+    // CQRS Phase 7.c — is_sidechain now reads from session_stats; archived_at from session_flags.
     let (primary_sessions, sidechain_sessions): (i64, i64) = sqlx::query_as(
         r#"
         SELECT
-            COALESCE(SUM(CASE WHEN s.is_sidechain = 0 THEN 1 ELSE 0 END), 0),
-            COALESCE(SUM(CASE WHEN s.is_sidechain = 1 THEN 1 ELSE 0 END), 0)
-        FROM sessions s
-        LEFT JOIN session_flags sf ON sf.session_id = s.id
+            COALESCE(SUM(CASE WHEN ss.is_sidechain = 0 THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN ss.is_sidechain = 1 THEN 1 ELSE 0 END), 0)
+        FROM session_stats ss
+        LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
         WHERE sf.archived_at IS NULL
-          AND s.last_message_at >= ?1
-          AND s.last_message_at <= ?2
+          AND ss.last_message_at >= ?1
+          AND ss.last_message_at <= ?2
         "#,
     )
     .bind(prev_start)
@@ -136,6 +136,28 @@ mod tests {
                 .bind(id)
                 .bind(last_message_at)
                 .bind(is_sidechain),
+            )
+            .await
+            .unwrap();
+        // Also insert into session_stats for Phase 7.c queries
+        db.pool()
+            .execute(
+                sqlx::query(
+                    r#"
+                    INSERT INTO session_stats (
+                        session_id, source_content_hash, source_size, parser_version,
+                        stats_version, indexed_at, last_message_at, is_sidechain,
+                        commit_count, reedited_files_count, files_edited_count, skills_used
+                    )
+                    VALUES (?1, X'00', 1024, 1, 3, 0, ?2, ?3, 0, 0, 2, '[]')
+                    ON CONFLICT(session_id) DO UPDATE SET
+                        last_message_at = excluded.last_message_at,
+                        is_sidechain = excluded.is_sidechain
+                    "#,
+                )
+                .bind(id)
+                .bind(last_message_at)
+                .bind(is_sidechain as i64),
             )
             .await
             .unwrap();

@@ -97,6 +97,7 @@ mod tests {
         is_sidechain: bool,
         branch: Option<&str>,
     ) {
+        // Insert into sessions (legacy table for backwards compat)
         db.pool()
             .execute(
                 sqlx::query(
@@ -122,6 +123,29 @@ mod tests {
                 .bind(id)
                 .bind(last_message_at)
                 .bind(is_sidechain)
+                .bind(branch),
+            )
+            .await
+            .unwrap();
+
+        // Also insert into session_stats (primary read table for Phase 7.c queries)
+        db.pool()
+            .execute(
+                sqlx::query(
+                    r#"
+                    INSERT INTO session_stats (
+                        session_id, source_content_hash, source_size, parser_version,
+                        stats_version, indexed_at, last_message_at, is_sidechain,
+                        git_branch
+                    )
+                    VALUES (
+                        ?1, X'00', 1024, 1, 3, 0, ?2, ?3, ?4
+                    )
+                    "#,
+                )
+                .bind(id)
+                .bind(last_message_at)
+                .bind(is_sidechain as i64)
                 .bind(branch),
             )
             .await

@@ -209,6 +209,18 @@ pub struct FullSessionStatsRow {
     // graceful-fallback semantics as `per_model_tokens` — see
     // `session_stats::invocation_key` for the key format.
     pub invocation_counts: HashMap<String, u64>,
+
+    // Primary vs sidechain classification (CQRS Phase 7.c)
+    pub is_sidechain: i64,
+
+    // Commit count (CQRS Phase 7.c)
+    pub commit_count: i64,
+
+    // File re-edit count (CQRS Phase 7.c)
+    pub reedited_files_count: i64,
+
+    // Skills used (CQRS Phase 7.c) — JSON array deserialized into Vec<String>
+    pub skills_used: Vec<String>,
 }
 
 const FULL_ROW_SQL_BY_ID: &str = "SELECT \
@@ -220,7 +232,8 @@ const FULL_ROW_SQL_BY_ID: &str = "SELECT \
     files_read_count, files_edited_count, bash_count, agent_spawn_count, \
     first_message_at, last_message_at, duration_seconds, \
     primary_model, git_branch, preview, last_message, \
-    per_model_tokens_json, invocation_counts \
+    per_model_tokens_json, invocation_counts, is_sidechain, commit_count, \
+    reedited_files_count, skills_used \
     FROM session_stats WHERE session_id = ?";
 
 const FULL_ROW_SQL_LIST_PREFIX: &str = "SELECT \
@@ -232,7 +245,8 @@ const FULL_ROW_SQL_LIST_PREFIX: &str = "SELECT \
     files_read_count, files_edited_count, bash_count, agent_spawn_count, \
     first_message_at, last_message_at, duration_seconds, \
     primary_model, git_branch, preview, last_message, \
-    per_model_tokens_json, invocation_counts \
+    per_model_tokens_json, invocation_counts, is_sidechain, commit_count, \
+    reedited_files_count, skills_used \
     FROM session_stats";
 
 impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
@@ -246,6 +260,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
         let per_model_tokens = serde_json::from_str(&per_model_json).unwrap_or_default();
         let invocation_counts_json: String = row.try_get("invocation_counts")?;
         let invocation_counts = serde_json::from_str(&invocation_counts_json).unwrap_or_default();
+        let skills_used_json: String = row.try_get("skills_used")?;
+        let skills_used = serde_json::from_str(&skills_used_json).unwrap_or_default();
         Ok(Self {
             session_id: row.try_get("session_id")?,
             project_id: row.try_get("project_id")?,
@@ -278,6 +294,10 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for FullSessionStatsRow {
             last_message: row.try_get("last_message")?,
             per_model_tokens,
             invocation_counts,
+            is_sidechain: row.try_get("is_sidechain")?,
+            commit_count: row.try_get("commit_count")?,
+            reedited_files_count: row.try_get("reedited_files_count")?,
+            skills_used,
         })
     }
 }
@@ -318,6 +338,10 @@ impl From<&FullSessionStatsRow> for claude_view_core::session_stats::SessionStat
             last_message: row.last_message.clone(),
             per_model_tokens: row.per_model_tokens.clone(),
             invocation_counts: row.invocation_counts.clone(),
+            is_sidechain: row.is_sidechain.max(0) as u32,
+            commit_count: row.commit_count.max(0) as u32,
+            reedited_files_count: row.reedited_files_count.max(0) as u32,
+            skills_used: row.skills_used.clone(),
         }
     }
 }
