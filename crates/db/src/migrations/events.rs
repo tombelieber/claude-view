@@ -186,4 +186,22 @@ COMMIT;"#,
     // `STATS_VERSION` is bumped to 2 so the indexer re-extracts any row
     // whose stats_version is older than 2 on the next scan.
     r#"ALTER TABLE session_stats ADD COLUMN invocation_counts TEXT NOT NULL DEFAULT '{}';"#,
+    // Migration 87 (CQRS PR 6.4): IRREVERSIBLE drop of the `turns` and
+    // `invocations` tables. Their data has been folded into
+    // `session_stats.per_model_tokens_json` (migration 64) and
+    // `session_stats.invocation_counts` (migration 86). All readers were
+    // cut over in PR 6.1 + PR 6.2; `scripts/rehearse-phase-6-4.sh` grep-
+    // gates the cutover before this migration runs.
+    //
+    // Writers retired in PR 6.4: `batch_insert_turns_tx`,
+    // `batch_insert_invocations_tx`, and their `Database` wrappers are
+    // gone from the source tree — indexer_v2 is the only remaining
+    // producer of the wide-row aggregates.
+    //
+    // IRREVERSIBLE: SQLite does not undo `DROP TABLE`. Back up
+    // `~/.claude-view/claude-view.db` before running.
+    r#"BEGIN;
+DROP TABLE IF EXISTS turns;
+DROP TABLE IF EXISTS invocations;
+COMMIT;"#,
 ];

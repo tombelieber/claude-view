@@ -329,18 +329,21 @@ async fn test_migration12_unused_indexes_dropped() {
         "idx_invocations_timestamp should be dropped (unused)"
     );
 
-    // These used indexes must still exist
+    // CQRS Phase 6.4 (migration 87): the `turns` and `invocations`
+    // tables were dropped — SQLite removes their backing indexes
+    // automatically, so `idx_invocations_invocable`,
+    // `idx_turns_session`, and `idx_turns_model` are all gone.
     assert!(
-        index_names.contains(&"idx_invocations_invocable"),
-        "idx_invocations_invocable must still exist (used by skills dashboard)"
+        !index_names.contains(&"idx_invocations_invocable"),
+        "idx_invocations_invocable must be gone after migration 87 drops invocations"
     );
     assert!(
-        index_names.contains(&"idx_turns_session"),
-        "idx_turns_session must still exist (used by session listing)"
+        !index_names.contains(&"idx_turns_session"),
+        "idx_turns_session must be gone after migration 87 drops turns"
     );
     assert!(
-        index_names.contains(&"idx_turns_model"),
-        "idx_turns_model must still exist (used by models API)"
+        !index_names.contains(&"idx_turns_model"),
+        "idx_turns_model must be gone after migration 87 drops turns"
     );
 }
 

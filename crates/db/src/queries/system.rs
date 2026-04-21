@@ -306,15 +306,17 @@ impl Database {
         // Use a single transaction for atomicity
         let mut tx = self.pool().begin().await?;
 
-        // Order matters due to foreign key constraints
+        // Order matters due to foreign key constraints.
+        // CQRS Phase 6.4: `turns` and `invocations` tables retired in
+        // migration 87 — per-model and per-invocable aggregates live on
+        // `session_stats` JSON columns, cleared below.
         sqlx::query("DELETE FROM session_commits")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM turns").execute(&mut *tx).await?;
-        sqlx::query("DELETE FROM invocations")
+        sqlx::query("DELETE FROM invocables")
             .execute(&mut *tx)
             .await?;
-        sqlx::query("DELETE FROM invocables")
+        sqlx::query("DELETE FROM session_stats")
             .execute(&mut *tx)
             .await?;
         sqlx::query("DELETE FROM commits").execute(&mut *tx).await?;

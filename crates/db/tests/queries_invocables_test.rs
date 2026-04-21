@@ -34,100 +34,12 @@ async fn test_upsert_invocable() {
     assert_eq!(items[0].description, "Read files from disk");
 }
 
-#[tokio::test]
-async fn test_batch_insert_invocations() {
-    let db = Database::new_in_memory().await.unwrap();
-
-    // Must insert invocables first (FK constraint)
-    db.upsert_invocable("tool::Read", None, "Read", "tool", "")
-        .await
-        .unwrap();
-    db.upsert_invocable("tool::Edit", None, "Edit", "tool", "")
-        .await
-        .unwrap();
-
-    // Must insert sessions first (FK constraint on invocations.session_id)
-    for sid in &["sess-1", "sess-2"] {
-        claude_view_db::test_support::SessionSeedBuilder::new(*sid)
-            .project_id("proj-a")
-            .project_display_name("proj-a")
-            .project_path("/tmp")
-            .file_path(format!("/tmp/{}.jsonl", sid))
-            .modified_at(1000)
-            .seed(&db)
-            .await
-            .unwrap();
-    }
-
-    let invocations = vec![
-        (
-            "file1.jsonl".to_string(),
-            100,
-            "tool::Read".to_string(),
-            "sess-1".to_string(),
-            "proj-a".to_string(),
-            1000,
-        ),
-        (
-            "file1.jsonl".to_string(),
-            200,
-            "tool::Edit".to_string(),
-            "sess-1".to_string(),
-            "proj-a".to_string(),
-            1001,
-        ),
-        (
-            "file2.jsonl".to_string(),
-            50,
-            "tool::Read".to_string(),
-            "sess-2".to_string(),
-            "proj-a".to_string(),
-            2000,
-        ),
-    ];
-
-    let inserted = db.batch_insert_invocations(&invocations).await.unwrap();
-    assert_eq!(inserted, 3, "Should insert 3 rows");
-}
-
-#[tokio::test]
-async fn test_batch_insert_invocations_ignores_duplicates() {
-    let db = Database::new_in_memory().await.unwrap();
-
-    db.upsert_invocable("tool::Read", None, "Read", "tool", "")
-        .await
-        .unwrap();
-
-    // Must insert session first (FK constraint on invocations.session_id)
-    claude_view_db::test_support::SessionSeedBuilder::new("sess-1")
-        .project_id("proj-a")
-        .project_display_name("proj-a")
-        .project_path("/tmp")
-        .file_path("/tmp/f.jsonl")
-        .modified_at(1000)
-        .seed(&db)
-        .await
-        .unwrap();
-
-    let invocations = vec![(
-        "file1.jsonl".to_string(),
-        100,
-        "tool::Read".to_string(),
-        "sess-1".to_string(),
-        "proj-a".to_string(),
-        1000,
-    )];
-
-    let inserted = db.batch_insert_invocations(&invocations).await.unwrap();
-    assert_eq!(inserted, 1);
-
-    // Insert same (source_file, byte_offset) again — should be ignored
-    let inserted2 = db.batch_insert_invocations(&invocations).await.unwrap();
-    assert_eq!(
-        inserted2, 0,
-        "Duplicate should be ignored (INSERT OR IGNORE)"
-    );
-}
+// CQRS Phase 6.4: `batch_insert_invocations` / `batch_insert_turns`
+// tests retired along with the `invocations` + `turns` tables
+// (migration 87). Per-invocable counts are now written to
+// `session_stats.invocation_counts` by indexer_v2 — the rebuilt
+// behaviour is covered by `test_list_invocables_with_counts` and
+// `test_get_stats_overview`.
 
 #[tokio::test]
 async fn test_list_invocables_with_counts() {

@@ -193,7 +193,9 @@ pub async fn ingest_backup_sessions(
                 (Some(avg as i64), Some(max as i64), Some(total as i64))
             };
 
-            // Recompute ai_lines from invocations (same as merge_subagent_workload path)
+            // Recompute ai_lines from raw_invocations (in-memory parser
+            // output, same as merge_subagent_workload path — NOT the
+            // retired `invocations` DB table).
             let ai_line_count = count_ai_lines(
                 parse_result
                     .raw_invocations
@@ -412,26 +414,12 @@ pub async fn ingest_backup_sessions(
                     .map_err(|e| format!("Topology update {}: {e}", session.parsed.id))?;
                 }
 
-                // Turns
-                if !session.turns.is_empty() {
-                    crate::queries::batch_insert_turns_tx(
-                        &mut tx,
-                        &session.parsed.id,
-                        &session.turns,
-                    )
-                    .await
-                    .map_err(|e| format!("Insert turns {}: {e}", session.parsed.id))?;
-                }
-
-                // Invocations
-                if !session.classified_invocations.is_empty() {
-                    crate::queries::batch_insert_invocations_tx(
-                        &mut tx,
-                        &session.classified_invocations,
-                    )
-                    .await
-                    .map_err(|e| format!("Insert invocations {}: {e}", session.parsed.id))?;
-                }
+                // CQRS Phase 6.4: turns + invocations tables retired in
+                // migration 87. Per-model and per-invocable aggregates now
+                // live on `session_stats` JSON columns (written by
+                // indexer_v2). The parser fields `session.turns` and
+                // `session.classified_invocations` remain computed; they
+                // go dead when indexer_parallel is retired in E.5.
             }
 
             tx.commit()

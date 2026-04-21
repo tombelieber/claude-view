@@ -363,8 +363,14 @@ pub fn read_file_fast(path: &Path) -> io::Result<FileData> {
 /// Collected results from one session's parse phase, ready for batched DB + search write.
 pub(crate) struct IndexedSession {
     pub parsed: ParsedSession,
+    // CQRS Phase 6.4: `turns` + `classified_invocations` are produced
+    // by the parse phase but no longer consumed — their tables were
+    // dropped in migration 87. Kept for symmetry with the parse phase
+    // output until indexer_parallel is retired in E.5.
+    #[allow(dead_code)]
     pub turns: Vec<claude_view_core::RawTurn>,
     pub models_seen: Vec<String>,
+    #[allow(dead_code)]
     pub classified_invocations: Vec<(String, i64, String, String, String, i64)>,
     pub search_messages: Vec<claude_view_core::SearchableMessage>,
     pub cwd: Option<String>,

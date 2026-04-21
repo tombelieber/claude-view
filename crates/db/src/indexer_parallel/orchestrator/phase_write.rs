@@ -81,17 +81,10 @@ async fn write_single_session(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     session: &IndexedSession,
 ) -> Result<(), String> {
-    sqlx::query("DELETE FROM turns WHERE session_id = ?1")
-        .bind(&session.parsed.id)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| format!("DELETE turns for {}: {}", session.parsed.id, e))?;
-
-    sqlx::query("DELETE FROM invocations WHERE session_id = ?1")
-        .bind(&session.parsed.id)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| format!("DELETE invocations for {}: {}", session.parsed.id, e))?;
+    // CQRS Phase 6.4: `turns` + `invocations` were dropped in migration 87.
+    // Token per-model and invocation breakdowns now live on
+    // `session_stats.per_model_tokens_json` / `invocation_counts`,
+    // written by indexer_v2. Nothing to delete here anymore.
 
     crate::queries::sessions::execute_upsert_parsed_session(&mut **tx, &session.parsed)
         .await
@@ -112,22 +105,12 @@ async fn write_single_session(
         .map_err(|e| format!("Failed to update topology {}: {}", session.parsed.id, e))?;
     }
 
-    if !session.turns.is_empty() {
-        crate::queries::batch_insert_turns_tx(tx, &session.parsed.id, &session.turns)
-            .await
-            .map_err(|e| format!("Failed to insert turns for {}: {}", session.parsed.id, e))?;
-    }
-
-    if !session.classified_invocations.is_empty() {
-        crate::queries::batch_insert_invocations_tx(tx, &session.classified_invocations)
-            .await
-            .map_err(|e| {
-                format!(
-                    "Failed to insert invocations for {}: {}",
-                    session.parsed.id, e
-                )
-            })?;
-    }
+    // CQRS Phase 6.4: batch_insert_turns_tx / batch_insert_invocations_tx
+    // retired along with the tables they wrote to. indexer_v2 is now the
+    // sole producer of per-model and per-invocable aggregates (session_stats
+    // JSON columns). Parser fields (`session.turns`,
+    // `session.classified_invocations`) are still computed; they go dead
+    // when indexer_parallel is fully retired in E.5.
 
     if !session.hook_progress_events.is_empty() {
         let mut events = session.hook_progress_events.clone();

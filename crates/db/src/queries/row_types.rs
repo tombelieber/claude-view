@@ -5,7 +5,7 @@
 use crate::DbResult;
 use claude_view_core::{
     parse_model_id, ClassificationJob, ClassificationJobStatus, IndexRun, IndexRunStatus,
-    IndexRunType, RawTurn, SessionInfo, ToolCounts,
+    IndexRunType, SessionInfo, ToolCounts,
 };
 use sqlx::Row;
 
@@ -171,35 +171,10 @@ impl IndexRunIntegrityCountersRow {
 // Transaction-accepting variants for batch writes (collect-then-write pattern)
 // ============================================================================
 
-/// Batch insert invocations within an existing transaction (no BEGIN/COMMIT).
-pub async fn batch_insert_invocations_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    invocations: &[(String, i64, String, String, String, i64)],
-) -> DbResult<u64> {
-    let mut inserted: u64 = 0;
-
-    for (source_file, byte_offset, invocable_id, session_id, project, timestamp) in invocations {
-        let result = sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO invocations
-                (source_file, byte_offset, invocable_id, session_id, project, timestamp)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6)
-            "#,
-        )
-        .bind(source_file)
-        .bind(byte_offset)
-        .bind(invocable_id)
-        .bind(session_id)
-        .bind(project)
-        .bind(timestamp)
-        .execute(&mut **tx)
-        .await?;
-
-        inserted += result.rows_affected();
-    }
-
-    Ok(inserted)
-}
+// CQRS Phase 6.4: `batch_insert_invocations_tx` retired together with
+// the `invocations` table (migration 87). Per-invocable aggregates now
+// live on `session_stats.invocation_counts` (JSON, written by
+// indexer_v2).
 
 /// Batch upsert models within an existing transaction (no BEGIN/COMMIT).
 pub async fn batch_upsert_models_tx(
@@ -236,53 +211,10 @@ pub async fn batch_upsert_models_tx(
     Ok(affected)
 }
 
-/// Batch insert turns within an existing transaction (no BEGIN/COMMIT).
-pub async fn batch_insert_turns_tx(
-    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    session_id: &str,
-    turns: &[RawTurn],
-) -> DbResult<u64> {
-    if turns.is_empty() {
-        return Ok(0);
-    }
-    let mut inserted: u64 = 0;
-
-    for turn in turns {
-        let result = sqlx::query(
-            r#"
-            INSERT OR IGNORE INTO turns (
-                session_id, uuid, seq, model_id, parent_uuid,
-                content_type, input_tokens, output_tokens,
-                cache_read_tokens, cache_creation_tokens,
-                service_tier, timestamp
-            ) VALUES (
-                ?1, ?2, ?3, ?4, ?5,
-                ?6, ?7, ?8,
-                ?9, ?10,
-                ?11, ?12
-            )
-            "#,
-        )
-        .bind(session_id)
-        .bind(&turn.uuid)
-        .bind(turn.seq)
-        .bind(&turn.model_id)
-        .bind(&turn.parent_uuid)
-        .bind(&turn.content_type)
-        .bind(turn.input_tokens.map(|v| v as i64))
-        .bind(turn.output_tokens.map(|v| v as i64))
-        .bind(turn.cache_read_tokens.map(|v| v as i64))
-        .bind(turn.cache_creation_tokens.map(|v| v as i64))
-        .bind(&turn.service_tier)
-        .bind(turn.timestamp)
-        .execute(&mut **tx)
-        .await?;
-
-        inserted += result.rows_affected();
-    }
-
-    Ok(inserted)
-}
+// CQRS Phase 6.4: `batch_insert_turns_tx` retired together with the
+// `turns` table (migration 87). Per-model token aggregates live on
+// `session_stats.per_model_tokens_json` — written by indexer_v2 from the
+// parser's per-session HashMap<String, TokenUsage>.
 
 // Internal row type for reading sessions from SQLite.
 #[derive(Debug)]

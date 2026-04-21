@@ -32,4 +32,6 @@ pub use stats::{CatalogFilter, CatalogSort, FullSessionStatsRow, StatsCatalogRow
 pub use types::*;
 
 // Re-export _tx functions used by the unified indexing pipeline.
-pub use row_types::{batch_insert_invocations_tx, batch_insert_turns_tx, batch_upsert_models_tx};
+// CQRS Phase 6.4: `batch_insert_turns_tx` and `batch_insert_invocations_tx`
+// retired along with their target tables (migration 87).
+pub use row_types::batch_upsert_models_tx;

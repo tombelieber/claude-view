@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use super::invocation_agg::{
     aggregate_all, classify_key, display_name, load_invocation_totals, ToolKind,
 };
-use super::row_types::batch_insert_invocations_tx;
 use super::{InvocableWithCount, StatsOverview};
 use crate::{Database, DbResult};
 
@@ -56,23 +55,9 @@ impl Database {
         Ok(())
     }
 
-    /// Batch insert invocations in a single transaction.
-    ///
-    /// Each tuple is `(source_file, byte_offset, invocable_id, session_id, project, timestamp)`.
-    /// Uses `INSERT OR IGNORE` so re-indexing skips duplicates (PK is source_file + byte_offset).
-    /// Returns the number of rows actually inserted.
-    pub async fn batch_insert_invocations(
-        &self,
-        invocations: &[(String, i64, String, String, String, i64)],
-    ) -> DbResult<u64> {
-        if invocations.is_empty() {
-            return Ok(0);
-        }
-        let mut tx = self.pool().begin().await?;
-        let inserted = batch_insert_invocations_tx(&mut tx, invocations).await?;
-        tx.commit().await?;
-        Ok(inserted)
-    }
+    // CQRS Phase 6.4: `batch_insert_invocations` retired along with the
+    // `invocations` table (migration 87). Per-invocable counts live on
+    // `session_stats.invocation_counts` (JSON, written by indexer_v2).
 
     /// List all invocables with their invocation counts.
     ///

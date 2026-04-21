@@ -1,10 +1,9 @@
 // crates/db/src/queries/models.rs
 // Model + Turn CRUD operations (Phase 2B).
 
-use super::row_types::{batch_insert_turns_tx, batch_upsert_models_tx};
+use super::row_types::batch_upsert_models_tx;
 use super::{ModelWithStats, TokenStats};
 use crate::{Database, DbResult};
-use claude_view_core::RawTurn;
 
 impl Database {
     /// Batch upsert models: INSERT OR IGNORE + UPDATE last_seen.
@@ -21,18 +20,9 @@ impl Database {
         Ok(affected)
     }
 
-    /// Batch insert turns using INSERT OR IGNORE (UUID PK = free dedup on re-index).
-    ///
-    /// Returns the number of rows actually inserted.
-    pub async fn batch_insert_turns(&self, session_id: &str, turns: &[RawTurn]) -> DbResult<u64> {
-        if turns.is_empty() {
-            return Ok(0);
-        }
-        let mut tx = self.pool().begin().await?;
-        let inserted = batch_insert_turns_tx(&mut tx, session_id, turns).await?;
-        tx.commit().await?;
-        Ok(inserted)
-    }
+    // CQRS Phase 6.4: `batch_insert_turns` retired along with the `turns`
+    // table (migration 87). Per-model aggregates live on
+    // `session_stats.per_model_tokens_json`, written by indexer_v2.
 
     /// Get all models with usage counts (for GET /api/models).
     ///
