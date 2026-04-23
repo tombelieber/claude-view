@@ -15,12 +15,26 @@ impl Database {
         parent_session_id: Option<&str>,
         git_root: Option<&str>,
     ) -> DbResult<()> {
+        // CQRS Phase 7.h.3c: dual-write topology to legacy sessions + session_stats.
         sqlx::query(
             "UPDATE sessions SET \
              session_cwd = COALESCE(?1, session_cwd), \
              parent_session_id = COALESCE(?2, parent_session_id), \
              git_root = COALESCE(?3, git_root) \
              WHERE id = ?4",
+        )
+        .bind(session_cwd)
+        .bind(parent_session_id)
+        .bind(git_root)
+        .bind(id)
+        .execute(self.pool())
+        .await?;
+        sqlx::query(
+            "UPDATE session_stats SET \
+             session_cwd = COALESCE(?1, session_cwd), \
+             parent_session_id = COALESCE(?2, parent_session_id), \
+             git_root = COALESCE(?3, git_root) \
+             WHERE session_id = ?4",
         )
         .bind(session_cwd)
         .bind(parent_session_id)
@@ -276,7 +290,13 @@ impl Database {
 
     /// Set git_root for a single session by id.
     pub async fn set_git_root(&self, id: &str, git_root: &str) -> DbResult<()> {
+        // CQRS Phase 7.h.3c: dual-write git_root to legacy sessions + session_stats.
         sqlx::query("UPDATE sessions SET git_root = ?1 WHERE id = ?2")
+            .bind(git_root)
+            .bind(id)
+            .execute(self.pool())
+            .await?;
+        sqlx::query("UPDATE session_stats SET git_root = ?1 WHERE session_id = ?2")
             .bind(git_root)
             .bind(id)
             .execute(self.pool())
@@ -290,12 +310,18 @@ impl Database {
         session_id: &str,
         new_path: &str,
     ) -> DbResult<bool> {
+        // CQRS Phase 7.h.3c: dual-write file_path to legacy sessions + session_stats.
         let rows = sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
             .bind(new_path)
             .bind(session_id)
             .execute(self.pool())
             .await?
             .rows_affected();
+        sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
+            .bind(new_path)
+            .bind(session_id)
+            .execute(self.pool())
+            .await?;
         Ok(rows > 0)
     }
 }

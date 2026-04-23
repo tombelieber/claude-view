@@ -408,7 +408,7 @@ pub async fn ingest_backup_sessions(
                 .await
                 .map_err(|e| format!("Upsert backup session_stats {}: {e}", session.parsed.id))?;
 
-                // Topology
+                // Topology — CQRS Phase 7.h.3c dual-write to session_stats.
                 if session.cwd.is_some() {
                     sqlx::query(
                         "UPDATE sessions SET \
@@ -422,6 +422,20 @@ pub async fn ingest_backup_sessions(
                     .execute(&mut *tx)
                     .await
                     .map_err(|e| format!("Topology update {}: {e}", session.parsed.id))?;
+                    sqlx::query(
+                        "UPDATE session_stats SET \
+                         session_cwd = COALESCE(?1, session_cwd), \
+                         git_root = COALESCE(?2, git_root) \
+                         WHERE session_id = ?3",
+                    )
+                    .bind(session.cwd.as_deref())
+                    .bind(session.git_root.as_deref())
+                    .bind(&session.parsed.id)
+                    .execute(&mut *tx)
+                    .await
+                    .map_err(|e| {
+                        format!("Topology update session_stats {}: {e}", session.parsed.id)
+                    })?;
                 }
 
                 // CQRS Phase 6.4: turns + invocations tables retired in

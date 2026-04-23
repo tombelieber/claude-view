@@ -80,7 +80,13 @@ impl Database {
 
         // file_path is live metadata on `sessions`; updating it is
         // orthogonal to the archive flag and stays a direct UPDATE.
+        // CQRS Phase 7.h.3c: dual-write file_path to legacy + session_stats.
         sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
+            .bind(new_file_path)
+            .bind(session_id)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
             .bind(new_file_path)
             .bind(session_id)
             .execute(&mut *tx)
@@ -147,7 +153,13 @@ impl Database {
                 continue;
             }
 
+            // CQRS Phase 7.h.3c: dual-write file_path (bulk unarchive).
             sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
+                .bind(new_path)
+                .bind(id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
                 .bind(new_path)
                 .bind(id)
                 .execute(&mut *tx)
@@ -167,7 +179,11 @@ impl Database {
         let mut tx = self.pool().begin().await?;
 
         if valid_paths.is_empty() {
+            // CQRS Phase 7.h.3c: dual-DELETE sessions + session_stats (empty-paths edge case).
             let result = sqlx::query("DELETE FROM sessions")
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query("DELETE FROM session_stats")
                 .execute(&mut *tx)
                 .await?;
             sqlx::query("DELETE FROM indexer_state")
@@ -186,6 +202,10 @@ impl Database {
             "DELETE FROM sessions WHERE file_path NOT IN ({})",
             in_clause
         );
+        let delete_session_stats_sql = format!(
+            "DELETE FROM session_stats WHERE file_path NOT IN ({})",
+            in_clause
+        );
         let delete_indexer_sql = format!(
             "DELETE FROM indexer_state WHERE file_path NOT IN ({})",
             in_clause
@@ -196,6 +216,13 @@ impl Database {
             query = query.bind(path);
         }
         let result = query.execute(&mut *tx).await?;
+
+        // CQRS Phase 7.h.3c: mirror the filter on session_stats.
+        let mut query = sqlx::query(&delete_session_stats_sql);
+        for path in valid_paths {
+            query = query.bind(path);
+        }
+        query.execute(&mut *tx).await?;
 
         let mut query = sqlx::query(&delete_indexer_sql);
         for path in valid_paths {

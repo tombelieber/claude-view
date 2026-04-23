@@ -102,6 +102,7 @@ async fn write_single_session(
         })?;
 
     if session.cwd.is_some() {
+        // CQRS Phase 7.h.3c: dual-write topology (sessions + session_stats).
         sqlx::query(
             "UPDATE sessions SET \
              session_cwd = COALESCE(?1, session_cwd), \
@@ -114,6 +115,23 @@ async fn write_single_session(
         .execute(&mut **tx)
         .await
         .map_err(|e| format!("Failed to update topology {}: {}", session.parsed.id, e))?;
+        sqlx::query(
+            "UPDATE session_stats SET \
+             session_cwd = COALESCE(?1, session_cwd), \
+             git_root = COALESCE(?2, git_root) \
+             WHERE session_id = ?3",
+        )
+        .bind(session.cwd.as_deref())
+        .bind(session.git_root.as_deref())
+        .bind(&session.parsed.id)
+        .execute(&mut **tx)
+        .await
+        .map_err(|e| {
+            format!(
+                "Failed to update topology session_stats {}: {}",
+                session.parsed.id, e
+            )
+        })?;
     }
 
     // CQRS Phase 6.4: batch_insert_turns_tx / batch_insert_invocations_tx

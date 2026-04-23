@@ -1,0 +1,17 @@
+{
+  "ignore_dirs": [
+    "target",
+    "node_modules",
+    ".git",
+    ".turbo",
+    "dist",
+    ".next",
+    ".cache",
+    "apps/web/.next",
+    "packages/*/dist",
+    "crates/*/target"
+  ],
+  "ignore_vcs": [".git"],
+  "fsevents_latency": 0.1,
+  "fsevents_try_resync": true
+}

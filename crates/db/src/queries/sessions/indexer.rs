@@ -133,8 +133,14 @@ impl Database {
     ///
     /// Returns the number of sessions marked for re-indexing.
     pub async fn mark_all_sessions_for_reindex(&self) -> DbResult<u64> {
+        // CQRS Phase 7.h.3c: dual-reset deep_indexed_at / parse_version on both tables.
         let result = sqlx::query(
             "UPDATE sessions SET deep_indexed_at = NULL, parse_version = 0 WHERE file_path IS NOT NULL AND file_path != ''",
+        )
+        .execute(self.pool())
+        .await?;
+        sqlx::query(
+            "UPDATE session_stats SET deep_indexed_at = NULL, parse_version = 0 WHERE file_path IS NOT NULL AND file_path != ''",
         )
         .execute(self.pool())
         .await?;

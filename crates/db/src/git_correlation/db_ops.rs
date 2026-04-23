@@ -294,7 +294,13 @@ impl Database {
         session_id: &str,
         commit_count: i32,
     ) -> DbResult<()> {
+        // CQRS Phase 7.h.3c: dual-write commit_count to legacy sessions + session_stats.
         sqlx::query("UPDATE sessions SET commit_count = ?2 WHERE id = ?1")
+            .bind(session_id)
+            .bind(commit_count)
+            .execute(self.pool())
+            .await?;
+        sqlx::query("UPDATE session_stats SET commit_count = ?2 WHERE session_id = ?1")
             .bind(session_id)
             .bind(commit_count)
             .execute(self.pool())
@@ -317,11 +323,24 @@ impl Database {
             return Ok(());
         }
 
+        // CQRS Phase 7.h.3c: dual-write LOC stats to legacy sessions + session_stats.
         sqlx::query(
             r#"
             UPDATE sessions
             SET lines_added = ?2, lines_removed = ?3, loc_source = 2
             WHERE id = ?1
+            "#,
+        )
+        .bind(session_id)
+        .bind(stats.insertions as i64)
+        .bind(stats.deletions as i64)
+        .execute(self.pool())
+        .await?;
+        sqlx::query(
+            r#"
+            UPDATE session_stats
+            SET lines_added = ?2, lines_removed = ?3, loc_source = 2
+            WHERE session_id = ?1
             "#,
         )
         .bind(session_id)

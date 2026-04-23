@@ -63,6 +63,12 @@ impl Database {
 
     /// Set the primary model for a session (used for testing and indexing).
     pub async fn set_session_primary_model(&self, session_id: &str, model: &str) -> DbResult<()> {
+        // CQRS Phase 7.h.3c: dual-write primary_model to legacy + session_stats.
+        sqlx::query("UPDATE session_stats SET primary_model = ?1 WHERE session_id = ?2")
+            .bind(model)
+            .bind(session_id)
+            .execute(self.pool())
+            .await?;
         sqlx::query("UPDATE sessions SET primary_model = ?1 WHERE id = ?2")
             .bind(model)
             .bind(session_id)
