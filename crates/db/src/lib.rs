@@ -57,7 +57,10 @@ pub use queries::{ActivitySummaryRow, ProjectActivityRow, RichActivityResponse};
 pub use queries::{CatalogFilter, CatalogSort, FullSessionStatsRow, StatsCatalogRow};
 
 // Re-export session upsert helpers for the live manager's flush_batch
-pub use queries::sessions::{execute_upsert_parsed_session, UPSERT_SESSION_SQL};
+pub use queries::sessions::{
+    execute_upsert_parsed_session, execute_upsert_session_stats_from_parsed, UPSERT_SESSION_SQL,
+    UPSERT_SESSION_STATS_FROM_PARSED_SQL,
+};
 
 // Re-export trends types
 pub use trends::current_week_bounds;
