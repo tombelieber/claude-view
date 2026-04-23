@@ -6,33 +6,17 @@
 //! 1. Resolve the `[from, to)` range (reuses the existing time-range
 //!    resolver).
 //! 2. Parse the bucket (daily/weekly/monthly) with a safe default.
-//! 3. Check the legacy-read env var (`CLAUDE_VIEW_USE_LEGACY_STATS_READ`)
-//!    and route to legacy GROUP BY if set.
-//! 4. Otherwise scan the appropriate rollup table and aggregate by dim
-//!    key in memory.
-//! 5. Sort descending by `total_tokens` + clamp to `limit`.
+//! 3. Scan the appropriate rollup table and aggregate by dim key in
+//!    memory.
+//! 4. Sort descending by `total_tokens` + clamp to `limit`.
 //!
-//! This module owns the env var + bucket parsing so the handlers stay
-//! focused on their dim-specific aggregation.
+//! This module owns the bucket parsing so the handlers stay focused on
+//! their dim-specific aggregation. The legacy GROUP BY escape hatch
+//! (`CLAUDE_VIEW_USE_LEGACY_STATS_READ`) was retired in CQRS Phase 7.g
+//! once rollup coverage was complete.
 
 use claude_view_core::EffectiveRangeMeta;
 use claude_view_stats_rollup::Bucket;
-
-/// Env-var name that routes `/api/insights/*` (PR 4.5+) and
-/// `/api/stats/dashboard` (PR 4.3) away from the rollup read path and
-/// back to the legacy GROUP BY path over `session_stats` /
-/// `valid_sessions`.
-///
-/// Intended as an emergency rollback during Phase 4 cutover soak.
-/// Phase 7.d retired the sibling `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ`
-/// (the session-side catalog is now unconditionally on session_stats);
-/// this gate stays until the rollup-read B.4 cutover soak completes.
-pub const LEGACY_STATS_READ_ENV_VAR: &str = "CLAUDE_VIEW_USE_LEGACY_STATS_READ";
-
-/// Returns true if `CLAUDE_VIEW_USE_LEGACY_STATS_READ=1` is set.
-pub fn legacy_stats_read_enabled() -> bool {
-    std::env::var(LEGACY_STATS_READ_ENV_VAR).as_deref() == Ok("1")
-}
 
 /// Hard cap on rows returned after sort + limit. Bounds response size
 /// irrespective of input `limit` — a client asking for `limit=100_000`

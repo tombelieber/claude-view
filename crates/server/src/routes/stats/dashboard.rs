@@ -21,8 +21,6 @@ use super::types::{
     ExtendedDashboardStats,
 };
 
-use crate::routes::insights::rollup_read::legacy_stats_read_enabled;
-
 /// GET /api/stats/dashboard - Pre-computed dashboard statistics with time range filtering.
 ///
 /// Query params:
@@ -224,15 +222,13 @@ pub async fn dashboard_stats(
     } else {
         // All-time view: show aggregate stats but no trends.
         //
-        // CQRS Phase 4 PR 4.3 — when there is no project/branch filter and
-        // the legacy-stats env var is unset, read session_count + total_tokens
-        // from the `daily_global_stats` rollup. The remaining two fields
-        // (files_edited_count, commit_count) stay on the legacy path until
-        // Phase 5 `SessionFlags` fold populates them on rollup rows.
-        // Filtered requests continue to use the legacy GROUP BY over
+        // When there is no project/branch filter, read session_count +
+        // total_tokens from the `daily_global_stats` rollup. The remaining
+        // two fields (files_edited_count, commit_count) stay on the legacy
+        // path until Phase 5 `SessionFlags` fold populates them on rollup
+        // rows. Filtered requests continue to use the legacy GROUP BY over
         // valid_sessions — no project/branch rollup for unified metrics yet.
-        let use_rollup =
-            !legacy_stats_read_enabled() && query.project.is_none() && query.branch.is_none();
+        let use_rollup = query.project.is_none() && query.branch.is_none();
         match state
             .db
             .get_all_time_metrics(query.project.as_deref(), query.branch.as_deref())

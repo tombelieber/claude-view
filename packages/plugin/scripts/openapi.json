@@ -9515,7 +9515,7 @@
           },
           "legacyPath": {
             "type": "boolean",
-            "description": "`true` when the handler fell back to the legacy GROUP BY path\n(`CLAUDE_VIEW_USE_LEGACY_STATS_READ=1`)."
+            "description": "Always `false` — the legacy GROUP BY fallback was retired in\nCQRS Phase 7.g. Kept on the wire for client compatibility and\nwill be removed in a separate release."
           },
           "rowsRead": {
             "type": "integer",

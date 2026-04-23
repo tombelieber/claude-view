@@ -406,7 +406,8 @@ pub struct InsightsAggregateMeta {
     pub rows_read: u64,
     /// Dimension rows returned (after sort + limit).
     pub rows_returned: u64,
-    /// `true` when the handler fell back to the legacy GROUP BY path
-    /// (`CLAUDE_VIEW_USE_LEGACY_STATS_READ=1`).
+    /// Always `false` — the legacy GROUP BY fallback was retired in
+    /// CQRS Phase 7.g. Kept on the wire for client compatibility and
+    /// will be removed in a separate release.
     pub legacy_path: bool,
 }
