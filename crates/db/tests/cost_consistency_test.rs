@@ -4,7 +4,9 @@
 // when aggregated, and that the flat-rate aggregate approach produces
 // a predictable relationship to tiered per-turn costs.
 
-use claude_view_core::pricing::{calculate_cost, finalize_cost_breakdown, load_pricing, CostBreakdown, TokenUsage};
+use claude_view_core::pricing::{
+    calculate_cost, finalize_cost_breakdown, load_pricing, CostBreakdown, TokenUsage,
+};
 
 /// Helper: simulate a multi-turn session and compute cost both ways:
 /// 1. Per-turn tiered (sum of individual turn costs)
@@ -157,7 +159,10 @@ fn session_with_mixed_priced_unpriced_turns() {
     let t2_cost = calculate_cost(&t2_tokens, Some("unknown-model-xyz"), &pricing);
 
     // Verify: priced turn has real cost, unpriced has zero
-    assert!(t1_cost.total_usd > 0.0, "priced turn must have non-zero cost");
+    assert!(
+        t1_cost.total_usd > 0.0,
+        "priced turn must have non-zero cost"
+    );
     assert_eq!(t2_cost.total_usd, 0.0, "unpriced turn must have zero cost");
 
     // Session total = sum of both
@@ -185,7 +190,10 @@ fn session_with_mixed_priced_unpriced_turns() {
     finalize_cost_breakdown(&mut session_cost, &total_tokens);
 
     assert!(session_cost.has_unpriced_usage);
-    assert_eq!(session_cost.total_cost_source, "computed_priced_tokens_partial");
+    assert_eq!(
+        session_cost.total_cost_source,
+        "computed_priced_tokens_partial"
+    );
     // Coverage = priced tokens / total tokens = 120k / 180k ≈ 0.667
     let expected_coverage = 120_000.0 / 180_000.0;
     assert!(

@@ -7,6 +7,7 @@
 pub mod app_factory;
 pub mod auth;
 pub mod backfill;
+pub mod cli;
 pub use claude_view_server_types::cache;
 pub use claude_view_server_types::classify_state;
 pub mod crypto;
