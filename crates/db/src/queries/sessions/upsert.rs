@@ -443,10 +443,13 @@ impl Database {
     /// ALL fields are overwritten unconditionally because the parser is the
     /// single source of truth.
     ///
-    /// Delegates to `execute_upsert_parsed_session()` which holds the SQL
-    /// and bind chain — shared with `flush_batch()` in the live manager.
+    /// CQRS Phase 7.h.3: dual-writes to legacy `sessions` AND `session_stats`.
+    /// The session_stats write is additive (leaves StatsDelta-owned header
+    /// columns alone on conflict) so the two writers coexist cleanly. Phase
+    /// 7.h.4 drops the sessions write once readers flip to session_stats.
     pub async fn upsert_parsed_session(&self, s: &ParsedSession) -> DbResult<()> {
         execute_upsert_parsed_session(self.pool(), s).await?;
+        execute_upsert_session_stats_from_parsed(self.pool(), s).await?;
         Ok(())
     }
 
