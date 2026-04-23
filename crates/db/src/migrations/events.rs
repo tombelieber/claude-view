@@ -227,4 +227,69 @@ ALTER TABLE session_stats ADD COLUMN commit_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE session_stats ADD COLUMN reedited_files_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE session_stats ADD COLUMN skills_used TEXT NOT NULL DEFAULT '[]';
 COMMIT;"#,
+    // Migration 89 (CQRS Phase 7.h.1): extend `session_stats` to carry every
+    // remaining column from the legacy `sessions` table. Column additions
+    // only — the `valid_sessions` view rebuild and the IRREVERSIBLE DROP
+    // land in subsequent migrations (90: rebuild view on session_stats,
+    // 91: DROP TABLE sessions) once writers + readers have been rewired.
+    //
+    // Why this shape:
+    //   - The operator directive was "data is rebuilt from JSONL; drop the
+    //     table instead of a wide backfill". Extending `session_stats` with
+    //     every column the readers use lets the indexer_v2 writer repopulate
+    //     everything on the next scan after the DROP.
+    //   - Exact sessions column names are preserved (e.g. `parse_version`,
+    //     `tool_counts_bash`) so the reader SQL changes are file+table swaps,
+    //     not column renames. The pre-existing session_stats parallel names
+    //     (`parser_version`, `bash_count`) stay for compatibility with the
+    //     Phase 2 writer; the Phase 7 writer populates both.
+    //   - `STATS_VERSION` bumps to 4 so the indexer_v2 writer re-extracts
+    //     any row whose stats_version < 4 on the next scan — this is the
+    //     mechanism that populates the new columns for pre-migration rows.
+    //
+    // Column list (42 additions). All match sessions' exact names/types.
+    r#"BEGIN;
+ALTER TABLE session_stats ADD COLUMN project_display_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE session_stats ADD COLUMN project_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE session_stats ADD COLUMN summary TEXT;
+ALTER TABLE session_stats ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN size_bytes INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN files_touched TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE session_stats ADD COLUMN tool_counts_edit INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN tool_counts_read INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN tool_counts_bash INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN tool_counts_write INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN deep_indexed_at INTEGER;
+ALTER TABLE session_stats ADD COLUMN parse_version INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN file_size_at_index INTEGER;
+ALTER TABLE session_stats ADD COLUMN file_mtime_at_index INTEGER;
+ALTER TABLE session_stats ADD COLUMN api_call_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN files_read TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE session_stats ADD COLUMN files_edited TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE session_stats ADD COLUMN turn_duration_avg_ms INTEGER;
+ALTER TABLE session_stats ADD COLUMN turn_duration_max_ms INTEGER;
+ALTER TABLE session_stats ADD COLUMN turn_duration_total_ms INTEGER;
+ALTER TABLE session_stats ADD COLUMN api_retry_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN compaction_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN hook_blocked_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN bash_progress_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN hook_progress_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN mcp_progress_count INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN summary_text TEXT;
+ALTER TABLE session_stats ADD COLUMN lines_added INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN lines_removed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN loc_source INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN ai_lines_added INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN ai_lines_removed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE session_stats ADD COLUMN work_type TEXT;
+ALTER TABLE session_stats ADD COLUMN total_task_time_seconds INTEGER;
+ALTER TABLE session_stats ADD COLUMN longest_task_seconds INTEGER;
+ALTER TABLE session_stats ADD COLUMN longest_task_preview TEXT;
+ALTER TABLE session_stats ADD COLUMN total_cost_usd REAL;
+ALTER TABLE session_stats ADD COLUMN slug TEXT;
+ALTER TABLE session_stats ADD COLUMN entrypoint TEXT;
+ALTER TABLE session_stats ADD COLUMN git_root TEXT;
+ALTER TABLE session_stats ADD COLUMN session_cwd TEXT;
+ALTER TABLE session_stats ADD COLUMN parent_session_id TEXT;
+COMMIT;"#,
 ];

@@ -29,7 +29,13 @@ pub const PARSER_VERSION: ParserVersion = ParserVersion(1);
 ///   `commit_count`, `reedited_files_count`, `skills_used`. Migration 88
 ///   adds these columns to `session_stats`; indexer will re-extract rows
 ///   with stats_version < 3 on next scan.
-pub const STATS_VERSION: StatsVersion = StatsVersion(3);
+/// - v4 (CQRS Phase 7.h): `session_stats` extended with every remaining
+///   column from the legacy `sessions` table (42 additions in migration
+///   89). The indexer_v2 writer now populates the full ParsedSession row
+///   into `session_stats` so readers can migrate off `sessions` before
+///   the IRREVERSIBLE DROP in 7.h.6. Older rows with stats_version < 4
+///   get re-extracted on the next scan.
+pub const STATS_VERSION: StatsVersion = StatsVersion(4);
 
 /// Current rollup version. Bump when a rollup table adds or changes a
 /// metric in a way that requires recomputation.
