@@ -424,9 +424,11 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
 
     // CQRS Phase 6.2: `get_all_models` aggregates per-model usage from
     // `session_stats.per_model_tokens_json` + `primary_model`, not from
-    // the legacy `turns` table. The parallel scan path in `run_scan`
-    // doesn't write to `session_stats` — mirror what `indexer_v2` would
-    // have produced so the read path sees the same session's usage.
+    // the legacy `turns` table. Phase 7.h.3b: `run_scan` (via
+    // `phase_write.rs`) now dual-writes `session_stats`, so the row
+    // already exists when we get here — UPSERT the fields the reader
+    // path needs (per_model_tokens_json lives off the StatsDelta writer,
+    // so the pipeline's dual-write leaves it at the default '{}').
     sqlx::query(
         r#"INSERT INTO session_stats (
                session_id, source_content_hash, source_size,
@@ -437,7 +439,15 @@ async fn ac13_turns_and_models_populated_after_pipeline() {
            ) VALUES ('sess-0-0', X'01', 0, 1, 2, 0,
                      'claude-opus-4-5', 1,
                      50, 200, 5000, 1000,
-                     '{"claude-opus-4-5":{"inputTokens":50,"outputTokens":200,"cacheReadTokens":5000,"cacheCreationTokens":1000,"cacheCreation5mTokens":0,"cacheCreation1hrTokens":0,"totalTokens":6250}}')"#,
+                     '{"claude-opus-4-5":{"inputTokens":50,"outputTokens":200,"cacheReadTokens":5000,"cacheCreationTokens":1000,"cacheCreation5mTokens":0,"cacheCreation1hrTokens":0,"totalTokens":6250}}')
+           ON CONFLICT(session_id) DO UPDATE SET
+               primary_model = excluded.primary_model,
+               turn_count = excluded.turn_count,
+               total_input_tokens = excluded.total_input_tokens,
+               total_output_tokens = excluded.total_output_tokens,
+               cache_read_tokens = excluded.cache_read_tokens,
+               cache_creation_tokens = excluded.cache_creation_tokens,
+               per_model_tokens_json = excluded.per_model_tokens_json"#,
     )
     .execute(db.pool())
     .await

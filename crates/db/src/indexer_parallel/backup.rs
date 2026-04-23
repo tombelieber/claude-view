@@ -393,10 +393,20 @@ pub async fn ingest_backup_sessions(
             }
 
             for session in chunk {
-                // Upsert session
+                // Upsert session (legacy sessions table)
                 crate::queries::sessions::execute_upsert_parsed_session(&mut *tx, &session.parsed)
                     .await
                     .map_err(|e| format!("Upsert backup session {}: {e}", session.parsed.id))?;
+
+                // CQRS Phase 7.h.3: dual-write the backup-import path into
+                // `session_stats` so every imported session lands on both
+                // tables for the 7.h.4 reader flip.
+                crate::queries::sessions::execute_upsert_session_stats_from_parsed(
+                    &mut *tx,
+                    &session.parsed,
+                )
+                .await
+                .map_err(|e| format!("Upsert backup session_stats {}: {e}", session.parsed.id))?;
 
                 // Topology
                 if session.cwd.is_some() {

@@ -89,6 +89,17 @@ async fn write_single_session(
     crate::queries::sessions::execute_upsert_parsed_session(&mut **tx, &session.parsed)
         .await
         .map_err(|e| format!("Failed to upsert session {}: {}", session.parsed.id, e))?;
+    // CQRS Phase 7.h.3: dual-write the indexer hot path into `session_stats`
+    // so the new view / reader flip in 7.h.4 sees every session, not just
+    // the ones that went through `Database::upsert_parsed_session`.
+    crate::queries::sessions::execute_upsert_session_stats_from_parsed(&mut **tx, &session.parsed)
+        .await
+        .map_err(|e| {
+            format!(
+                "Failed to upsert session_stats row {}: {}",
+                session.parsed.id, e
+            )
+        })?;
 
     if session.cwd.is_some() {
         sqlx::query(
