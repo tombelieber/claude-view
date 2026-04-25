@@ -8,6 +8,30 @@ use crate::git_correlation::{CommitSkillInvocation, GitCommit, SessionCorrelatio
 use crate::Database;
 use tempfile::TempDir;
 
+async fn seed_git_session(
+    db: &Database,
+    id: &str,
+    project_path: &str,
+    first_message_at: Option<i64>,
+    last_message_at: Option<i64>,
+    file_path: &str,
+) {
+    sqlx::query(
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, project_path,
+             first_message_at, last_message_at, file_path)
+         VALUES (?1, X'00', 0, 1, 4, 0, 'p1', ?2, ?3, ?4, ?5)",
+    )
+    .bind(id)
+    .bind(project_path)
+    .bind(first_message_at)
+    .bind(last_message_at)
+    .bind(file_path)
+    .execute(db.pool())
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn test_correlate_session_full_pipeline() {
     let db = Database::new_in_memory().await.unwrap();
@@ -297,7 +321,7 @@ async fn test_correlate_session_extracts_git_diff_stats() {
     assert_eq!(inserted, 1, "Should insert one match");
 
     let row: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -426,7 +450,7 @@ async fn test_correlate_session_aggregates_multiple_commits() {
     assert_eq!(inserted, 2, "Should insert two matches");
 
     let row: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -523,7 +547,7 @@ async fn test_correlate_session_idempotent_loc_stats() {
     assert_eq!(inserted1, 1, "Should insert one match on first run");
 
     let row1: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -540,7 +564,7 @@ async fn test_correlate_session_idempotent_loc_stats() {
     );
 
     let row2: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -570,8 +594,7 @@ async fn test_run_git_sync_non_git_dirs() {
     let tmp = TempDir::new_in("/tmp").unwrap();
     let dir = tmp.path().to_str().unwrap();
 
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('s1', 'p1', ?1, 1000, 2000, '/tmp/s1.jsonl')")
-        .bind(dir).execute(db.pool()).await.unwrap();
+    seed_git_session(&db, "s1", dir, Some(1000), Some(2000), "/tmp/s1.jsonl").await;
 
     let result = run_git_sync(&db, |_| {}).await.unwrap();
 
@@ -626,8 +649,15 @@ async fn test_run_git_sync_with_real_repo() {
         .unwrap();
 
     let dir_str = repo_path.to_str().unwrap();
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('s1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')")
-        .bind(dir_str).bind(commit_ts - 600).bind(commit_ts + 600).execute(db.pool()).await.unwrap();
+    seed_git_session(
+        &db,
+        "s1",
+        dir_str,
+        Some(commit_ts - 600),
+        Some(commit_ts + 600),
+        "/tmp/s1.jsonl",
+    )
+    .await;
 
     let result = run_git_sync(&db, |_| {}).await.unwrap();
 
@@ -686,10 +716,24 @@ async fn test_run_git_sync_deduplicates_repos() {
     let dir_str = repo_path.to_str().unwrap();
     let now = chrono::Utc::now().timestamp();
 
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('s1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')")
-        .bind(dir_str).bind(now - 7200).bind(now + 7200).execute(db.pool()).await.unwrap();
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('s2', 'p1', ?1, ?2, ?3, '/tmp/s2.jsonl')")
-        .bind(dir_str).bind(now - 3600).bind(now + 3600).execute(db.pool()).await.unwrap();
+    seed_git_session(
+        &db,
+        "s1",
+        dir_str,
+        Some(now - 7200),
+        Some(now + 7200),
+        "/tmp/s1.jsonl",
+    )
+    .await;
+    seed_git_session(
+        &db,
+        "s2",
+        dir_str,
+        Some(now - 3600),
+        Some(now + 3600),
+        "/tmp/s2.jsonl",
+    )
+    .await;
 
     let result = run_git_sync(&db, |_| {}).await.unwrap();
 
@@ -701,8 +745,15 @@ async fn test_run_git_sync_deduplicates_repos() {
 async fn test_run_git_sync_nonexistent_dir() {
     let db = Database::new_in_memory().await.unwrap();
 
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('s1', 'p1', '/nonexistent/path/abc123', 1000, 2000, '/tmp/s1.jsonl')")
-        .execute(db.pool()).await.unwrap();
+    seed_git_session(
+        &db,
+        "s1",
+        "/nonexistent/path/abc123",
+        Some(1000),
+        Some(2000),
+        "/tmp/s1.jsonl",
+    )
+    .await;
 
     let result = run_git_sync(&db, |_| {}).await.unwrap();
 
@@ -753,8 +804,15 @@ async fn test_phase_f_git_sync_extracts_loc_stats() {
     let now = chrono::Utc::now().timestamp();
     let dir_str = repo_path.to_str().unwrap();
 
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('sess-1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')")
-        .bind(dir_str).bind(now - 600).bind(now + 600).execute(db.pool()).await.unwrap();
+    seed_git_session(
+        &db,
+        "sess-1",
+        dir_str,
+        Some(now - 600),
+        Some(now + 600),
+        "/tmp/s1.jsonl",
+    )
+    .await;
 
     let result = run_git_sync(&db, |_| {}).await.unwrap();
 
@@ -763,7 +821,7 @@ async fn test_phase_f_git_sync_extracts_loc_stats() {
     assert_eq!(result.links_created, 1);
 
     let row: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -811,8 +869,15 @@ async fn test_run_git_sync_idempotent() {
     let dir_str = repo_path.to_str().unwrap();
     let now = chrono::Utc::now().timestamp();
 
-    sqlx::query("INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path) VALUES ('s1', 'p1', ?1, ?2, ?3, '/tmp/s1.jsonl')")
-        .bind(dir_str).bind(now - 7200).bind(now + 7200).execute(db.pool()).await.unwrap();
+    seed_git_session(
+        &db,
+        "s1",
+        dir_str,
+        Some(now - 7200),
+        Some(now + 7200),
+        "/tmp/s1.jsonl",
+    )
+    .await;
 
     let result1 = run_git_sync(&db, |_| {}).await.unwrap();
     let result2 = run_git_sync(&db, |_| {}).await.unwrap();

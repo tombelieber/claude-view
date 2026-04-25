@@ -58,7 +58,7 @@ pub use queries::{CatalogFilter, CatalogSort, FullSessionStatsRow, StatsCatalogR
 
 // Re-export session upsert helpers for the live manager's flush_batch
 pub use queries::sessions::{
-    execute_upsert_parsed_session, execute_upsert_session_stats_from_parsed, UPSERT_SESSION_SQL,
+    execute_upsert_parsed_session, execute_upsert_session_stats_from_parsed,
     UPSERT_SESSION_STATS_FROM_PARSED_SQL,
 };
 
@@ -353,7 +353,8 @@ impl Database {
         ];
 
         for (col, typedef) in expected_session_cols {
-            self.add_column_if_missing("sessions", col, typedef).await?;
+            self.add_column_if_missing("session_stats", col, typedef)
+                .await?;
         }
         for (col, typedef) in expected_commit_cols {
             self.add_column_if_missing("commits", col, typedef).await?;
@@ -446,11 +447,11 @@ mod tests {
             .await
             .expect("should create in-memory database");
 
-        // Verify sessions table exists by querying it
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
+        // Verify session_stats table exists by querying it
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_stats")
             .fetch_one(db.pool())
             .await
-            .expect("sessions table should exist");
+            .expect("session_stats table should exist");
         assert_eq!(count.0, 0);
 
         // Verify indexer_state table exists
@@ -474,10 +475,10 @@ mod tests {
             .expect("second migration run should succeed");
 
         // Still works
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_stats")
             .fetch_one(db.pool())
             .await
-            .expect("sessions table should still exist");
+            .expect("session_stats table should still exist");
         assert_eq!(count.0, 0);
     }
 
@@ -491,10 +492,10 @@ mod tests {
             .expect("should create file-based database");
 
         // Verify table exists
-        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions")
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM session_stats")
             .fetch_one(db.pool())
             .await
-            .expect("sessions table should exist");
+            .expect("session_stats table should exist");
         assert_eq!(count.0, 0);
 
         assert!(db_path.exists(), "database file should be created on disk");

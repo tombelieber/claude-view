@@ -26,14 +26,13 @@ pub(super) async fn fetch_session_breakdown(
             COALESCE(SUM(CASE WHEN ss.is_sidechain = 0 THEN 1 ELSE 0 END), 0) AS primary_sessions,
             COALESCE(SUM(CASE WHEN ss.is_sidechain = 1 THEN 1 ELSE 0 END), 0) AS sidechain_sessions
         FROM session_stats ss
-        LEFT JOIN sessions s ON s.id = ss.session_id
         LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
         WHERE sf.archived_at IS NULL
           AND (?1 IS NULL OR ss.last_message_at >= ?1)
           AND (?2 IS NULL OR ss.last_message_at <= ?2)
-          AND (?3 IS NULL OR s.project_id = ?3
-               OR (s.git_root IS NOT NULL AND s.git_root <> '' AND s.git_root = ?3)
-               OR (s.project_path IS NOT NULL AND s.project_path <> '' AND s.project_path = ?3))
+          AND (?3 IS NULL OR ss.project_id = ?3
+               OR (ss.git_root IS NOT NULL AND ss.git_root <> '' AND ss.git_root = ?3)
+               OR (ss.project_path IS NOT NULL AND ss.project_path <> '' AND ss.project_path = ?3))
           AND (?4 IS NULL OR ss.git_branch = ?4)
         "#,
     )

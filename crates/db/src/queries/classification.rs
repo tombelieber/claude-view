@@ -341,11 +341,12 @@ impl Database {
         &self,
         session_id: &str,
     ) -> DbResult<Option<(String, String, String)>> {
-        let row: Option<(String, String, String)> =
-            sqlx::query_as("SELECT id, preview, skills_used FROM sessions WHERE id = ?1")
-                .bind(session_id)
-                .fetch_optional(self.pool())
-                .await?;
+        let row: Option<(String, String, String)> = sqlx::query_as(
+            "SELECT session_id, preview, skills_used FROM session_stats WHERE session_id = ?1",
+        )
+        .bind(session_id)
+        .fetch_optional(self.pool())
+        .await?;
         Ok(row)
     }
 

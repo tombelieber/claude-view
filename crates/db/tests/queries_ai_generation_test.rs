@@ -20,23 +20,18 @@ async fn seed_session_stats_with_per_model(
     db.pool()
         .execute(
             sqlx::query(
-                r#"INSERT INTO session_stats (
-                       session_id, source_content_hash, source_size,
-                       parser_version, stats_version, indexed_at,
-                       project_id, file_path, last_message_at,
-                       per_model_tokens_json
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+                r#"UPDATE session_stats
+                   SET project_id = ?,
+                       file_path = ?,
+                       last_message_at = ?,
+                       per_model_tokens_json = ?
+                   WHERE session_id = ?"#,
             )
-            .bind(session_id)
-            .bind(vec![0x01u8])
-            .bind(1_i64)
-            .bind(1_i64)
-            .bind(1_i64)
-            .bind(1_i64)
             .bind(project_id)
             .bind(file_path)
             .bind(last_message_at)
-            .bind(per_model_tokens_json),
+            .bind(per_model_tokens_json)
+            .bind(session_id),
         )
         .await
         .unwrap();
@@ -145,7 +140,7 @@ async fn test_get_ai_generation_stats() {
 
     // files_created = sum of files_edited_count: 4 + 2 = 6
     assert_eq!(stats.files_created, 6, "Sum of files_edited_count");
-    // Total tokens from sessions table
+    // Total tokens from session_stats
     assert_eq!(stats.total_input_tokens, 4000, "3000 + 1000");
     assert_eq!(stats.total_output_tokens, 2500, "2000 + 500");
     // lines not tracked yet

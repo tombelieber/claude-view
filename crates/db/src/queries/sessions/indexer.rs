@@ -110,15 +110,15 @@ impl Database {
         #[allow(clippy::type_complexity)]
         let rows: Vec<(String, String, Option<i64>, Option<i64>, Option<i64>, i32, String, Option<String>)> =
             sqlx::query_as(
-                r#"SELECT s.id, s.file_path, s.file_size_at_index, s.file_mtime_at_index,
+                r#"SELECT s.session_id AS id, s.file_path, s.file_size_at_index, s.file_mtime_at_index,
                           s.deep_indexed_at, s.parse_version,
                           COALESCE(NULLIF(s.git_root, ''), s.project_id, ''),
                           CASE
                             WHEN sf.archived_at IS NULL THEN NULL
                             ELSE strftime('%Y-%m-%dT%H:%M:%fZ', sf.archived_at / 1000.0, 'unixepoch')
                           END AS archived_at
-                   FROM sessions s
-                   LEFT JOIN session_flags sf ON sf.session_id = s.id
+                   FROM session_stats s
+                   LEFT JOIN session_flags sf ON sf.session_id = s.session_id
                    WHERE s.file_path IS NOT NULL AND s.file_path != ''"#,
             )
             .fetch_all(self.pool())
@@ -133,13 +133,7 @@ impl Database {
     ///
     /// Returns the number of sessions marked for re-indexing.
     pub async fn mark_all_sessions_for_reindex(&self) -> DbResult<u64> {
-        // CQRS Phase 7.h.3c: dual-reset deep_indexed_at / parse_version on both tables.
         let result = sqlx::query(
-            "UPDATE sessions SET deep_indexed_at = NULL, parse_version = 0 WHERE file_path IS NOT NULL AND file_path != ''",
-        )
-        .execute(self.pool())
-        .await?;
-        sqlx::query(
             "UPDATE session_stats SET deep_indexed_at = NULL, parse_version = 0 WHERE file_path IS NOT NULL AND file_path != ''",
         )
         .execute(self.pool())

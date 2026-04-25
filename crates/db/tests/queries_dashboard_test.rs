@@ -196,15 +196,17 @@ async fn test_get_dashboard_stats_with_project_filter() {
 
     // Set longest_task_seconds (not written by insert_session, only by parallel indexer)
     sqlx::query(
-        "UPDATE sessions SET longest_task_seconds = 400, longest_task_preview = 'Longest prompt A' WHERE id = 'sess-filter-a'",
+        "UPDATE session_stats SET longest_task_seconds = 400, longest_task_preview = 'Longest prompt A' WHERE session_id = 'sess-filter-a'",
     )
         .execute(db.pool())
         .await
         .unwrap();
-    sqlx::query("UPDATE sessions SET longest_task_seconds = 200 WHERE id = 'sess-filter-b'")
-        .execute(db.pool())
-        .await
-        .unwrap();
+    sqlx::query(
+        "UPDATE session_stats SET longest_task_seconds = 200 WHERE session_id = 'sess-filter-b'",
+    )
+    .execute(db.pool())
+    .await
+    .unwrap();
 
     // No filter — should see both
     let stats = db.get_dashboard_stats(None, None).await.unwrap();

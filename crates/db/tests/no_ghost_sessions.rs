@@ -44,10 +44,11 @@ async fn no_ghost_sessions_after_restart() {
     assert_eq!(indexed, 10);
 
     // Verify all rows have real data
-    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE message_count > 0")
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+    let count: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM session_stats WHERE message_count > 0")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
     assert_eq!(count.0, 10);
 
     // Simulate restart: scan again without file changes
@@ -61,7 +62,7 @@ async fn no_ghost_sessions_after_restart() {
 
     // THE CRITICAL ASSERTION: zero ghost rows
     let ghosts: (i64,) = sqlx::query_as(
-        "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0",
+        "SELECT COUNT(*) FROM session_stats WHERE message_count = 0 AND last_message_at > 0",
     )
     .fetch_one(db.pool())
     .await

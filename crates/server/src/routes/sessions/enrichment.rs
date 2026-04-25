@@ -117,16 +117,6 @@ mod tests {
         // shadow row mirroring the legacy `'2026-04-01T10:00:00Z'`;
         // s2 stays unarchived by omitting the shadow row entirely.
         sqlx::query(
-            "INSERT INTO sessions \
-             (id, project_id, file_path, commit_count, skills_used, \
-              reedited_files_count, files_edited_count) \
-             VALUES ('s1', 'p1', '/tmp/s1.jsonl', 3, '[\"tdd\"]', 2, 10)",
-        )
-        .execute(db.pool())
-        .await
-        .unwrap();
-        // Also insert into session_stats (primary read table for enrichment)
-        sqlx::query(
             "INSERT INTO session_stats \
              (session_id, source_content_hash, source_size, parser_version, \
               stats_version, indexed_at, commit_count, skills_used, \
@@ -144,16 +134,6 @@ mod tests {
         .execute(db.pool())
         .await
         .unwrap();
-        sqlx::query(
-            "INSERT INTO sessions \
-             (id, project_id, file_path, commit_count, skills_used, \
-              reedited_files_count, files_edited_count) \
-             VALUES ('s2', 'p1', '/tmp/s2.jsonl', 0, '[]', 0, 0)",
-        )
-        .execute(db.pool())
-        .await
-        .unwrap();
-        // Also insert into session_stats for s2
         sqlx::query(
             "INSERT INTO session_stats \
              (session_id, source_content_hash, source_size, parser_version, \

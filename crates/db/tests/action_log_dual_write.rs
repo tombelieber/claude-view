@@ -31,8 +31,9 @@ type ActionRow = (i64, String, String, String, String, i64);
 
 async fn seed_session(db: &Database, id: &str) {
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
-         VALUES (?1, 'proj-1', ?2, 0)",
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, is_sidechain)
+         VALUES (?1, X'00', 0, 1, 4, 0, 'proj-1', ?2, 0)",
     )
     .bind(id)
     .bind(format!("/tmp/{id}.jsonl"))

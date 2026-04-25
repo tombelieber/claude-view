@@ -82,7 +82,7 @@ mod upsert_tests {
         db.upsert_parsed_session(&session).await.unwrap();
 
         let row = sqlx::query_as::<_, (i32, i32, i64, i64)>(
-            "SELECT message_count, turn_count, total_input_tokens, total_output_tokens FROM sessions WHERE id = ?1"
+            "SELECT message_count, turn_count, total_input_tokens, total_output_tokens FROM session_stats WHERE session_id = ?1"
         )
         .bind("sess-001")
         .fetch_one(db.pool())
@@ -110,7 +110,7 @@ mod upsert_tests {
         db.upsert_parsed_session(&session2).await.unwrap();
 
         let row = sqlx::query_as::<_, (i32, i32, i64)>(
-            "SELECT message_count, turn_count, total_input_tokens FROM sessions WHERE id = ?1",
+            "SELECT message_count, turn_count, total_input_tokens FROM session_stats WHERE session_id = ?1",
         )
         .bind("sess-002")
         .fetch_one(db.pool())
@@ -140,7 +140,7 @@ mod upsert_tests {
 
         // Verify no zero-count rows exist
         let ghosts: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*) FROM sessions WHERE message_count = 0 AND last_message_at > 0",
+            "SELECT COUNT(*) FROM session_stats WHERE message_count = 0 AND last_message_at > 0",
         )
         .fetch_one(db.pool())
         .await

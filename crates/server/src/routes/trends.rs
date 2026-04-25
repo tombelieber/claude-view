@@ -117,39 +117,19 @@ mod tests {
             .execute(
                 sqlx::query(
                     r#"
-                    INSERT INTO sessions (
-                        id, project_id, file_path, preview, project_path, project_display_name,
-                        duration_seconds, files_edited_count, reedited_files_count, files_read_count,
-                        user_prompt_count, api_call_count, tool_call_count, commit_count, turn_count,
-                        last_message_at, size_bytes, last_message, files_touched, skills_used,
-                        files_read, files_edited, ai_lines_added, ai_lines_removed, is_sidechain
-                    )
-                    VALUES (
-                        ?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp', 'Project',
-                        120, 2, 0, 1,
-                        3, 5, 7, 0, 4,
-                        ?2, 1024, 'last', '[]', '[]',
-                        '[]', '[]', 10, 2, ?3
-                    )
-                    "#,
-                )
-                .bind(id)
-                .bind(last_message_at)
-                .bind(is_sidechain),
-            )
-            .await
-            .unwrap();
-        // Also insert into session_stats for Phase 7.c queries
-        db.pool()
-            .execute(
-                sqlx::query(
-                    r#"
                     INSERT INTO session_stats (
                         session_id, source_content_hash, source_size, parser_version,
                         stats_version, indexed_at, last_message_at, is_sidechain,
-                        commit_count, reedited_files_count, files_edited_count, skills_used
+                        commit_count, reedited_files_count, files_edited_count, skills_used,
+                        project_id, file_path, preview, project_path, project_display_name,
+                        duration_seconds, files_read_count, user_prompt_count, api_call_count,
+                        tool_call_count, turn_count, size_bytes, last_message, files_touched,
+                        files_read, files_edited, ai_lines_added, ai_lines_removed
                     )
-                    VALUES (?1, X'00', 1024, 1, 3, 0, ?2, ?3, 0, 0, 2, '[]')
+                    VALUES (?1, X'00', 1024, 1, 4, 0, ?2, ?3, 0, 0, 2, '[]',
+                        'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp', 'Project',
+                        120, 1, 3, 5, 7, 4, 1024, 'last', '[]',
+                        '[]', '[]', 10, 2)
                     ON CONFLICT(session_id) DO UPDATE SET
                         last_message_at = excluded.last_message_at,
                         is_sidechain = excluded.is_sidechain

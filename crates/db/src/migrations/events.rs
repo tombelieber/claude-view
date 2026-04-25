@@ -292,4 +292,130 @@ ALTER TABLE session_stats ADD COLUMN git_root TEXT;
 ALTER TABLE session_stats ADD COLUMN session_cwd TEXT;
 ALTER TABLE session_stats ADD COLUMN parent_session_id TEXT;
 COMMIT;"#,
+    // Migration 90 (CQRS Phase 7.h.4a): rebuild `valid_sessions` on top of
+    // `session_stats JOIN session_flags`. The legacy `sessions` table is
+    // still present until migration 91, but the view no longer references it.
+    //
+    // Phase 7.h.3 landed the dual-write contract: every production writer
+    // that touched `sessions` also touched `session_stats`. The
+    // `session_id AS id` alias preserves the row shape used by existing
+    // `FROM valid_sessions s` readers.
+    r#"BEGIN;
+DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS
+  SELECT
+    ss.session_id AS id,
+    ss.project_id,
+    ss.project_display_name,
+    ss.project_path,
+    ss.file_path,
+    ss.preview,
+    ss.summary,
+    ss.message_count,
+    ss.last_message_at,
+    ss.first_message_at,
+    ss.git_branch,
+    ss.is_sidechain,
+    ss.size_bytes,
+    ss.indexed_at,
+    ss.last_message,
+    ss.files_touched,
+    ss.skills_used,
+    ss.tool_counts_edit,
+    ss.tool_counts_read,
+    ss.tool_counts_bash,
+    ss.tool_counts_write,
+    ss.turn_count,
+    ss.deep_indexed_at,
+    ss.parse_version,
+    ss.file_size_at_index,
+    ss.file_mtime_at_index,
+    ss.user_prompt_count,
+    ss.api_call_count,
+    ss.tool_call_count,
+    ss.files_read,
+    ss.files_edited,
+    ss.files_read_count,
+    ss.files_edited_count,
+    ss.reedited_files_count,
+    ss.duration_seconds,
+    ss.commit_count,
+    ss.total_input_tokens,
+    ss.total_output_tokens,
+    ss.cache_read_tokens,
+    ss.cache_creation_tokens,
+    ss.thinking_block_count,
+    ss.turn_duration_avg_ms,
+    ss.turn_duration_max_ms,
+    ss.turn_duration_total_ms,
+    ss.api_error_count,
+    ss.api_retry_count,
+    ss.compaction_count,
+    ss.hook_blocked_count,
+    ss.agent_spawn_count,
+    ss.bash_progress_count,
+    ss.hook_progress_count,
+    ss.mcp_progress_count,
+    ss.summary_text,
+    ss.lines_added,
+    ss.lines_removed,
+    ss.loc_source,
+    ss.ai_lines_added,
+    ss.ai_lines_removed,
+    ss.work_type,
+    ss.primary_model,
+    ss.total_task_time_seconds,
+    ss.longest_task_seconds,
+    ss.longest_task_preview,
+    ss.total_cost_usd,
+    ss.slug,
+    ss.entrypoint,
+    ss.git_root,
+    ss.session_cwd,
+    ss.parent_session_id
+  FROM session_stats ss
+  LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
+  WHERE ss.is_sidechain = 0 AND sf.archived_at IS NULL;
+COMMIT;"#,
+    // Migration 91 (CQRS Phase 7.h.6): IRREVERSIBLE drop of the legacy
+    // `sessions` table. Before the DROP, rebuild `session_commits` so its
+    // cascade FK points at `session_stats(session_id)`; otherwise FK-enabled
+    // databases would keep a dangling child-table reference to `sessions`.
+    //
+    // The insert keeps only links whose session and commit parents exist in
+    // the post-CQRS tables. A link without a `session_stats` parent cannot be
+    // queried correctly after the legacy table is removed.
+    //
+    // IRREVERSIBLE: SQLite does not undo `DROP TABLE`. Back up
+    // `~/.claude-view/claude-view.db` before running.
+    r#"PRAGMA foreign_keys=OFF;
+BEGIN;
+CREATE TABLE session_commits_new (
+    session_id      TEXT NOT NULL REFERENCES session_stats(session_id) ON DELETE CASCADE,
+    commit_hash     TEXT NOT NULL REFERENCES commits(hash) ON DELETE CASCADE,
+    tier            INTEGER NOT NULL CHECK (tier IN (1, 2)),
+    evidence        TEXT NOT NULL DEFAULT '{}',
+    created_at      INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    PRIMARY KEY (session_id, commit_hash)
+);
+INSERT INTO session_commits_new (session_id, commit_hash, tier, evidence, created_at)
+SELECT sc.session_id, sc.commit_hash, sc.tier, sc.evidence, sc.created_at
+FROM session_commits sc
+JOIN session_stats ss ON ss.session_id = sc.session_id
+JOIN commits c ON c.hash = sc.commit_hash;
+DROP TABLE session_commits;
+ALTER TABLE session_commits_new RENAME TO session_commits;
+CREATE INDEX idx_session_commits_session ON session_commits(session_id);
+CREATE INDEX idx_session_commits_commit ON session_commits(commit_hash);
+CREATE INDEX IF NOT EXISTS idx_session_stats_project_branch ON session_stats(project_id, git_branch);
+CREATE INDEX IF NOT EXISTS idx_session_stats_sidechain ON session_stats(is_sidechain);
+CREATE INDEX IF NOT EXISTS idx_session_stats_commit_count ON session_stats(commit_count) WHERE commit_count > 0;
+CREATE INDEX IF NOT EXISTS idx_session_stats_reedit ON session_stats(reedited_files_count) WHERE reedited_files_count > 0;
+CREATE INDEX IF NOT EXISTS idx_session_stats_duration ON session_stats(duration_seconds);
+CREATE INDEX IF NOT EXISTS idx_session_stats_needs_reindex ON session_stats(session_id, file_path) WHERE parse_version < 1;
+CREATE INDEX IF NOT EXISTS idx_session_stats_first_message ON session_stats(first_message_at);
+CREATE INDEX IF NOT EXISTS idx_session_stats_project_first_message ON session_stats(project_id, first_message_at);
+DROP TABLE IF EXISTS sessions;
+COMMIT;
+PRAGMA foreign_keys=ON;"#,
 ];

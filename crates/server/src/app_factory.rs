@@ -507,9 +507,8 @@ pub fn create_app_full(
     // kill-9 property): a restart re-selects from `applied_seq` and
     // any partially-committed batch was rolled back at shutdown.
     //
-    // Until PR 5.5 flips readers onto `session_flags`, this is a
-    // shadow writer — the legacy `sessions.*` columns remain the
-    // source of truth and PR 5.4's parity monitor compares the two.
+    // `session_flags` is now the archive/classification source of truth;
+    // the fold task keeps it current from the append-only action log.
     let fold_db = Arc::new(db.clone());
     claude_view_db::fold::spawn_flags_fold(fold_db.clone());
 

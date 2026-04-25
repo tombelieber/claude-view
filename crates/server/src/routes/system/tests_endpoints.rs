@@ -1,6 +1,5 @@
 //! Integration tests for system HTTP endpoints.
 
-use super::*;
 use axum::{
     body::Body,
     http::{Method, Request, StatusCode},

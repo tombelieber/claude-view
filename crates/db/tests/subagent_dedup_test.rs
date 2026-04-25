@@ -134,14 +134,17 @@ async fn valid_sessions_view_excludes_sidechains() {
 
     // Insert a primary session
     sqlx::query(
-        r#"INSERT INTO sessions (
-            id, project_id, file_path, preview, project_path,
+        r#"INSERT INTO session_stats (
+            session_id, source_content_hash, source_size, parser_version,
+            stats_version, indexed_at,
+            project_id, file_path, preview, project_path,
             total_input_tokens, total_output_tokens,
             tool_counts_read, tool_counts_edit, tool_counts_bash, tool_counts_write,
             tool_call_count, last_message_at, size_bytes, last_message,
             files_touched, skills_used, files_read, files_edited
         ) VALUES (
-            'parent-session', 'proj', '/tmp/parent.jsonl', 'test', '/tmp',
+            'parent-session', X'00', 1024, 1, 4, 0,
+            'proj', '/tmp/parent.jsonl', 'test', '/tmp',
             6000, 2500, 4, 1, 1, 1, 6, ?1, 1024, '',
             '[]', '[]', '[]', '[]'
         )"#,
@@ -153,15 +156,18 @@ async fn valid_sessions_view_excludes_sidechains() {
 
     // Insert a sidechain session (should be excluded from valid_sessions)
     sqlx::query(
-        r#"INSERT INTO sessions (
-            id, project_id, file_path, preview, project_path,
+        r#"INSERT INTO session_stats (
+            session_id, source_content_hash, source_size, parser_version,
+            stats_version, indexed_at,
+            project_id, file_path, preview, project_path,
             is_sidechain,
             total_input_tokens, total_output_tokens,
             tool_counts_read, tool_counts_edit, tool_counts_bash, tool_counts_write,
             tool_call_count, last_message_at, size_bytes, last_message,
             files_touched, skills_used, files_read, files_edited
         ) VALUES (
-            'sidechain-session', 'proj', '/tmp/sidechain.jsonl', 'test', '/tmp',
+            'sidechain-session', X'00', 512, 1, 4, 0,
+            'proj', '/tmp/sidechain.jsonl', 'test', '/tmp',
             1,
             1000, 500, 1, 0, 0, 0, 1, ?1, 512, '',
             '[]', '[]', '[]', '[]'
@@ -214,12 +220,15 @@ async fn archived_sessions_excluded_from_valid_sessions() {
 
     // Insert active session
     sqlx::query(
-        r#"INSERT INTO sessions (
-            id, project_id, file_path, preview, project_path,
+        r#"INSERT INTO session_stats (
+            session_id, source_content_hash, source_size, parser_version,
+            stats_version, indexed_at,
+            project_id, file_path, preview, project_path,
             total_input_tokens, last_message_at, size_bytes, last_message,
             files_touched, skills_used, files_read, files_edited
         ) VALUES (
-            'active-session', 'proj', '/tmp/active.jsonl', 'test', '/tmp',
+            'active-session', X'00', 1024, 1, 4, 0,
+            'proj', '/tmp/active.jsonl', 'test', '/tmp',
             5000, ?1, 1024, '', '[]', '[]', '[]', '[]'
         )"#,
     )
@@ -229,16 +238,19 @@ async fn archived_sessions_excluded_from_valid_sessions() {
     .unwrap();
 
     // Insert archived session.
-    // CQRS Phase D.3 — `sessions.archived_at` was dropped; archive state
+    // CQRS Phase D.3 — archive state
     // lives in `session_flags.archived_at`. The test mirrors the
     // post-D.3 write path: INSERT the session row, then UPSERT the flag.
     sqlx::query(
-        r#"INSERT INTO sessions (
-            id, project_id, file_path, preview, project_path,
+        r#"INSERT INTO session_stats (
+            session_id, source_content_hash, source_size, parser_version,
+            stats_version, indexed_at,
+            project_id, file_path, preview, project_path,
             total_input_tokens, last_message_at, size_bytes, last_message,
             files_touched, skills_used, files_read, files_edited
         ) VALUES (
-            'archived-session', 'proj', '/tmp/archived.jsonl', 'test', '/tmp',
+            'archived-session', X'00', 512, 1, 4, 0,
+            'proj', '/tmp/archived.jsonl', 'test', '/tmp',
             3000, ?1, 512, '', '[]', '[]', '[]', '[]'
         )"#,
     )

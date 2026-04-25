@@ -1,17 +1,14 @@
 //! `session_action_log` append-only event log — CQRS Phase 5.
 //!
 //! Every archive / unarchive / classify / dismiss / reclassify mutation
-//! lands one row here. Writers include the insert inside the SAME
-//! transaction as the legacy `sessions.*` column write so both sides
-//! commit atomically; readers (the PR 5.3 fold worker) select by
+//! lands one row here. `session_flags` folds this log by selecting
 //! `seq > applied_seq` to advance the fold watermark.
 //!
 //! Schema lives in `crates/db/src/migrations/events.rs` (migration 82).
 //! The column contracts the insert relies on:
 //!   - `seq INTEGER PRIMARY KEY AUTOINCREMENT` — strictly increasing
 //!   - `at INTEGER NOT NULL` — caller-supplied unix ms; the caller owns
-//!     the clock so dual-write timestamps stay bit-identical between
-//!     the legacy column write and the log entry
+//!     the clock for audit ordering
 //!   - `action`, `actor`, `payload` — free-form TEXT; Rust enum serde
 //!     is the authoritative validator per §7.1
 
@@ -23,8 +20,8 @@ use crate::{Database, DbResult};
 /// Insert a row into `session_action_log` on an arbitrary executor.
 ///
 /// Accepts either `&Pool<Sqlite>` (standalone use) or `&mut Transaction`
-/// (shared with a legacy column UPDATE in the same TX — the dual-write
-/// pattern PR 5.2 uses). Returns the generated `seq` so callers can
+/// (shared with a related mutation in the same TX). Returns the generated
+/// `seq` so callers can
 /// correlate the row for tracing / tests.
 pub(crate) async fn insert_action_log_tx<'e, E>(
     executor: E,

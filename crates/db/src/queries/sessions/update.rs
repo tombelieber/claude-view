@@ -1,6 +1,7 @@
 // crates/db/src/queries/sessions/update.rs
 // Session update operations: tail updates, topology, deep fields, classification.
 
+use crate::queries::action_log::insert_action_log_tx;
 use crate::{Database, DbResult};
 use chrono::Utc;
 
@@ -15,20 +16,6 @@ impl Database {
         parent_session_id: Option<&str>,
         git_root: Option<&str>,
     ) -> DbResult<()> {
-        // CQRS Phase 7.h.3c: dual-write topology to legacy sessions + session_stats.
-        sqlx::query(
-            "UPDATE sessions SET \
-             session_cwd = COALESCE(?1, session_cwd), \
-             parent_session_id = COALESCE(?2, parent_session_id), \
-             git_root = COALESCE(?3, git_root) \
-             WHERE id = ?4",
-        )
-        .bind(session_cwd)
-        .bind(parent_session_id)
-        .bind(git_root)
-        .bind(id)
-        .execute(self.pool())
-        .await?;
         sqlx::query(
             "UPDATE session_stats SET \
              session_cwd = COALESCE(?1, session_cwd), \
@@ -117,7 +104,7 @@ impl Database {
 
         sqlx::query(
             r#"
-            UPDATE sessions SET
+            UPDATE session_stats SET
                 last_message = ?2,
                 turn_count = ?3,
                 tool_counts_edit = ?4,
@@ -172,7 +159,7 @@ impl Database {
                 longest_task_seconds = ?53,
                 longest_task_preview = ?54,
                 total_cost_usd = ?55
-            WHERE id = ?1
+            WHERE session_id = ?1
             "#,
         )
         .bind(id)
@@ -246,28 +233,28 @@ impl Database {
         confidence: f64,
         source: &str,
     ) -> DbResult<()> {
-        let classified_at = Utc::now().to_rfc3339();
-        sqlx::query(
-            r#"
-            UPDATE sessions SET
-                category_l1 = ?2,
-                category_l2 = ?3,
-                category_l3 = ?4,
-                category_confidence = ?5,
-                category_source = ?6,
-                classified_at = ?7
-            WHERE id = ?1
-            "#,
+        let classified_at_ms = Utc::now().timestamp_millis();
+        let payload = serde_json::json!({
+            "l1": category_l1,
+            "l2": category_l2,
+            "l3": category_l3,
+            "confidence": confidence,
+            "source": source,
+        })
+        .to_string();
+        let actor = format!("classifier:{source}");
+
+        let mut tx = self.pool().begin().await?;
+        insert_action_log_tx(
+            &mut *tx,
+            session_id,
+            "classify",
+            &payload,
+            &actor,
+            classified_at_ms,
         )
-        .bind(session_id)
-        .bind(category_l1)
-        .bind(category_l2)
-        .bind(category_l3)
-        .bind(confidence)
-        .bind(source)
-        .bind(&classified_at)
-        .execute(self.pool())
         .await?;
+        tx.commit().await?;
         Ok(())
     }
 
@@ -278,7 +265,7 @@ impl Database {
         limit: i64,
     ) -> DbResult<Vec<(String, String)>> {
         let rows = sqlx::query_as::<_, (String, String)>(
-            "SELECT id, session_cwd FROM sessions \
+            "SELECT session_id, session_cwd FROM session_stats \
              WHERE git_root IS NULL AND session_cwd IS NOT NULL \
              LIMIT ?1",
         )
@@ -290,12 +277,6 @@ impl Database {
 
     /// Set git_root for a single session by id.
     pub async fn set_git_root(&self, id: &str, git_root: &str) -> DbResult<()> {
-        // CQRS Phase 7.h.3c: dual-write git_root to legacy sessions + session_stats.
-        sqlx::query("UPDATE sessions SET git_root = ?1 WHERE id = ?2")
-            .bind(git_root)
-            .bind(id)
-            .execute(self.pool())
-            .await?;
         sqlx::query("UPDATE session_stats SET git_root = ?1 WHERE session_id = ?2")
             .bind(git_root)
             .bind(id)
@@ -310,18 +291,12 @@ impl Database {
         session_id: &str,
         new_path: &str,
     ) -> DbResult<bool> {
-        // CQRS Phase 7.h.3c: dual-write file_path to legacy sessions + session_stats.
-        let rows = sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
+        let rows = sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
             .bind(new_path)
             .bind(session_id)
             .execute(self.pool())
             .await?
             .rows_affected();
-        sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
-            .bind(new_path)
-            .bind(session_id)
-            .execute(self.pool())
-            .await?;
         Ok(rows > 0)
     }
 }

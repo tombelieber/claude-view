@@ -17,15 +17,24 @@ async fn drain_fold(db: Arc<Database>) {
     }
 }
 
-#[tokio::test]
-async fn test_archive_session() {
-    let db = Arc::new(Database::new_in_memory().await.unwrap());
+async fn seed_session(db: &Database, id: &str, project_id: &str, file_path: &str) {
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, is_sidechain) VALUES ('test-1', 'proj-1', '/tmp/test.jsonl', 0)",
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, is_sidechain)
+         VALUES (?1, X'00', 0, 1, 4, 0, ?2, ?3, 0)",
     )
+    .bind(id)
+    .bind(project_id)
+    .bind(file_path)
     .execute(db.pool())
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn test_archive_session() {
+    let db = Arc::new(Database::new_in_memory().await.unwrap());
+    seed_session(&db, "test-1", "proj-1", "/tmp/test.jsonl").await;
 
     // Archive it
     let result = db.archive_session("test-1").await.unwrap();
@@ -62,12 +71,7 @@ async fn test_archive_session() {
 #[tokio::test]
 async fn test_unarchive_session() {
     let db = Arc::new(Database::new_in_memory().await.unwrap());
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, is_sidechain) VALUES ('test-2', 'proj-2', '/tmp/test2.jsonl', 0)",
-    )
-    .execute(db.pool())
-    .await
-    .unwrap();
+    seed_session(&db, "test-2", "proj-2", "/tmp/test2.jsonl").await;
 
     // Archive then fold so shadow is populated.
     db.archive_session("test-2").await.unwrap();
@@ -91,10 +95,11 @@ async fn test_unarchive_session() {
         flag.0.is_none(),
         "session_flags.archived_at must be cleared"
     );
-    let path: (String,) = sqlx::query_as("SELECT file_path FROM sessions WHERE id = 'test-2'")
-        .fetch_one(db.pool())
-        .await
-        .unwrap();
+    let path: (String,) =
+        sqlx::query_as("SELECT file_path FROM session_stats WHERE session_id = 'test-2'")
+            .fetch_one(db.pool())
+            .await
+            .unwrap();
     assert_eq!(path.0, "/tmp/restored.jsonl");
 
     // Verify session reappears in valid_sessions
@@ -110,14 +115,13 @@ async fn test_unarchive_session() {
 async fn test_bulk_archive() {
     let db = Arc::new(Database::new_in_memory().await.unwrap());
     for i in 1..=5 {
-        sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, is_sidechain) VALUES (?1, 'proj-bulk', ?2, 0)",
+        seed_session(
+            &db,
+            &format!("bulk-{i}"),
+            "proj-bulk",
+            &format!("/tmp/bulk-{i}.jsonl"),
         )
-        .bind(format!("bulk-{i}"))
-        .bind(format!("/tmp/bulk-{i}.jsonl"))
-        .execute(db.pool())
-        .await
-        .unwrap();
+        .await;
     }
 
     let ids: Vec<String> = (1..=3).map(|i| format!("bulk-{i}")).collect();

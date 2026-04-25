@@ -284,15 +284,18 @@ mod tests {
 
     async fn insert_test_session(db: &Database, id: &str) {
         sqlx::query(
-            r#"INSERT INTO sessions (
-                id, project_id, file_path, preview, project_path,
+            r#"INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at,
+                project_id, file_path, preview, project_path,
                 duration_seconds, files_edited_count, reedited_files_count,
                 files_read_count, user_prompt_count, api_call_count,
                 tool_call_count, commit_count, turn_count,
                 last_message_at, size_bytes, last_message,
                 files_touched, skills_used, files_read, files_edited
             )
-            VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
+            VALUES (?1, X'00', 1024, 1, 4, strftime('%s', 'now'),
+                'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
                 1800, 5, 1, 5, 5, 10, 20, 1, 10,
                 strftime('%s', 'now'), 1024, '', '[]', '[]', '[]', '[]')"#,
         )
@@ -391,7 +394,7 @@ mod tests {
     async fn test_get_sessions_without_facets() {
         let db = setup_db().await;
 
-        // Create 2 sessions in the sessions table
+        // Create 2 sessions in session_stats
         insert_test_session(&db, "sess-with").await;
         insert_test_session(&db, "sess-without").await;
 
@@ -408,7 +411,7 @@ mod tests {
     async fn test_facet_aggregate_stats() {
         let db = setup_db().await;
 
-        // Create sessions in the sessions table first
+        // Create sessions in session_stats first
         insert_test_session(&db, "s1").await;
         insert_test_session(&db, "s2").await;
         insert_test_session(&db, "s3").await;
@@ -478,15 +481,18 @@ mod tests {
         for i in 1..=7 {
             let id = format!("pa-{}", i);
             sqlx::query(
-                r#"INSERT INTO sessions (
-                    id, project_id, file_path, preview, project_path,
+                r#"INSERT INTO session_stats (
+                    session_id, source_content_hash, source_size, parser_version,
+                    stats_version, indexed_at,
+                    project_id, file_path, preview, project_path,
                     duration_seconds, files_edited_count, reedited_files_count,
                     files_read_count, user_prompt_count, api_call_count,
                     tool_call_count, commit_count, turn_count,
                     last_message_at, size_bytes, last_message,
                     files_touched, skills_used, files_read, files_edited
                 )
-                VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
+                VALUES (?1, X'00', 1024, 1, 4, ?2,
+                    'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
                     1800, 5, 1, 5, 5, 10, 20, 1, 10,
                     ?2, 1024, '', '[]', '[]', '[]', '[]')"#,
             )

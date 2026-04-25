@@ -99,7 +99,7 @@ pub(crate) fn build_session_info(
 }
 
 /// Resolve a session's JSONL file path: adapter (session_stats) first,
-/// then legacy `sessions` table, then live-session store.
+/// then DB session_stats helper, then live-session store.
 ///
 /// **Phase 3 PR 3.z:** cut from `state.session_catalog.get()` to
 /// `state.session_catalog_adapter.get()`. The adapter internally
@@ -108,10 +108,9 @@ pub(crate) fn build_session_info(
 /// path still runs, just underneath the adapter.
 ///
 /// The DB and live-session fallbacks remain for two narrow cases:
-///   - DB `sessions.file_path`: coverage during the migration window
-///     when callers hand in a session id that the adapter hasn't yet
-///     picked up (pre-reconcile race). Removed in Phase 6 when the
-///     legacy `sessions` table is retired.
+///   - DB `session_stats.file_path`: coverage when callers hand in a
+///     session id that the adapter hasn't yet picked up
+///     (pre-reconcile race).
 ///   - Live: IDE-spawned sessions whose JSONL file may not yet be on
 ///     disk.
 pub(crate) async fn resolve_session_file_path(

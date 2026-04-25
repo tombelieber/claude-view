@@ -164,7 +164,7 @@ impl Database {
 
     /// Get total user prompt count for a time range.
     ///
-    /// Queries sessions table directly since prompts are not stored in snapshots.
+    /// Queries session_stats directly since prompts are not stored in snapshots.
     pub async fn get_total_prompts(
         &self,
         range: TimeRange,

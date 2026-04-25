@@ -13,23 +13,15 @@ use std::sync::Arc;
 
 async fn seed_session_and_stats(db: &Database, sid: &str) {
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
-         VALUES (?1, 'p1', ?2, 0)",
-    )
-    .bind(sid)
-    .bind(format!("/tmp/{sid}.jsonl"))
-    .execute(db.pool())
-    .await
-    .unwrap();
-    sqlx::query(
         "INSERT INTO session_stats (session_id, source_content_hash, source_size,
             parser_version, stats_version, indexed_at,
             total_input_tokens, total_output_tokens, user_prompt_count,
-            duration_seconds, last_message_at, project_id)
+            duration_seconds, last_message_at, project_id, file_path, is_sidechain)
          VALUES (?1, X'00', 0, 1, 1, 0,
-                 100, 200, 5, 60, 1700000000000, 'p1')",
+                 100, 200, 5, 60, 1700000000000, 'p1', ?2, 0)",
     )
     .bind(sid)
+    .bind(format!("/tmp/{sid}.jsonl"))
     .execute(db.pool())
     .await
     .unwrap();

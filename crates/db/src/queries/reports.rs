@@ -483,10 +483,10 @@ mod tests {
         let db = Database::new_in_memory().await.unwrap();
 
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds, total_input_tokens, total_output_tokens) VALUES ('s1', 'p1', '/tmp/s1.jsonl', 'Test', 'proj', 1000, 1100, 100, 500000, 80000)"
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size, parser_version, stats_version, indexed_at, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds, total_input_tokens, total_output_tokens) VALUES ('s1', X'00', 0, 1, 4, 0, 'p1', '/tmp/s1.jsonl', 'Test', 'proj', 1000, 1100, 100, 500000, 80000)"
         ).execute(db.pool()).await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds, total_input_tokens, total_output_tokens) VALUES ('s2', 'p1', '/tmp/s2.jsonl', 'Test', 'proj', 1100, 1300, 200, 347000, 44000)"
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size, parser_version, stats_version, indexed_at, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds, total_input_tokens, total_output_tokens) VALUES ('s2', X'00', 0, 1, 4, 0, 'p1', '/tmp/s2.jsonl', 'Test', 'proj', 1100, 1300, 200, 347000, 44000)"
         ).execute(db.pool()).await.unwrap();
 
         let (input, output) = db.get_token_totals_in_range(0, 2000).await.unwrap();
@@ -508,13 +508,13 @@ mod tests {
 
         // Insert test sessions
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s1', 'p1', '/tmp/s1.jsonl', 'Test', 'claude-view', 1000, 1100, 3600)"
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size, parser_version, stats_version, indexed_at, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s1', X'00', 0, 1, 4, 0, 'p1', '/tmp/s1.jsonl', 'Test', 'claude-view', 1000, 1100, 3600)"
         ).execute(db.pool()).await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s2', 'p1', '/tmp/s2.jsonl', 'Test', 'claude-view', 1100, 1200, 1800)"
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size, parser_version, stats_version, indexed_at, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s2', X'00', 0, 1, 4, 0, 'p1', '/tmp/s2.jsonl', 'Test', 'claude-view', 1100, 1200, 1800)"
         ).execute(db.pool()).await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s3', 'p2', '/tmp/s3.jsonl', 'Test', 'vicky-wiki', 1200, 1300, 900)"
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size, parser_version, stats_version, indexed_at, project_id, file_path, preview, project_display_name, first_message_at, last_message_at, duration_seconds) VALUES ('s3', X'00', 0, 1, 4, 0, 'p2', '/tmp/s3.jsonl', 'Test', 'vicky-wiki', 1200, 1300, 900)"
         ).execute(db.pool()).await.unwrap();
 
         let preview = db.get_report_preview(0, 2000).await.unwrap();

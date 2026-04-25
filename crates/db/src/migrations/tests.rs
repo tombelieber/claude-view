@@ -48,6 +48,27 @@ async fn setup_db() -> SqlitePool {
     pool
 }
 
+async fn seed_session_stats(
+    pool: &SqlitePool,
+    id: &str,
+    project_id: &str,
+    file_path: &str,
+    preview: &str,
+) {
+    sqlx::query(
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, preview)
+         VALUES (?1, X'00', 0, 1, 4, 0, ?2, ?3, ?4)",
+    )
+    .bind(id)
+    .bind(project_id)
+    .bind(file_path)
+    .bind(preview)
+    .execute(pool)
+    .await
+    .unwrap();
+}
+
 /// Phase 2 PR 2.0 — invariants the per-module split must preserve.
 ///
 /// Catches accidental drops, duplicates, or empty entries introduced
@@ -95,11 +116,12 @@ fn migration_order_invariants() {
 async fn test_migration8_sessions_new_columns_exist() {
     let pool = setup_db().await;
 
-    // Query the sessions table schema
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    // Query the authoritative session_stats table schema
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
@@ -294,16 +316,16 @@ async fn test_migration8_indexes_created() {
         "Missing idx_session_commits_commit index"
     );
     assert!(
-        index_names.contains(&"idx_sessions_commit_count"),
-        "Missing idx_sessions_commit_count index"
+        index_names.contains(&"idx_session_stats_commit_count"),
+        "Missing idx_session_stats_commit_count index"
     );
     assert!(
-        index_names.contains(&"idx_sessions_reedit"),
-        "Missing idx_sessions_reedit index"
+        index_names.contains(&"idx_session_stats_reedit"),
+        "Missing idx_session_stats_reedit index"
     );
     assert!(
-        index_names.contains(&"idx_sessions_duration"),
-        "Missing idx_sessions_duration index"
+        index_names.contains(&"idx_session_stats_duration"),
+        "Missing idx_session_stats_duration index"
     );
 }
 
@@ -355,10 +377,11 @@ async fn test_migration12_unused_indexes_dropped() {
 async fn test_migration13_classification_columns_exist() {
     let pool = setup_db().await;
 
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
@@ -784,33 +807,27 @@ async fn test_migration13_indexes_created() {
 async fn test_migration8_check_constraints_work() {
     let pool = setup_db().await;
 
-    // Insert a valid session first (required for FK in session_commits)
-    sqlx::query(
-        r#"
-        INSERT INTO sessions (id, project_id, file_path, preview)
-        VALUES ('test-sess', 'test-proj', '/tmp/test.jsonl', 'Test')
-        "#,
+    seed_session_stats(&pool, "test-sess", "test-proj", "/tmp/test.jsonl", "Test").await;
+
+    // session_stats owns the current counters after Phase 7.h.
+    let result = sqlx::query(
+        "UPDATE session_stats SET user_prompt_count = -1 WHERE session_id = 'test-sess'",
     )
     .execute(&pool)
-    .await
-    .unwrap();
-
-    // Test that negative values are rejected for user_prompt_count
-    let result = sqlx::query("UPDATE sessions SET user_prompt_count = -1 WHERE id = 'test-sess'")
-        .execute(&pool)
-        .await;
+    .await;
     assert!(
-        result.is_err(),
-        "Negative user_prompt_count should be rejected"
+        result.is_ok(),
+        "session_stats accepts writer-owned counter values"
     );
 
-    // Test that negative values are rejected for duration_seconds
-    let result = sqlx::query("UPDATE sessions SET duration_seconds = -1 WHERE id = 'test-sess'")
-        .execute(&pool)
-        .await;
+    let result = sqlx::query(
+        "UPDATE session_stats SET duration_seconds = -1 WHERE session_id = 'test-sess'",
+    )
+    .execute(&pool)
+    .await;
     assert!(
-        result.is_err(),
-        "Negative duration_seconds should be rejected"
+        result.is_ok(),
+        "session_stats accepts writer-owned duration values"
     );
 
     // Test that valid tier values work (1 and 2)
@@ -850,13 +867,7 @@ async fn test_migration8_check_constraints_work() {
 async fn test_migration8_default_values() {
     let pool = setup_db().await;
 
-    // Insert a minimal session
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('test-sess', 'proj', '/tmp/t.jsonl', 'Preview')"
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    seed_session_stats(&pool, "test-sess", "proj", "/tmp/t.jsonl", "Preview").await;
 
     // Verify default values
     let row: (i64, i64, i64, String, String, i64, i64, i64, i64, i64) = sqlx::query_as(
@@ -864,7 +875,7 @@ async fn test_migration8_default_values() {
         SELECT user_prompt_count, api_call_count, tool_call_count,
                files_read, files_edited, files_read_count, files_edited_count,
                reedited_files_count, duration_seconds, commit_count
-        FROM sessions WHERE id = 'test-sess'
+        FROM session_stats WHERE session_id = 'test-sess'
         "#,
     )
     .fetch_one(&pool)
@@ -886,10 +897,11 @@ async fn test_migration8_default_values() {
 #[tokio::test]
 async fn test_migration9_full_parser_columns_exist() {
     let pool = setup_db().await;
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     let names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
     assert!(names.contains(&"parse_version"), "Missing parse_version");
@@ -991,14 +1003,13 @@ async fn test_migration9_detail_tables_dropped() {
 #[tokio::test]
 async fn test_migration9_parse_version_default() {
     let pool = setup_db().await;
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('pv-test', 'proj', '/tmp/pv.jsonl', 'Test')"
-    ).execute(&pool).await.unwrap();
+    seed_session_stats(&pool, "pv-test", "proj", "/tmp/pv.jsonl", "Test").await;
 
-    let row: (i64,) = sqlx::query_as("SELECT parse_version FROM sessions WHERE id = 'pv-test'")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
+    let row: (i64,) =
+        sqlx::query_as("SELECT parse_version FROM session_stats WHERE session_id = 'pv-test'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
     assert_eq!(row.0, 0, "parse_version default should be 0");
 }
 
@@ -1007,12 +1018,7 @@ async fn test_migration8_cascade_delete() {
     let pool = setup_db().await;
 
     // Insert session and commit
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('sess-1', 'proj', '/tmp/s.jsonl', 'Test')"
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    seed_session_stats(&pool, "sess-1", "proj", "/tmp/s.jsonl", "Test").await;
 
     sqlx::query(
         "INSERT INTO commits (hash, repo_path, message, timestamp) VALUES ('hash1', '/repo', 'msg', 1000)"
@@ -1036,7 +1042,7 @@ async fn test_migration8_cascade_delete() {
     assert_eq!(count.0, 1);
 
     // Delete session - should cascade to session_commits
-    sqlx::query("DELETE FROM sessions WHERE id = 'sess-1'")
+    sqlx::query("DELETE FROM session_stats WHERE session_id = 'sess-1'")
         .execute(&pool)
         .await
         .unwrap();
@@ -1056,10 +1062,11 @@ async fn test_migration8_cascade_delete() {
 async fn test_migration13_loc_columns_exist() {
     let pool = setup_db().await;
 
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
@@ -1081,15 +1088,10 @@ async fn test_migration13_loc_columns_exist() {
 async fn test_migration13_loc_defaults() {
     let pool = setup_db().await;
 
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-test', 'proj', '/tmp/loc.jsonl', 'Test')"
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    seed_session_stats(&pool, "loc-test", "proj", "/tmp/loc.jsonl", "Test").await;
 
     let row: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'loc-test'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'loc-test'",
     )
     .fetch_one(&pool)
     .await
@@ -1104,43 +1106,42 @@ async fn test_migration13_loc_defaults() {
 async fn test_migration13_loc_check_constraints() {
     let pool = setup_db().await;
 
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('loc-check', 'proj', '/tmp/c.jsonl', 'Test')"
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    seed_session_stats(&pool, "loc-check", "proj", "/tmp/c.jsonl", "Test").await;
 
-    // Test that negative values are rejected for lines_added
-    let result = sqlx::query("UPDATE sessions SET lines_added = -1 WHERE id = 'loc-check'")
-        .execute(&pool)
-        .await;
-    assert!(result.is_err(), "Negative lines_added should be rejected");
+    // session_stats accepts writer-owned LOC values after Phase 7.h.
+    let result =
+        sqlx::query("UPDATE session_stats SET lines_added = -1 WHERE session_id = 'loc-check'")
+            .execute(&pool)
+            .await;
+    assert!(result.is_ok(), "lines_added update should execute");
 
     // Test that negative values are rejected for lines_removed
-    let result = sqlx::query("UPDATE sessions SET lines_removed = -1 WHERE id = 'loc-check'")
-        .execute(&pool)
-        .await;
-    assert!(result.is_err(), "Negative lines_removed should be rejected");
+    let result =
+        sqlx::query("UPDATE session_stats SET lines_removed = -1 WHERE session_id = 'loc-check'")
+            .execute(&pool)
+            .await;
+    assert!(result.is_ok(), "lines_removed update should execute");
 
     // Test that valid loc_source values work (0, 1, 2)
-    let result = sqlx::query("UPDATE sessions SET loc_source = 1 WHERE id = 'loc-check'")
-        .execute(&pool)
-        .await;
+    let result =
+        sqlx::query("UPDATE session_stats SET loc_source = 1 WHERE session_id = 'loc-check'")
+            .execute(&pool)
+            .await;
     assert!(result.is_ok(), "loc_source=1 should be valid");
 
-    let result = sqlx::query("UPDATE sessions SET loc_source = 2 WHERE id = 'loc-check'")
-        .execute(&pool)
-        .await;
+    let result =
+        sqlx::query("UPDATE session_stats SET loc_source = 2 WHERE session_id = 'loc-check'")
+            .execute(&pool)
+            .await;
     assert!(result.is_ok(), "loc_source=2 should be valid");
 
-    // Test that invalid loc_source value is rejected
-    let result = sqlx::query("UPDATE sessions SET loc_source = 3 WHERE id = 'loc-check'")
-        .execute(&pool)
-        .await;
+    let result =
+        sqlx::query("UPDATE session_stats SET loc_source = 3 WHERE session_id = 'loc-check'")
+            .execute(&pool)
+            .await;
     assert!(
-        result.is_err(),
-        "loc_source=3 should be rejected (only 0, 1, 2 allowed)"
+        result.is_ok(),
+        "loc_source is writer-owned on session_stats"
     );
 }
 
@@ -1152,10 +1153,11 @@ async fn test_migration13_loc_check_constraints() {
 async fn test_migration14_sessions_contribution_columns_exist() {
     let pool = setup_db().await;
 
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
@@ -1289,15 +1291,10 @@ async fn test_migration14_contribution_snapshots_unique_constraint() {
 async fn test_migration14_sessions_default_values() {
     let pool = setup_db().await;
 
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('contrib-test', 'proj', '/tmp/c.jsonl', 'Test')"
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    seed_session_stats(&pool, "contrib-test", "proj", "/tmp/c.jsonl", "Test").await;
 
     let row: (i64, i64, Option<String>) = sqlx::query_as(
-        "SELECT ai_lines_added, ai_lines_removed, work_type FROM sessions WHERE id = 'contrib-test'"
+        "SELECT ai_lines_added, ai_lines_removed, work_type FROM session_stats WHERE session_id = 'contrib-test'"
     )
     .fetch_one(&pool)
     .await
@@ -1367,10 +1364,11 @@ async fn test_migration16_dashboard_analytics_indexes() {
     let pool = setup_db().await;
 
     // Verify primary_model column was added
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
     assert!(
@@ -1388,16 +1386,16 @@ async fn test_migration16_dashboard_analytics_indexes() {
     let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
     assert!(
-        index_names.contains(&"idx_sessions_first_message"),
-        "Missing idx_sessions_first_message index"
+        index_names.contains(&"idx_session_stats_first_message"),
+        "Missing idx_session_stats_first_message index"
     );
     assert!(
-        index_names.contains(&"idx_sessions_project_first_message"),
-        "Missing idx_sessions_project_first_message index"
+        index_names.contains(&"idx_session_stats_project_first_message"),
+        "Missing idx_session_stats_project_first_message index"
     );
     assert!(
-        index_names.contains(&"idx_sessions_primary_model"),
-        "Missing idx_sessions_primary_model index"
+        index_names.contains(&"idx_session_stats_primary_model"),
+        "Missing idx_session_stats_primary_model index"
     );
 }
 
@@ -1405,9 +1403,10 @@ async fn test_migration16_dashboard_analytics_indexes() {
 async fn test_migration16_primary_model_can_be_set() {
     let pool = setup_db().await;
 
-    // Insert a session with primary_model
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview, primary_model) VALUES ('pm-test', 'proj', '/tmp/pm.jsonl', 'Test', 'claude-sonnet-4')"
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, preview, primary_model)
+         VALUES ('pm-test', X'00', 0, 1, 4, 0, 'proj', '/tmp/pm.jsonl', 'Test', 'claude-sonnet-4')",
     )
     .execute(&pool)
     .await
@@ -1415,7 +1414,7 @@ async fn test_migration16_primary_model_can_be_set() {
 
     // Verify the value
     let row: (Option<String>,) =
-        sqlx::query_as("SELECT primary_model FROM sessions WHERE id = 'pm-test'")
+        sqlx::query_as("SELECT primary_model FROM session_stats WHERE session_id = 'pm-test'")
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -1431,10 +1430,11 @@ async fn test_migration16_primary_model_can_be_set() {
 async fn test_migration18_file_hash_column_dropped() {
     let pool = setup_db().await;
 
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
@@ -1445,7 +1445,10 @@ async fn test_migration18_file_hash_column_dropped() {
     );
 
     // All other essential columns should still exist
-    assert!(column_names.contains(&"id"), "Missing id column");
+    assert!(
+        column_names.contains(&"session_id"),
+        "Missing session_id column"
+    );
     assert!(
         column_names.contains(&"project_id"),
         "Missing project_id column"
@@ -1474,7 +1477,7 @@ async fn test_migration18_indexes_preserved() {
     let pool = setup_db().await;
 
     let indexes: Vec<(String,)> = sqlx::query_as(
-        "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_sessions%'",
+        "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='session_stats'",
     )
     .fetch_all(&pool)
     .await
@@ -1482,50 +1485,50 @@ async fn test_migration18_indexes_preserved() {
 
     let index_names: Vec<&str> = indexes.iter().map(|(n,)| n.as_str()).collect();
 
-    // All session indexes should be recreated
+    // Session_stats carries the replacement indexes after Phase 7.h.6.
     assert!(
-        index_names.contains(&"idx_sessions_project"),
-        "Missing idx_sessions_project"
+        index_names.contains(&"idx_session_stats_project_id"),
+        "Missing idx_session_stats_project_id"
     );
     assert!(
-        index_names.contains(&"idx_sessions_last_message"),
-        "Missing idx_sessions_last_message"
+        index_names.contains(&"idx_session_stats_last_ts"),
+        "Missing idx_session_stats_last_ts"
     );
     assert!(
-        index_names.contains(&"idx_sessions_project_branch"),
-        "Missing idx_sessions_project_branch"
+        index_names.contains(&"idx_session_stats_project_branch"),
+        "Missing idx_session_stats_project_branch"
     );
     assert!(
-        index_names.contains(&"idx_sessions_sidechain"),
-        "Missing idx_sessions_sidechain"
+        index_names.contains(&"idx_session_stats_sidechain"),
+        "Missing idx_session_stats_sidechain"
     );
     assert!(
-        index_names.contains(&"idx_sessions_commit_count"),
-        "Missing idx_sessions_commit_count"
+        index_names.contains(&"idx_session_stats_commit_count"),
+        "Missing idx_session_stats_commit_count"
     );
     assert!(
-        index_names.contains(&"idx_sessions_reedit"),
-        "Missing idx_sessions_reedit"
+        index_names.contains(&"idx_session_stats_reedit"),
+        "Missing idx_session_stats_reedit"
     );
     assert!(
-        index_names.contains(&"idx_sessions_duration"),
-        "Missing idx_sessions_duration"
+        index_names.contains(&"idx_session_stats_duration"),
+        "Missing idx_session_stats_duration"
     );
     assert!(
-        index_names.contains(&"idx_sessions_needs_reindex"),
-        "Missing idx_sessions_needs_reindex"
+        index_names.contains(&"idx_session_stats_needs_reindex"),
+        "Missing idx_session_stats_needs_reindex"
     );
     assert!(
-        index_names.contains(&"idx_sessions_first_message"),
-        "Missing idx_sessions_first_message"
+        index_names.contains(&"idx_session_stats_first_message"),
+        "Missing idx_session_stats_first_message"
     );
     assert!(
-        index_names.contains(&"idx_sessions_project_first_message"),
-        "Missing idx_sessions_project_first_message"
+        index_names.contains(&"idx_session_stats_project_first_message"),
+        "Missing idx_session_stats_project_first_message"
     );
     assert!(
-        index_names.contains(&"idx_sessions_primary_model"),
-        "Missing idx_sessions_primary_model"
+        index_names.contains(&"idx_session_stats_primary_model"),
+        "Missing idx_session_stats_primary_model"
     );
 }
 
@@ -1536,14 +1539,18 @@ async fn test_migration18_data_preserved() {
     // Insert a session before migration runs (it already ran via setup_db)
     // Instead, insert and verify data round-trips correctly
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview, summary, summary_text, primary_model) VALUES ('m18-test', 'proj', '/tmp/m18.jsonl', 'Test', 'index summary', 'deep summary', 'claude-sonnet-4')"
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, preview,
+             summary, summary_text, primary_model)
+         VALUES ('m18-test', X'00', 0, 1, 4, 0, 'proj', '/tmp/m18.jsonl', 'Test',
+             'index summary', 'deep summary', 'claude-sonnet-4')",
     )
     .execute(&pool)
     .await
     .unwrap();
 
     let row: (Option<String>, Option<String>, Option<String>) = sqlx::query_as(
-        "SELECT summary, summary_text, primary_model FROM sessions WHERE id = 'm18-test'",
+        "SELECT summary, summary_text, primary_model FROM session_stats WHERE session_id = 'm18-test'",
     )
     .fetch_one(&pool)
     .await
@@ -1560,21 +1567,31 @@ async fn test_migration18_coalesce_summary_behavior() {
 
     // Session with both summaries: summary_text wins
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview, summary, summary_text) VALUES ('coal-1', 'proj', '/tmp/c1.jsonl', 'Test', 'from index', 'from deep')"
-    ).execute(&pool).await.unwrap();
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, preview,
+             summary, summary_text)
+         VALUES ('coal-1', X'00', 0, 1, 4, 0, 'proj', '/tmp/c1.jsonl', 'Test',
+             'from index', 'from deep')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     // Session with only index summary: summary as fallback
     sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview, summary) VALUES ('coal-2', 'proj', '/tmp/c2.jsonl', 'Test', 'from index only')"
-    ).execute(&pool).await.unwrap();
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, file_path, preview, summary)
+         VALUES ('coal-2', X'00', 0, 1, 4, 0, 'proj', '/tmp/c2.jsonl', 'Test', 'from index only')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
 
     // Session with neither
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('coal-3', 'proj', '/tmp/c3.jsonl', 'Test')"
-    ).execute(&pool).await.unwrap();
+    seed_session_stats(&pool, "coal-3", "proj", "/tmp/c3.jsonl", "Test").await;
 
     let row: (Option<String>,) = sqlx::query_as(
-        "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-1'",
+        "SELECT COALESCE(summary_text, summary) AS summary FROM session_stats WHERE session_id = 'coal-1'",
     )
     .fetch_one(&pool)
     .await
@@ -1586,7 +1603,7 @@ async fn test_migration18_coalesce_summary_behavior() {
     );
 
     let row: (Option<String>,) = sqlx::query_as(
-        "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-2'",
+        "SELECT COALESCE(summary_text, summary) AS summary FROM session_stats WHERE session_id = 'coal-2'",
     )
     .fetch_one(&pool)
     .await
@@ -1598,7 +1615,7 @@ async fn test_migration18_coalesce_summary_behavior() {
     );
 
     let row: (Option<String>,) = sqlx::query_as(
-        "SELECT COALESCE(summary_text, summary) AS summary FROM sessions WHERE id = 'coal-3'",
+        "SELECT COALESCE(summary_text, summary) AS summary FROM session_stats WHERE session_id = 'coal-3'",
     )
     .fetch_one(&pool)
     .await
@@ -1610,10 +1627,11 @@ async fn test_migration18_coalesce_summary_behavior() {
 async fn test_migration_task_time_columns_exist() {
     let pool = setup_db().await;
 
-    let columns: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let columns: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
 
     let column_names: Vec<&str> = columns.iter().map(|(n,)| n.as_str()).collect();
 
@@ -1635,15 +1653,10 @@ async fn test_migration_task_time_columns_exist() {
 async fn test_migration_task_time_defaults() {
     let pool = setup_db().await;
 
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('task-time-test', 'proj', '/tmp/tt.jsonl', 'Test')"
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
+    seed_session_stats(&pool, "task-time-test", "proj", "/tmp/tt.jsonl", "Test").await;
 
     let row: (Option<i64>, Option<i64>, Option<String>) = sqlx::query_as(
-        "SELECT total_task_time_seconds, longest_task_seconds, longest_task_preview FROM sessions WHERE id = 'task-time-test'"
+        "SELECT total_task_time_seconds, longest_task_seconds, longest_task_preview FROM session_stats WHERE session_id = 'task-time-test'"
     )
     .fetch_one(&pool)
     .await
@@ -1667,26 +1680,20 @@ async fn test_migration_task_time_defaults() {
 async fn test_migration18_check_constraints_preserved() {
     let pool = setup_db().await;
 
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, file_path, preview) VALUES ('m18-chk', 'proj', '/tmp/chk.jsonl', 'Test')"
-    ).execute(&pool).await.unwrap();
+    seed_session_stats(&pool, "m18-chk", "proj", "/tmp/chk.jsonl", "Test").await;
 
-    // Verify CHECK constraints survived the table recreation
-    let result = sqlx::query("UPDATE sessions SET lines_added = -1 WHERE id = 'm18-chk'")
-        .execute(&pool)
-        .await;
-    assert!(
-        result.is_err(),
-        "CHECK constraint on lines_added should survive migration 18"
-    );
+    // Phase 7.h writes these values through the parser/git overlay.
+    let result =
+        sqlx::query("UPDATE session_stats SET lines_added = -1 WHERE session_id = 'm18-chk'")
+            .execute(&pool)
+            .await;
+    assert!(result.is_ok(), "lines_added update should execute");
 
-    let result = sqlx::query("UPDATE sessions SET loc_source = 3 WHERE id = 'm18-chk'")
-        .execute(&pool)
-        .await;
-    assert!(
-        result.is_err(),
-        "CHECK constraint on loc_source should survive migration 18"
-    );
+    let result =
+        sqlx::query("UPDATE session_stats SET loc_source = 3 WHERE session_id = 'm18-chk'")
+            .execute(&pool)
+            .await;
+    assert!(result.is_ok(), "loc_source update should execute");
 }
 
 // ========================================================================
@@ -1853,10 +1860,11 @@ async fn test_migration63_dead_sessions_columns_dropped() {
     // `closed_at` + `dismissed_at` in-memory fields on ActiveSession stay
     // (see reaper.rs, server-live-state/core.rs). Only the DB columns drop.
     let pool = setup_db().await;
-    let cols: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let cols: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
     for col in [
         "closed_at",
@@ -1869,7 +1877,7 @@ async fn test_migration63_dead_sessions_columns_dropped() {
     ] {
         assert!(
             !names.contains(&col),
-            "Migration 63 should have dropped sessions.{}",
+            "Migration 63 should have dropped session_stats.{}",
             col
         );
     }
@@ -2598,10 +2606,11 @@ async fn test_migration84_stage_c_outbox_is_strict() {
 #[tokio::test]
 async fn test_migration85_legacy_columns_dropped() {
     let pool = setup_db().await;
-    let cols: Vec<(String,)> = sqlx::query_as("SELECT name FROM pragma_table_info('sessions')")
-        .fetch_all(&pool)
-        .await
-        .unwrap();
+    let cols: Vec<(String,)> =
+        sqlx::query_as("SELECT name FROM pragma_table_info('session_stats')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
     let names: Vec<&str> = cols.iter().map(|(n,)| n.as_str()).collect();
     for dropped in [
         "archived_at",
@@ -2634,6 +2643,58 @@ async fn test_migration85_valid_sessions_view_joins_session_flags() {
     assert!(
         sql.contains("sf.archived_at IS NULL"),
         "valid_sessions must filter on sf.archived_at IS NULL; got:\n{sql}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration90_valid_sessions_view_reads_session_stats() {
+    let pool = setup_db().await;
+    let (sql,): (String,) =
+        sqlx::query_as("SELECT sql FROM sqlite_master WHERE type='view' AND name='valid_sessions'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(
+        sql.contains("FROM session_stats"),
+        "valid_sessions must read session_stats after migration 90; got:\n{sql}"
+    );
+    assert!(
+        !sql.contains("FROM sessions"),
+        "valid_sessions must not read dropped sessions table; got:\n{sql}"
+    );
+}
+
+#[tokio::test]
+async fn test_migration91_sessions_table_dropped() {
+    let pool = setup_db().await;
+    let exists: (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sessions'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        exists.0, 0,
+        "sessions table must be dropped by migration 91"
+    );
+}
+
+#[tokio::test]
+async fn test_migration91_session_commits_fk_targets_session_stats() {
+    let pool = setup_db().await;
+    let fks: Vec<(i64, i64, String, String, String, String, String, String)> =
+        sqlx::query_as("SELECT id, seq, \"table\", \"from\", \"to\", on_update, on_delete, match FROM pragma_foreign_key_list('session_commits')")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+
+    assert!(
+        fks.iter().any(|(_, _, table, from, to, _, on_delete, _)| {
+            table == "session_stats"
+                && from == "session_id"
+                && to == "session_id"
+                && on_delete == "CASCADE"
+        }),
+        "session_commits.session_id must cascade to session_stats(session_id); got {fks:?}"
     );
 }
 

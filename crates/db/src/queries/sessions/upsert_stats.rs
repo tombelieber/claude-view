@@ -149,8 +149,7 @@ pub const UPSERT_SESSION_STATS_FROM_PARSED_SQL: &str = r#"
 /// Execute the session_stats full-row UPSERT from a ParsedSession.
 ///
 /// Works against any executor (pool or transaction). Used from every
-/// production upsert path in parallel with `execute_upsert_parsed_session`
-/// so the two tables stay synchronised during the Phase 7.h cutover.
+/// production upsert path after the Phase 7.h cutover.
 pub async fn execute_upsert_session_stats_from_parsed<'e, E>(
     executor: E,
     s: &ParsedSession,

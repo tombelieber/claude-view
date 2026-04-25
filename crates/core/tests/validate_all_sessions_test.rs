@@ -138,7 +138,7 @@ fn validate_block(block: &ConversationBlock) -> Option<String> {
                 // These are all optional reads with fallbacks, no .map() calls
             }
         }
-        ConversationBlock::Assistant(a) => {
+        ConversationBlock::Assistant(_a) => {
             // Frontend: block.segments.map(...) — segments is Vec, always present
             // But verify it's not somehow empty in a way that would cause issues
             // (segments is a required Rust field, so this is structural safety)

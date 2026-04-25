@@ -18,7 +18,7 @@ impl Database {
         let now = Utc::now().timestamp();
         let active_threshold = now - 300;
 
-        // All token/model data is denormalized on the sessions table.
+        // All token/model data is denormalized on session_stats.
         // No LEFT JOIN on turns needed.
         //
         // CQRS Phase 5.5bc / D.3 — `category_*` and `classified_at` now
@@ -134,7 +134,7 @@ impl Database {
     pub async fn get_session_by_id(&self, id: &str) -> DbResult<Option<SessionInfo>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"SELECT
-                s.id, s.project_id, s.preview, s.turn_count,
+                s.session_id AS id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
                 s.project_path, s.git_root, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
@@ -170,9 +170,9 @@ impl Database {
                 s.total_cost_usd,
                 s.slug,
                 s.entrypoint
-            FROM sessions s
-            LEFT JOIN session_flags sf ON sf.session_id = s.id
-            WHERE s.id = ?1"#,
+            FROM session_stats s
+            LEFT JOIN session_flags sf ON sf.session_id = s.session_id
+            WHERE s.session_id = ?1"#,
         )
         .bind(id)
         .fetch_optional(self.pool())
@@ -189,16 +189,17 @@ impl Database {
     /// Returns `None` if the session doesn't exist in the DB.
     /// The returned path is always absolute (set during indexing).
     pub async fn get_session_file_path(&self, session_id: &str) -> DbResult<Option<String>> {
-        let row: Option<(String,)> = sqlx::query_as("SELECT file_path FROM sessions WHERE id = ?1")
-            .bind(session_id)
-            .fetch_optional(self.pool())
-            .await?;
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT file_path FROM session_stats WHERE session_id = ?1")
+                .bind(session_id)
+                .fetch_optional(self.pool())
+                .await?;
         Ok(row.map(|(p,)| p))
     }
 
     /// Get all session IDs in the database (for backup dedup).
     pub async fn get_all_session_ids(&self) -> DbResult<Vec<String>> {
-        let rows: Vec<(String,)> = sqlx::query_as("SELECT id FROM sessions")
+        let rows: Vec<(String,)> = sqlx::query_as("SELECT session_id FROM session_stats")
             .fetch_all(self.pool())
             .await?;
         Ok(rows.into_iter().map(|(id,)| id).collect())
@@ -206,11 +207,11 @@ impl Database {
 
     /// Get all session file_paths from the database.
     ///
-    /// Returns every non-empty `file_path` in the sessions table.
+    /// Returns every non-empty `file_path` in `session_stats`.
     /// Used by the stale-session pruning step to check which files still exist on disk.
     pub async fn get_all_session_file_paths(&self) -> DbResult<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT file_path FROM sessions WHERE file_path IS NOT NULL AND file_path != ''",
+            "SELECT file_path FROM session_stats WHERE file_path IS NOT NULL AND file_path != ''",
         )
         .fetch_all(self.pool())
         .await?;

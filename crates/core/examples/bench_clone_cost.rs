@@ -51,10 +51,10 @@ fn bench_file(path: &Path, label: &str) -> BenchResult {
 
     // --- Pass 1: Parse only (current behavior) ---
     let start = Instant::now();
-    let mut parsed_count = 0usize;
+    let mut _parsed_count = 0usize;
     for line in &lines {
         if let Ok(_value) = serde_json::from_str::<serde_json::Value>(line) {
-            parsed_count += 1;
+            _parsed_count += 1;
             // Simulate current parser: extract a few fields, drop value
         }
     }
@@ -198,14 +198,14 @@ fn main() {
     // Print results table
     println!();
     println!(
-        "{:<20} {:>8} {:>6} {:>10} {:>10} {:>10} {:>8} {:>10}",
-        "Tier", "Size", "Lines", "Parse(ms)", "+Clone(ms)", "Δ(ms)", "Δ(%)", "CloneKB"
+        "{:<20} {:>8} {:>6} {:>10} {:>10} {:>10} {:>8} {:>10} {:>8}",
+        "Tier", "Size", "Lines", "Parse(ms)", "+Clone(ms)", "Δ(ms)", "Δ(%)", "CloneKB", "Peak"
     );
-    println!("{}", "-".repeat(92));
+    println!("{}", "-".repeat(101));
 
     for r in &results {
         println!(
-            "{:<20} {:>6}KB {:>6} {:>10.2} {:>10.2} {:>10.2} {:>7.1}% {:>8}KB",
+            "{:<20} {:>6}KB {:>6} {:>10.2} {:>10.2} {:>10.2} {:>7.1}% {:>8}KB {:>8}",
             r.label,
             r.file_size_kb,
             r.line_count,
@@ -214,6 +214,7 @@ fn main() {
             r.clone_overhead_ms,
             r.clone_overhead_pct,
             r.total_cloned_bytes / 1024,
+            r.peak_values_in_memory,
         );
     }
 

@@ -117,19 +117,20 @@ const DRIFT_SAMPLE_LIMIT: i64 = 1_000;
 /// log the aggregate drift count. Exposed for test coverage — callers
 /// that want the loop should use [`spawn_drift_detector`].
 pub async fn run_drift_sampler_once(db: Arc<Database>) {
-    let ids: Vec<(String,)> =
-        match sqlx::query_as("SELECT id FROM sessions WHERE RANDOM() % 100 < ?1 LIMIT ?2")
-            .bind(DRIFT_SAMPLE_PERCENT)
-            .bind(DRIFT_SAMPLE_LIMIT)
-            .fetch_all(db.pool())
-            .await
-        {
-            Ok(rows) => rows,
-            Err(err) => {
-                tracing::warn!(error = %err, "drift_sampler: failed to pick sample ids");
-                return;
-            }
-        };
+    let ids: Vec<(String,)> = match sqlx::query_as(
+        "SELECT session_id FROM session_stats WHERE RANDOM() % 100 < ?1 LIMIT ?2",
+    )
+    .bind(DRIFT_SAMPLE_PERCENT)
+    .bind(DRIFT_SAMPLE_LIMIT)
+    .fetch_all(db.pool())
+    .await
+    {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::warn!(error = %err, "drift_sampler: failed to pick sample ids");
+            return;
+        }
+    };
 
     let mut drift_count = 0_usize;
     let mut compared = 0_usize;

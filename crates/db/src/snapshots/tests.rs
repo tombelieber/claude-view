@@ -244,15 +244,16 @@ mod tests {
 
         sqlx::query(
             r#"
-            INSERT INTO sessions (
-                id, project_id, file_path, preview, is_sidechain,
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at, project_id, file_path, preview, is_sidechain,
                 work_type, duration_seconds, user_prompt_count,
                 ai_lines_added, ai_lines_removed, files_edited_count,
                 reedited_files_count, commit_count
             )
             VALUES
-                ('primary-sess', 'proj', '/tmp/primary.jsonl', 'Primary', 0, 'code', 120, 3, 20, 5, 2, 1, 1),
-                ('sidechain-sess', 'proj', '/tmp/side.jsonl', 'Sidechain', 1, 'code', 120, 3, 20, 5, 2, 1, 1)
+                ('primary-sess', X'00', 0, 1, 4, 0, 'proj', '/tmp/primary.jsonl', 'Primary', 0, 'code', 120, 3, 20, 5, 2, 1, 1),
+                ('sidechain-sess', X'00', 0, 1, 4, 0, 'proj', '/tmp/side.jsonl', 'Sidechain', 1, 'code', 120, 3, 20, 5, 2, 1, 1)
             "#,
         )
         .execute(db.pool())
@@ -330,8 +331,9 @@ mod tests {
         // Insert a session with files_edited
         sqlx::query(
             r#"
-            INSERT INTO sessions (id, project_id, file_path, preview, files_edited)
-            VALUES ('test-sess', 'proj', '/tmp/t.jsonl', 'Preview', '["src/main.rs", "src/lib.rs"]')
+            INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                parser_version, stats_version, indexed_at, project_id, file_path, preview, files_edited)
+            VALUES ('test-sess', X'00', 0, 1, 4, 0, 'proj', '/tmp/t.jsonl', 'Preview', '["src/main.rs", "src/lib.rs"]')
             "#,
         )
         .execute(db.pool())
@@ -351,10 +353,11 @@ mod tests {
 
         sqlx::query(
             r#"
-            INSERT INTO sessions (id, project_id, file_path, preview, files_edited, is_sidechain)
+            INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                parser_version, stats_version, indexed_at, project_id, file_path, preview, files_edited, is_sidechain)
             VALUES
-                ('primary-files', 'proj', '/tmp/primary-files.jsonl', 'Primary', '["src/main.rs"]', 0),
-                ('sidechain-files', 'proj', '/tmp/sidechain-files.jsonl', 'Side', '["src/secret.rs"]', 1)
+                ('primary-files', X'00', 0, 1, 4, 0, 'proj', '/tmp/primary-files.jsonl', 'Primary', '["src/main.rs"]', 0),
+                ('sidechain-files', X'00', 0, 1, 4, 0, 'proj', '/tmp/sidechain-files.jsonl', 'Side', '["src/secret.rs"]', 1)
             "#,
         )
         .execute(db.pool())
@@ -383,11 +386,13 @@ mod tests {
         // Insert sessions
         sqlx::query(
             r#"
-            INSERT INTO sessions (id, project_id, file_path, preview, ai_lines_added, ai_lines_removed, commit_count, files_edited_count, reedited_files_count, last_message_at)
+            INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                parser_version, stats_version, indexed_at, project_id, file_path, preview,
+                ai_lines_added, ai_lines_removed, commit_count, files_edited_count, reedited_files_count, last_message_at)
             VALUES
-                ('sess1', 'proj', '/tmp/1.jsonl', 'Preview', 200, 50, 1, 5, 1, ?1),
-                ('sess2', 'proj', '/tmp/2.jsonl', 'Preview', 150, 30, 1, 3, 0, ?1),
-                ('sess3', 'proj', '/tmp/3.jsonl', 'Preview', 100, 20, 0, 4, 2, ?1)
+                ('sess1', X'00', 0, 1, 4, 0, 'proj', '/tmp/1.jsonl', 'Preview', 200, 50, 1, 5, 1, ?1),
+                ('sess2', X'00', 0, 1, 4, 0, 'proj', '/tmp/2.jsonl', 'Preview', 150, 30, 1, 3, 0, ?1),
+                ('sess3', X'00', 0, 1, 4, 0, 'proj', '/tmp/3.jsonl', 'Preview', 100, 20, 0, 4, 2, ?1)
             "#,
         )
         .bind(now)
@@ -398,16 +403,14 @@ mod tests {
         // Skill invocations now live in session_stats.invocation_counts.
         // sess1 uses tdd + commit, sess2 uses tdd, sess3 uses nothing.
         sqlx::query(
-            r#"INSERT INTO session_stats (
-                   session_id, source_content_hash, source_size,
-                   parser_version, stats_version, indexed_at,
-                   last_message_at, invocation_counts
-               ) VALUES
-                   ('sess1', X'01', 0, 1, 1, 0, ?1, '{"Skill:tdd":1,"Skill:commit":1}'),
-                   ('sess2', X'02', 0, 1, 1, 0, ?1, '{"Skill:tdd":1}'),
-                   ('sess3', X'03', 0, 1, 1, 0, ?1, '{}')"#,
+            r#"UPDATE session_stats
+               SET invocation_counts = CASE session_id
+                   WHEN 'sess1' THEN '{"Skill:tdd":1,"Skill:commit":1}'
+                   WHEN 'sess2' THEN '{"Skill:tdd":1}'
+                   WHEN 'sess3' THEN '{}'
+               END
+               WHERE session_id IN ('sess1', 'sess2', 'sess3')"#,
         )
-        .bind(now)
         .execute(db.pool())
         .await
         .unwrap();

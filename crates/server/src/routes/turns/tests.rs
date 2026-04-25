@@ -11,8 +11,6 @@ mod tests {
     use tower::ServiceExt;
 
     use crate::routes::turns::scanner::{scan_turns, truncate_preview};
-    use crate::routes::turns::types::TurnInfo;
-
     async fn test_db() -> Database {
         Database::new_in_memory().await.expect("in-memory DB")
     }

@@ -97,38 +97,6 @@ mod tests {
         is_sidechain: bool,
         branch: Option<&str>,
     ) {
-        // Insert into sessions (legacy table for backwards compat)
-        db.pool()
-            .execute(
-                sqlx::query(
-                    r#"
-                    INSERT INTO sessions (
-                        id, project_id, file_path, preview, project_path, project_display_name,
-                        duration_seconds, files_edited_count, reedited_files_count, files_read_count,
-                        user_prompt_count, api_call_count, tool_call_count, commit_count, turn_count,
-                        last_message_at, size_bytes, last_message, files_touched, skills_used,
-                        files_read, files_edited, ai_lines_added, ai_lines_removed,
-                        is_sidechain, git_branch
-                    )
-                    VALUES (
-                        ?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp', 'Project',
-                        120, 2, 0, 1,
-                        3, 5, 7, 0, 4,
-                        ?2, 1024, 'last', '[]', '[]',
-                        '[]', '[]', 10, 2,
-                        ?3, ?4
-                    )
-                    "#,
-                )
-                .bind(id)
-                .bind(last_message_at)
-                .bind(is_sidechain)
-                .bind(branch),
-            )
-            .await
-            .unwrap();
-
-        // Also insert into session_stats (primary read table for Phase 7.c queries)
         db.pool()
             .execute(
                 sqlx::query(
@@ -136,10 +104,18 @@ mod tests {
                     INSERT INTO session_stats (
                         session_id, source_content_hash, source_size, parser_version,
                         stats_version, indexed_at, last_message_at, is_sidechain,
-                        git_branch
+                        git_branch, project_id, file_path, preview, project_path,
+                        project_display_name, duration_seconds, files_edited_count,
+                        reedited_files_count, files_read_count, user_prompt_count,
+                        api_call_count, tool_call_count, commit_count, turn_count,
+                        size_bytes, last_message, files_touched, skills_used,
+                        files_read, files_edited, ai_lines_added, ai_lines_removed
                     )
                     VALUES (
-                        ?1, X'00', 1024, 1, 3, 0, ?2, ?3, ?4
+                        ?1, X'00', 1024, 1, 4, 0, ?2, ?3, ?4,
+                        'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
+                        'Project', 120, 2, 0, 1, 3, 5, 7, 0, 4,
+                        1024, 'last', '[]', '[]', '[]', '[]', 10, 2
                     )
                     "#,
                 )

@@ -26,15 +26,18 @@ async fn test_get_metric_timeseries_with_data() {
         let file_path = format!("/tmp/trend-test-{}.jsonl", i);
         sqlx::query(
             r#"
-            INSERT INTO sessions (
-                id, project_id, file_path, preview, project_path,
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at,
+                project_id, file_path, preview, project_path,
                 duration_seconds, files_edited_count, reedited_files_count,
                 files_read_count, user_prompt_count, api_call_count,
                 tool_call_count, commit_count, turn_count,
                 last_message_at, size_bytes, last_message,
                 files_touched, skills_used, files_read, files_edited
             )
-            VALUES (?1, 'proj', ?3, 'test', '/tmp',
+            VALUES (?1, X'00', 1024, 1, 4, 0,
+                'proj', ?3, 'test', '/tmp',
                 600, 5, 1, 5, 5, 10, 20, 1, 10,
                 ?2, 1024, '', '[]', '[]', '[]', '[]')
             "#,
@@ -61,13 +64,15 @@ async fn test_get_metric_timeseries_lines_uses_canonical_ai_line_fields() {
 
     sqlx::query(
         r#"
-        INSERT INTO sessions (
-            id, project_id, file_path, preview, last_message_at,
+        INSERT INTO session_stats (
+            session_id, source_content_hash, source_size, parser_version,
+            stats_version, indexed_at,
+            project_id, file_path, preview, last_message_at,
             files_edited_count, ai_lines_added, ai_lines_removed
         )
         VALUES
-            ('lines-1', 'proj', '/tmp/lines-1.jsonl', 'test', ?1, 10, 7, 3),
-            ('lines-2', 'proj', '/tmp/lines-2.jsonl', 'test', ?1, 2, 1, 1)
+            ('lines-1', X'00', 0, 1, 4, 0, 'proj', '/tmp/lines-1.jsonl', 'test', ?1, 10, 7, 3),
+            ('lines-2', X'00', 0, 1, 4, 0, 'proj', '/tmp/lines-2.jsonl', 'test', ?1, 2, 1, 1)
         "#,
     )
     .bind(now)
@@ -95,14 +100,16 @@ async fn test_get_metric_timeseries_cost_per_line_uses_priced_lines_denominator(
 
     sqlx::query(
         r#"
-        INSERT INTO sessions (
-            id, project_id, file_path, preview, last_message_at,
+        INSERT INTO session_stats (
+            session_id, source_content_hash, source_size, parser_version,
+            stats_version, indexed_at,
+            project_id, file_path, preview, last_message_at,
             files_edited_count, ai_lines_added, ai_lines_removed, total_cost_usd
         )
         VALUES
-            ('cpl-1', 'proj', '/tmp/cpl-1.jsonl', 'test', ?1, 40, 9, 3, 1.2),
-            ('cpl-2', 'proj', '/tmp/cpl-2.jsonl', 'test', ?1, 20, 2, 1, 0.3),
-            ('cpl-3', 'proj', '/tmp/cpl-3.jsonl', 'test', ?1, 1, 100, 0, NULL)
+            ('cpl-1', X'00', 0, 1, 4, 0, 'proj', '/tmp/cpl-1.jsonl', 'test', ?1, 40, 9, 3, 1.2),
+            ('cpl-2', X'00', 0, 1, 4, 0, 'proj', '/tmp/cpl-2.jsonl', 'test', ?1, 20, 2, 1, 0.3),
+            ('cpl-3', X'00', 0, 1, 4, 0, 'proj', '/tmp/cpl-3.jsonl', 'test', ?1, 1, 100, 0, NULL)
         "#,
     )
     .bind(now)
@@ -155,15 +162,18 @@ async fn test_get_activity_heatmap_with_data() {
         let file_path = format!("/tmp/heatmap-test-{}.jsonl", i);
         sqlx::query(
             r#"
-            INSERT INTO sessions (
-                id, project_id, file_path, preview, project_path,
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at,
+                project_id, file_path, preview, project_path,
                 duration_seconds, files_edited_count, reedited_files_count,
                 files_read_count, user_prompt_count, api_call_count,
                 tool_call_count, commit_count, turn_count,
                 last_message_at, size_bytes, last_message,
                 files_touched, skills_used, files_read, files_edited
             )
-            VALUES (?1, 'proj', ?3, 'test', '/tmp',
+            VALUES (?1, X'00', 1024, 1, 4, 0,
+                'proj', ?3, 'test', '/tmp',
                 600, 5, 1, 5, 5, 10, 20, 1, 10,
                 ?2, 1024, '', '[]', '[]', '[]', '[]')
             "#,

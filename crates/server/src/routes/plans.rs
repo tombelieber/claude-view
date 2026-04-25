@@ -15,14 +15,11 @@ use crate::state::AppState;
 
 /// GET /api/sessions/:id/plans -- returns plan documents for the session's slug.
 ///
-/// **Phase 3 PR 3.6 — no cutover.** Plans are a Layer 3 concern (per
+/// Plans are a Layer 3 concern (per
 /// design §5 of `2026-04-17-cqrs-phase-1-7-design.md`): filesystem
 /// files under `~/.claude/plans/<slug>/*.md` keyed by the session's
-/// slug. `session_stats` doesn't carry the slug, so the slug lookup
-/// stays on the legacy `sessions` table through Phase 3; Phase 6
-/// (sessions table retirement) migrates the slug elsewhere. The
-/// openapi_compatibility test pins this endpoint's response shape
-/// across Phase 3.
+/// slug. Phase 7.h carries that slug on `session_stats`, and the
+/// openapi_compatibility test pins this endpoint's response shape.
 #[utoipa::path(get, path = "/api/sessions/{id}/plans", tag = "plans",
     params(("id" = String, Path, description = "Session ID")),
     responses(

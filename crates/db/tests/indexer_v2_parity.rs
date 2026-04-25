@@ -92,7 +92,7 @@ async fn indexer_v2_parity_against_prod_sessions() {
         .expect("open prod claude-view.db");
 
     let sessions: Vec<(String, String)> = sqlx::query_as(
-        r#"SELECT id, file_path FROM sessions
+        r#"SELECT session_id AS id, file_path FROM session_stats
             WHERE file_path IS NOT NULL
               AND file_path LIKE '%.jsonl'
             ORDER BY RANDOM()
@@ -105,7 +105,7 @@ async fn indexer_v2_parity_against_prod_sessions() {
 
     assert!(
         !sessions.is_empty(),
-        "sessions table appears empty — populate ~/.claude-view/claude-view.db before running parity"
+        "session_stats appears empty — populate ~/.claude-view/claude-view.db before running parity"
     );
 
     let mut writer = WriterReport::default();

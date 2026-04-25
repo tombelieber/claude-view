@@ -294,12 +294,6 @@ impl Database {
         session_id: &str,
         commit_count: i32,
     ) -> DbResult<()> {
-        // CQRS Phase 7.h.3c: dual-write commit_count to legacy sessions + session_stats.
-        sqlx::query("UPDATE sessions SET commit_count = ?2 WHERE id = ?1")
-            .bind(session_id)
-            .bind(commit_count)
-            .execute(self.pool())
-            .await?;
         sqlx::query("UPDATE session_stats SET commit_count = ?2 WHERE session_id = ?1")
             .bind(session_id)
             .bind(commit_count)
@@ -323,19 +317,6 @@ impl Database {
             return Ok(());
         }
 
-        // CQRS Phase 7.h.3c: dual-write LOC stats to legacy sessions + session_stats.
-        sqlx::query(
-            r#"
-            UPDATE sessions
-            SET lines_added = ?2, lines_removed = ?3, loc_source = 2
-            WHERE id = ?1
-            "#,
-        )
-        .bind(session_id)
-        .bind(stats.insertions as i64)
-        .bind(stats.deletions as i64)
-        .execute(self.pool())
-        .await?;
         sqlx::query(
             r#"
             UPDATE session_stats
@@ -362,8 +343,8 @@ impl Database {
     pub async fn get_sessions_for_git_sync(&self) -> DbResult<Vec<SessionSyncInfo>> {
         let rows: Vec<(String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
             r#"
-            SELECT id, project_path, first_message_at, last_message_at
-            FROM sessions
+            SELECT session_id, project_path, first_message_at, last_message_at
+            FROM session_stats
             WHERE project_path != '' AND last_message_at IS NOT NULL
             ORDER BY last_message_at DESC
             "#,

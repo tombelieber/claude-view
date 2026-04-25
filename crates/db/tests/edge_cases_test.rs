@@ -549,7 +549,7 @@ async fn a10_5_session_deleted_cascades_session_commits() {
     assert_eq!(count, 1);
 
     // Delete session
-    sqlx::query("DELETE FROM sessions WHERE id = 'sess-1'")
+    sqlx::query("DELETE FROM session_stats WHERE session_id = 'sess-1'")
         .execute(db.pool())
         .await
         .unwrap();

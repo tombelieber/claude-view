@@ -58,8 +58,7 @@ async fn test_list_invocables_with_counts() {
         .await
         .unwrap();
 
-    // Seed matching sessions + session_stats rows. The reader joins
-    // `valid_sessions` × `session_stats`, so both sides must exist.
+    // Seed matching session_stats rows.
     // Counts: Read x3 (s1=2, s2=1), Edit x1 (s2), Bash x0.
     for (sid, counts) in &[("s1", r#"{"Read":2}"#), ("s2", r#"{"Read":1,"Edit":1}"#)] {
         claude_view_db::test_support::SessionSeedBuilder::new(*sid)
@@ -71,18 +70,12 @@ async fn test_list_invocables_with_counts() {
             .seed(&db)
             .await
             .unwrap();
-        sqlx::query(
-            r#"INSERT INTO session_stats (
-                   session_id, source_content_hash, source_size,
-                   parser_version, stats_version, indexed_at,
-                   invocation_counts
-               ) VALUES (?, X'01', 0, 1, 1, 0, ?)"#,
-        )
-        .bind(sid)
-        .bind(counts)
-        .execute(db.pool())
-        .await
-        .unwrap();
+        sqlx::query("UPDATE session_stats SET invocation_counts = ? WHERE session_id = ?")
+            .bind(counts)
+            .bind(sid)
+            .execute(db.pool())
+            .await
+            .unwrap();
     }
 
     let items = db.list_invocables_with_counts().await.unwrap();

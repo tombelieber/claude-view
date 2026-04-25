@@ -10,7 +10,7 @@ mod update;
 mod upsert;
 mod upsert_stats;
 
-pub use upsert::{execute_upsert_parsed_session, UPSERT_SESSION_SQL};
+pub use upsert::execute_upsert_parsed_session;
 pub use upsert_stats::{
     execute_upsert_session_stats_from_parsed, UPSERT_SESSION_STATS_FROM_PARSED_SQL,
 };

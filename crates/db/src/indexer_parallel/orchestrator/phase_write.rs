@@ -86,12 +86,6 @@ async fn write_single_session(
     // `session_stats.per_model_tokens_json` / `invocation_counts`,
     // written by indexer_v2. Nothing to delete here anymore.
 
-    crate::queries::sessions::execute_upsert_parsed_session(&mut **tx, &session.parsed)
-        .await
-        .map_err(|e| format!("Failed to upsert session {}: {}", session.parsed.id, e))?;
-    // CQRS Phase 7.h.3: dual-write the indexer hot path into `session_stats`
-    // so the new view / reader flip in 7.h.4 sees every session, not just
-    // the ones that went through `Database::upsert_parsed_session`.
     crate::queries::sessions::execute_upsert_session_stats_from_parsed(&mut **tx, &session.parsed)
         .await
         .map_err(|e| {
@@ -102,19 +96,6 @@ async fn write_single_session(
         })?;
 
     if session.cwd.is_some() {
-        // CQRS Phase 7.h.3c: dual-write topology (sessions + session_stats).
-        sqlx::query(
-            "UPDATE sessions SET \
-             session_cwd = COALESCE(?1, session_cwd), \
-             git_root = COALESCE(?2, git_root) \
-             WHERE id = ?3",
-        )
-        .bind(session.cwd.as_deref())
-        .bind(session.git_root.as_deref())
-        .bind(&session.parsed.id)
-        .execute(&mut **tx)
-        .await
-        .map_err(|e| format!("Failed to update topology {}: {}", session.parsed.id, e))?;
         sqlx::query(
             "UPDATE session_stats SET \
              session_cwd = COALESCE(?1, session_cwd), \

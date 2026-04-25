@@ -13,8 +13,8 @@
 //   - unarchive is a no-op if no row in session_flags or
 //     `sf.archived_at IS NULL`.
 //
-// File-path plumbing stays on `sessions.file_path` (which is NOT dropped
-// by migration 85).
+// File-path plumbing now lives on `session_stats.file_path`; migration 91
+// drops the legacy `sessions` table.
 
 use crate::queries::action_log::insert_action_log_tx;
 use crate::{Database, DbResult};
@@ -35,9 +35,9 @@ impl Database {
         let row: Option<(String, Option<i64>)> = sqlx::query_as(
             r#"
             SELECT s.file_path, sf.archived_at
-            FROM sessions s
-            LEFT JOIN session_flags sf ON sf.session_id = s.id
-            WHERE s.id = ?1
+            FROM session_stats s
+            LEFT JOIN session_flags sf ON sf.session_id = s.session_id
+            WHERE s.session_id = ?1
             "#,
         )
         .bind(session_id)
@@ -57,8 +57,7 @@ impl Database {
         Ok(file_path)
     }
 
-    /// Unarchive a session: update `file_path` (live column on
-    /// `sessions`), then emit an "unarchive" action-log entry iff the
+    /// Unarchive a session: update `file_path`, then emit an "unarchive" action-log entry iff the
     /// session was previously archived in the shadow.
     pub async fn unarchive_session(&self, session_id: &str, new_file_path: &str) -> DbResult<bool> {
         let now_ms = Utc::now().timestamp_millis();
@@ -78,14 +77,6 @@ impl Database {
             return Ok(false);
         }
 
-        // file_path is live metadata on `sessions`; updating it is
-        // orthogonal to the archive flag and stays a direct UPDATE.
-        // CQRS Phase 7.h.3c: dual-write file_path to legacy + session_stats.
-        sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
-            .bind(new_file_path)
-            .bind(session_id)
-            .execute(&mut *tx)
-            .await?;
         sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
             .bind(new_file_path)
             .bind(session_id)
@@ -114,9 +105,9 @@ impl Database {
             let row: Option<(String, Option<i64>)> = sqlx::query_as(
                 r#"
                 SELECT s.file_path, sf.archived_at
-                FROM sessions s
-                LEFT JOIN session_flags sf ON sf.session_id = s.id
-                WHERE s.id = ?1
+                FROM session_stats s
+                LEFT JOIN session_flags sf ON sf.session_id = s.session_id
+                WHERE s.session_id = ?1
                 "#,
             )
             .bind(id)
@@ -153,12 +144,6 @@ impl Database {
                 continue;
             }
 
-            // CQRS Phase 7.h.3c: dual-write file_path (bulk unarchive).
-            sqlx::query("UPDATE sessions SET file_path = ?1 WHERE id = ?2")
-                .bind(new_path)
-                .bind(id)
-                .execute(&mut *tx)
-                .await?;
             sqlx::query("UPDATE session_stats SET file_path = ?1 WHERE session_id = ?2")
                 .bind(new_path)
                 .bind(id)
@@ -179,11 +164,7 @@ impl Database {
         let mut tx = self.pool().begin().await?;
 
         if valid_paths.is_empty() {
-            // CQRS Phase 7.h.3c: dual-DELETE sessions + session_stats (empty-paths edge case).
-            let result = sqlx::query("DELETE FROM sessions")
-                .execute(&mut *tx)
-                .await?;
-            sqlx::query("DELETE FROM session_stats")
+            let result = sqlx::query("DELETE FROM session_stats")
                 .execute(&mut *tx)
                 .await?;
             sqlx::query("DELETE FROM indexer_state")
@@ -198,10 +179,6 @@ impl Database {
             (1..=valid_paths.len()).map(|i| format!("?{}", i)).collect();
         let in_clause = placeholders.join(", ");
 
-        let delete_sessions_sql = format!(
-            "DELETE FROM sessions WHERE file_path NOT IN ({})",
-            in_clause
-        );
         let delete_session_stats_sql = format!(
             "DELETE FROM session_stats WHERE file_path NOT IN ({})",
             in_clause
@@ -211,18 +188,11 @@ impl Database {
             in_clause
         );
 
-        let mut query = sqlx::query(&delete_sessions_sql);
-        for path in valid_paths {
-            query = query.bind(path);
-        }
-        let result = query.execute(&mut *tx).await?;
-
-        // CQRS Phase 7.h.3c: mirror the filter on session_stats.
         let mut query = sqlx::query(&delete_session_stats_sql);
         for path in valid_paths {
             query = query.bind(path);
         }
-        query.execute(&mut *tx).await?;
+        let result = query.execute(&mut *tx).await?;
 
         let mut query = sqlx::query(&delete_indexer_sql);
         for path in valid_paths {

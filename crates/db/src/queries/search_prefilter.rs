@@ -43,7 +43,7 @@ impl Database {
         &self,
         filter: &SearchPrefilter,
     ) -> DbResult<HashSet<String>> {
-        let mut qb = sqlx::QueryBuilder::new("SELECT id FROM sessions WHERE 1=1");
+        let mut qb = sqlx::QueryBuilder::new("SELECT session_id FROM session_stats WHERE 1=1");
 
         if let Some(ref project) = filter.project {
             // Polymorphic project filter — check BOTH project_id AND git_root.
@@ -94,11 +94,11 @@ mod tests {
     async fn setup_db() -> Database {
         let db = Database::new_in_memory().await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, git_root, git_branch, primary_model, file_path, last_message_at)
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size, parser_version, stats_version, indexed_at, project_id, git_root, git_branch, primary_model, file_path, last_message_at)
              VALUES
-             ('s1', 'proj-a', '/dev/proj-a', 'main',   'claude-3-opus-20240229',   '/dev/proj-a/s1.jsonl', 1710000100),
-             ('s2', 'proj-a', '/dev/proj-a', 'feat',   'claude-3-5-sonnet-20241022', '/dev/proj-a/s2.jsonl', 1710000200),
-             ('s3', 'proj-b', '/dev/proj-b', 'main',   'claude-3-opus-20240229',   '/dev/proj-b/s3.jsonl', 1710000300)",
+             ('s1', X'00', 0, 1, 4, 0, 'proj-a', '/dev/proj-a', 'main',   'claude-3-opus-20240229',   '/dev/proj-a/s1.jsonl', 1710000100),
+             ('s2', X'00', 0, 1, 4, 0, 'proj-a', '/dev/proj-a', 'feat',   'claude-3-5-sonnet-20241022', '/dev/proj-a/s2.jsonl', 1710000200),
+             ('s3', X'00', 0, 1, 4, 0, 'proj-b', '/dev/proj-b', 'main',   'claude-3-opus-20240229',   '/dev/proj-b/s3.jsonl', 1710000300)",
         )
         .execute(db.pool())
         .await

@@ -3,7 +3,7 @@
 //
 // Run with: cargo run --example bench_dashboard -p claude-view-db --release
 //
-// Seeds an in-memory DB with ~500 sessions (with turns, commits, invocations)
+// Seeds an in-memory DB with ~500 session_stats rows and commit links
 // then measures each dashboard query function 10× and reports avg/min/max.
 //
 // Targets:
@@ -27,44 +27,13 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
     let one_week = 7 * 86400;
 
     println!(
-        "Seeding {} sessions with turns, commits, invocations...",
+        "Seeding {} session_stats rows with commits...",
         NUM_SESSIONS
     );
     let start = Instant::now();
 
     // Batch all inserts in a single transaction
     let mut tx = pool.begin().await?;
-
-    // Insert model (referenced by turns FK)
-    sqlx::query(
-        "INSERT OR IGNORE INTO models (id, provider, family, first_seen, last_seen) VALUES (?1, ?2, ?3, ?4, ?5)",
-    )
-    .bind("claude-sonnet-4-5-20250929")
-    .bind("anthropic")
-    .bind("claude-4.5")
-    .bind(now - 30 * 86400)
-    .bind(now)
-    .execute(&mut *tx)
-    .await?;
-
-    // Insert invocables (skills, commands, mcp_tools, agents)
-    let kinds = ["skill", "command", "mcp_tool", "agent"];
-    for (i, kind) in kinds.iter().enumerate() {
-        for j in 0..5 {
-            let id = format!("{}-{}", kind, j);
-            let name = format!("{}_{}", kind, j);
-            sqlx::query(
-                "INSERT OR IGNORE INTO invocables (id, name, kind, description) VALUES (?1, ?2, ?3, ?4)",
-            )
-            .bind(&id)
-            .bind(&name)
-            .bind(*kind)
-            .bind(format!("A {} invocable", kind))
-            .execute(&mut *tx)
-            .await?;
-            let _ = i; // suppress unused warning
-        }
-    }
 
     // Insert sessions spread across current week and previous week
     for i in 0..NUM_SESSIONS {
@@ -82,8 +51,10 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
 
         sqlx::query(
             r#"
-            INSERT INTO sessions (
-                id, project_id, project_display_name, project_path, file_path,
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at,
+                project_id, project_display_name, project_path, file_path,
                 preview, last_message, last_message_at,
                 turn_count, message_count, size_bytes,
                 tool_counts_edit, tool_counts_read, tool_counts_bash, tool_counts_write,
@@ -91,10 +62,11 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
                 duration_seconds, commit_count, git_branch,
                 files_touched, skills_used, files_read, files_edited,
                 api_call_count, tool_call_count, files_read_count,
-                indexed_at,
                 total_input_tokens, total_output_tokens
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5,
+                ?1, X'00', ?11, 1,
+                4, ?25,
+                ?2, ?3, ?4, ?5,
                 ?6, ?7, ?8,
                 ?9, ?10, ?11,
                 ?12, ?13, ?14, ?15,
@@ -102,7 +74,6 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
                 ?19, ?20, ?21,
                 '[]', '[]', '[]', '[]',
                 ?22, ?23, ?24,
-                ?25,
                 ?26, ?27
             )
             "#,
@@ -137,26 +108,6 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
         .execute(&mut *tx)
         .await?;
 
-        // Insert turns for this session
-        for t in 0..TURNS_PER_SESSION {
-            let turn_uuid = format!("{}-turn-{}", session_id, t);
-            sqlx::query(
-                r#"
-                INSERT INTO turns (session_id, uuid, seq, model_id, input_tokens, output_tokens, timestamp)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                "#,
-            )
-            .bind(&session_id)
-            .bind(&turn_uuid)
-            .bind(t as i32)
-            .bind("claude-sonnet-4-5-20250929")
-            .bind((i * 200 + t * 100 + 1000) as i64)
-            .bind((i * 100 + t * 50 + 500) as i64)
-            .bind(ts + t as i64 * 60)
-            .execute(&mut *tx)
-            .await?;
-        }
-
         // Insert commits for this session
         for c in 0..COMMITS_PER_SESSION {
             let commit_hash = format!("abc{:04}{:02}", i, c);
@@ -183,37 +134,15 @@ async fn seed_database(db: &Database) -> Result<(), Box<dyn std::error::Error>> 
             .execute(&mut *tx)
             .await?;
         }
-
-        // Insert invocations (2 per session)
-        for inv in 0..2 {
-            let kind_idx = (i + inv) % 4;
-            let item_idx = (i + inv) % 5;
-            let invocable_id = format!("{}-{}", kinds[kind_idx], item_idx);
-            let source_file = format!("/tmp/{}.jsonl", session_id);
-            let byte_offset = (inv * 10000 + i * 100) as i64;
-            sqlx::query(
-                "INSERT OR IGNORE INTO invocations (source_file, byte_offset, invocable_id, session_id, project, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            )
-            .bind(&source_file)
-            .bind(byte_offset)
-            .bind(&invocable_id)
-            .bind(&session_id)
-            .bind(&project_id)
-            .bind(ts + inv as i64 * 30)
-            .execute(&mut *tx)
-            .await?;
-        }
     }
 
     tx.commit().await?;
 
     let seed_elapsed = start.elapsed();
     println!(
-        "Seeded {} sessions ({} turns, {} commits, {} invocations) in {:.1}ms",
+        "Seeded {} sessions ({} commits) in {:.1}ms",
         NUM_SESSIONS,
-        NUM_SESSIONS * TURNS_PER_SESSION,
         NUM_SESSIONS * COMMITS_PER_SESSION,
-        NUM_SESSIONS * 2,
         seed_elapsed.as_secs_f64() * 1000.0
     );
 

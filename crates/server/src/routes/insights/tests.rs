@@ -29,41 +29,37 @@ mod tests {
         (status, String::from_utf8(body.to_vec()).unwrap())
     }
 
-    async fn insert_session(db: &Database, id: &str, ts: i64, category_l1: Option<&str>) {
-        // CQRS Phase D.3 — the legacy sessions.category_* columns are
-        // gone; categories live in session_flags only.
+    async fn insert_session_with_stats(
+        db: &Database,
+        id: &str,
+        ts: i64,
+        category_l1: Option<&str>,
+        duration_seconds: i64,
+        files_edited_count: i64,
+        reedited_files_count: i64,
+        commit_count: i64,
+    ) {
         sqlx::query(
             r#"
-            INSERT INTO sessions (
-                id, project_id, file_path, preview, project_path,
+            INSERT INTO session_stats (
+                session_id, source_content_hash, source_size, parser_version,
+                stats_version, indexed_at, project_id, file_path, preview, project_path,
                 duration_seconds, files_edited_count, reedited_files_count,
                 files_read_count, user_prompt_count, api_call_count,
                 tool_call_count, commit_count, turn_count,
                 last_message_at, size_bytes, last_message,
                 files_touched, skills_used, files_read, files_edited
             )
-            VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
-                1800, 5, 1, 5, 10, 10, 20, 1, 10,
-                ?2, 1024, '', '[]', '[]', '[]', '[]')
+            VALUES (?1, X'00', 1024, 1, 4, 0, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
+                ?2, ?3, ?4, 5, 10, 10, 20, ?5, 10,
+                ?6, 1024, '', '[]', '[]', '[]', '[]')
             "#,
         )
         .bind(id)
-        .bind(ts)
-        .execute(db.pool())
-        .await
-        .unwrap();
-
-        // Also insert into session_stats (primary read table for Phase 7.c queries)
-        sqlx::query(
-            r#"
-            INSERT INTO session_stats (
-                session_id, source_content_hash, source_size, parser_version,
-                stats_version, indexed_at, last_message_at
-            )
-            VALUES (?1, X'00', 1024, 1, 3, 0, ?2)
-            "#,
-        )
-        .bind(id)
+        .bind(duration_seconds)
+        .bind(files_edited_count)
+        .bind(reedited_files_count)
+        .bind(commit_count)
         .bind(ts)
         .execute(db.pool())
         .await
@@ -95,13 +91,11 @@ mod tests {
         }
     }
 
+    async fn insert_session(db: &Database, id: &str, ts: i64, category_l1: Option<&str>) {
+        insert_session_with_stats(db, id, ts, category_l1, 1800, 5, 1, 1).await;
+    }
+
     async fn mark_session_sidechain(db: &Database, id: &str) {
-        sqlx::query("UPDATE sessions SET is_sidechain = 1 WHERE id = ?1")
-            .bind(id)
-            .execute(db.pool())
-            .await
-            .unwrap();
-        // Also update session_stats
         sqlx::query("UPDATE session_stats SET is_sidechain = 1 WHERE session_id = ?1")
             .bind(id)
             .execute(db.pool())
@@ -291,30 +285,17 @@ mod tests {
             let files_edited = if duration == 1800 { 10 } else { 3 };
             let reedited = if duration == 1800 { 1 } else { 2 };
 
-            sqlx::query(
-                r#"
-                INSERT INTO sessions (
-                    id, project_id, file_path, preview, project_path,
-                    duration_seconds, files_edited_count, reedited_files_count,
-                    files_read_count, user_prompt_count, api_call_count,
-                    tool_call_count, commit_count, turn_count,
-                    last_message_at, size_bytes, last_message,
-                    files_touched, skills_used, files_read, files_edited
-                )
-                VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
-                    ?2, ?3, ?4, 5, 5, 10, 20, ?5, 10,
-                    ?6, 1024, '', '[]', '[]', '[]', '[]')
-                "#,
+            insert_session_with_stats(
+                &db,
+                &id,
+                now - (i as i64 * 3600),
+                None,
+                duration,
+                files_edited,
+                reedited,
+                if i % 3 == 0 { 1 } else { 0 },
             )
-            .bind(&id)
-            .bind(duration)
-            .bind(files_edited)
-            .bind(reedited)
-            .bind(if i % 3 == 0 { 1 } else { 0 })
-            .bind(now - (i as i64 * 3600))
-            .execute(db.pool())
-            .await
-            .unwrap();
+            .await;
         }
 
         let app = build_app(db);
@@ -434,27 +415,17 @@ mod tests {
             };
             let ts = now - (i as i64 * 3600);
 
-            sqlx::query(
-                r#"
-                INSERT INTO sessions (
-                    id, project_id, file_path, preview, project_path,
-                    duration_seconds, files_edited_count, reedited_files_count,
-                    files_read_count, user_prompt_count, api_call_count,
-                    tool_call_count, commit_count, turn_count,
-                    last_message_at, size_bytes, last_message,
-                    files_touched, skills_used, files_read, files_edited
-                )
-                VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
-                    1800, 5, 1, 5, 10, 10, 20, ?2, 10,
-                    ?3, 1024, '', '[]', '[]', '[]', '[]')
-                "#,
+            insert_session_with_stats(
+                &db,
+                &id,
+                ts,
+                None,
+                1800,
+                5,
+                1,
+                if i % 2 == 0 { 1 } else { 0 },
             )
-            .bind(&id)
-            .bind(if i % 2 == 0 { 1 } else { 0 })
-            .bind(ts)
-            .execute(db.pool())
-            .await
-            .unwrap();
+            .await;
 
             sqlx::query(
                 r#"
@@ -516,26 +487,7 @@ mod tests {
                 now - 30 * 86400 // 30 days ago (old)
             };
 
-            sqlx::query(
-                r#"
-                INSERT INTO sessions (
-                    id, project_id, file_path, preview, project_path,
-                    duration_seconds, files_edited_count, reedited_files_count,
-                    files_read_count, user_prompt_count, api_call_count,
-                    tool_call_count, commit_count, turn_count,
-                    last_message_at, size_bytes, last_message,
-                    files_touched, skills_used, files_read, files_edited
-                )
-                VALUES (?1, 'proj', '/tmp/' || ?1 || '.jsonl', 'test', '/tmp',
-                    1800, 5, 1, 5, 10, 10, 20, 1, 10,
-                    ?2, 1024, '', '[]', '[]', '[]', '[]')
-                "#,
-            )
-            .bind(&id)
-            .bind(ts)
-            .execute(db.pool())
-            .await
-            .unwrap();
+            insert_session(&db, &id, ts, None).await;
 
             sqlx::query(
                 r#"

@@ -227,11 +227,12 @@ mod tests {
             .await
             .unwrap();
 
-        let (id, project_id): (String, String) =
-            sqlx::query_as("SELECT id, project_id FROM sessions WHERE id = 'sess-1'")
-                .fetch_one(db.pool())
-                .await
-                .unwrap();
+        let (id, project_id): (String, String) = sqlx::query_as(
+            "SELECT session_id, project_id FROM session_stats WHERE session_id = 'sess-1'",
+        )
+        .fetch_one(db.pool())
+        .await
+        .unwrap();
         assert_eq!(id, "sess-1");
         assert_eq!(project_id, "proj-a");
     }
@@ -271,9 +272,9 @@ mod tests {
             Option<String>,
             i32,
         ) = sqlx::query_as(
-            r#"SELECT id, project_id, project_display_name, project_path,
+            r#"SELECT session_id AS id, project_id, project_display_name, project_path,
                        file_path, preview, summary, message_count
-                FROM sessions WHERE id = 'sess-2'"#,
+                FROM session_stats WHERE session_id = 'sess-2'"#,
         )
         .fetch_one(db.pool())
         .await
@@ -301,7 +302,7 @@ mod tests {
             r#"SELECT last_message_at, git_branch, is_sidechain, size_bytes,
                            turn_count, total_input_tokens, total_output_tokens,
                            total_cost_usd, primary_model
-                    FROM sessions WHERE id = 'sess-2'"#,
+                    FROM session_stats WHERE session_id = 'sess-2'"#,
         )
         .fetch_one(db.pool())
         .await
@@ -332,7 +333,7 @@ mod tests {
             Option<f64>,
         ) = sqlx::query_as(
             r#"SELECT files_touched, skills_used, files_read, files_edited, total_cost_usd
-                FROM sessions WHERE id = 'sess-3'"#,
+                FROM session_stats WHERE session_id = 'sess-3'"#,
         )
         .fetch_one(db.pool())
         .await
@@ -361,7 +362,7 @@ mod tests {
 
         let (compactions, hook_blocked, longest): (i32, i32, Option<i64>) = sqlx::query_as(
             "SELECT compaction_count, hook_blocked_count, longest_task_seconds \
-             FROM sessions WHERE id = 'sess-4'",
+             FROM session_stats WHERE session_id = 'sess-4'",
         )
         .fetch_one(db.pool())
         .await

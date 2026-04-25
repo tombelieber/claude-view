@@ -40,8 +40,6 @@
 
 use std::collections::BTreeMap;
 
-use chrono::{DateTime, Utc};
-
 use crate::{Database, DbResult};
 
 /// Tolerance for RFC3339 ↔ unix-ms comparison (see module docs).
@@ -116,13 +114,6 @@ struct ShadowFlags {
     category_confidence: Option<f64>,
     category_source: Option<String>,
     classified_at_ms: Option<i64>,
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
-fn parse_rfc3339_to_ms(s: &str) -> Option<i64> {
-    DateTime::parse_from_rfc3339(s)
-        .ok()
-        .map(|dt| dt.with_timezone(&Utc).timestamp_millis())
 }
 
 async fn load_legacy(_db: &Database, _session_id: &str) -> DbResult<Option<LegacyFlags>> {
@@ -261,7 +252,7 @@ pub async fn compare_flags_session(
 /// can be requested by caller with `limit = i64::MAX`.
 pub async fn run_parity_sweep(db: &Database, limit: i64) -> DbResult<ParitySweepSummary> {
     let ids: Vec<(String,)> = sqlx::query_as(
-        "SELECT id FROM sessions
+        "SELECT session_id FROM session_stats
          ORDER BY COALESCE(last_message_at, 0) DESC
          LIMIT ?1",
     )
@@ -330,8 +321,9 @@ mod tests {
         // `None` regardless of the shadow state.
         let db = Database::new_in_memory().await.unwrap();
         sqlx::query(
-            "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
-             VALUES ('s1', 'p', '/tmp/s1.jsonl', 0)",
+            "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                 parser_version, stats_version, indexed_at, project_id, file_path, is_sidechain)
+             VALUES ('s1', X'00', 0, 1, 4, 0, 'p', '/tmp/s1.jsonl', 0)",
         )
         .execute(db.pool())
         .await
@@ -358,8 +350,9 @@ mod tests {
         for i in 0..3 {
             let sid = format!("p-{i}");
             sqlx::query(
-                "INSERT INTO sessions (id, project_id, file_path, is_sidechain)
-                 VALUES (?1, 'p', ?2, 0)",
+                "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+                     parser_version, stats_version, indexed_at, project_id, file_path, is_sidechain)
+                 VALUES (?1, X'00', 0, 1, 4, 0, 'p', ?2, 0)",
             )
             .bind(&sid)
             .bind(format!("/tmp/{sid}.jsonl"))

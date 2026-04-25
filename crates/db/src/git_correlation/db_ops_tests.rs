@@ -3,9 +3,34 @@
 
 #![allow(deprecated)]
 
-use super::*;
 use crate::git_correlation::{CorrelationEvidence, CorrelationMatch, DiffStats, GitCommit};
 use crate::Database;
+
+async fn seed_git_session(
+    db: &Database,
+    id: &str,
+    project_id: &str,
+    project_path: &str,
+    first_message_at: Option<i64>,
+    last_message_at: Option<i64>,
+    file_path: &str,
+) {
+    sqlx::query(
+        "INSERT INTO session_stats (session_id, source_content_hash, source_size,
+             parser_version, stats_version, indexed_at, project_id, project_path,
+             first_message_at, last_message_at, file_path)
+         VALUES (?1, X'00', 0, 1, 4, 0, ?2, ?3, ?4, ?5, ?6)",
+    )
+    .bind(id)
+    .bind(project_id)
+    .bind(project_path)
+    .bind(first_message_at)
+    .bind(last_message_at)
+    .bind(file_path)
+    .execute(db.pool())
+    .await
+    .unwrap();
+}
 
 #[tokio::test]
 async fn test_batch_upsert_commits() {
@@ -320,7 +345,7 @@ async fn test_update_session_loc_from_git() {
         .unwrap();
 
     let row: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -358,7 +383,7 @@ async fn test_update_session_loc_from_git_zero_stats() {
         .unwrap();
 
     let row: (i64, i64, i64) = sqlx::query_as(
-        "SELECT lines_added, lines_removed, loc_source FROM sessions WHERE id = 'sess-1'",
+        "SELECT lines_added, lines_removed, loc_source FROM session_stats WHERE session_id = 'sess-1'",
     )
     .fetch_one(db.pool())
     .await
@@ -380,34 +405,37 @@ async fn test_get_sessions_for_git_sync_empty_db() {
 async fn test_get_sessions_for_git_sync_filters_correctly() {
     let db = Database::new_in_memory().await.unwrap();
 
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, project_path, first_message_at, last_message_at, file_path)
-         VALUES ('s1', 'p1', '/home/user/project-a', 1000, 2000, '/tmp/s1.jsonl')"
-    ).execute(db.pool()).await.unwrap();
-
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, project_path, last_message_at, file_path)
-         VALUES ('s2', 'p2', '', 3000, '/tmp/s2.jsonl')",
+    seed_git_session(
+        &db,
+        "s1",
+        "p1",
+        "/home/user/project-a",
+        Some(1000),
+        Some(2000),
+        "/tmp/s1.jsonl",
     )
-    .execute(db.pool())
-    .await
-    .unwrap();
-
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, project_path, file_path)
-         VALUES ('s3', 'p3', '/home/user/project-b', '/tmp/s3.jsonl')",
+    .await;
+    seed_git_session(&db, "s2", "p2", "", None, Some(3000), "/tmp/s2.jsonl").await;
+    seed_git_session(
+        &db,
+        "s3",
+        "p3",
+        "/home/user/project-b",
+        None,
+        None,
+        "/tmp/s3.jsonl",
     )
-    .execute(db.pool())
-    .await
-    .unwrap();
-
-    sqlx::query(
-        "INSERT INTO sessions (id, project_id, project_path, last_message_at, file_path)
-         VALUES ('s4', 'p4', '/home/user/project-a', 4000, '/tmp/s4.jsonl')",
+    .await;
+    seed_git_session(
+        &db,
+        "s4",
+        "p4",
+        "/home/user/project-a",
+        None,
+        Some(4000),
+        "/tmp/s4.jsonl",
     )
-    .execute(db.pool())
-    .await
-    .unwrap();
+    .await;
 
     let sessions = db.get_sessions_for_git_sync().await.unwrap();
     assert_eq!(sessions.len(), 2);

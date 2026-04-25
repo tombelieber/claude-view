@@ -90,7 +90,7 @@ impl Database {
         .fetch_one(self.pool())
         .await?;
 
-        // Query B — tokens from sessions table for both periods (replaces 2 queries)
+        // Query B — tokens from valid_sessions for both periods (replaces 2 queries)
         let (curr_tokens, prev_tokens): (i64, i64) = sqlx::query_as(
             r#"
             SELECT
