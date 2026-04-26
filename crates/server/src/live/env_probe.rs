@@ -272,10 +272,6 @@ mod tests {
         }
         let _cleanup = Cleanup(test_name.clone());
 
-        // Give tmux a beat to spawn the shell (so TMUX_PANE is inherited
-        // into the child's env — execve ordering vs tmux's accounting).
-        std::thread::sleep(std::time::Duration::from_millis(100));
-
         // Ask tmux for the pane's shell PID — this is the process we will
         // probe. We do NOT care what pane_pid is semantically; we just need
         // a live PID inside this tmux session.
@@ -284,7 +280,13 @@ mod tests {
 
         // Probe env. This is the core of the feature: starting from any PID
         // running inside a tmux pane, we recover the tmux binding.
-        let env = read_tmux_env(pane_pid).unwrap_or_else(|| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let mut env = read_tmux_env(pane_pid);
+        while env.is_none() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            env = read_tmux_env(pane_pid);
+        }
+        let env = env.unwrap_or_else(|| {
             panic!(
                 "read_tmux_env returned None for pane_pid {pane_pid} \
                  of tmux session '{test_name}' — the env-probe approach is broken"
