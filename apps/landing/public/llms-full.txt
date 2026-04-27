@@ -1969,6 +1969,74 @@ npx claude-view@latest
 Check `~/.claude-view/logs/` after running a few sessions to see structured traces in action.
 
 
+--- blog/v0-39-0-stability-and-tokens-at-the-top.mdx ---
+
+---
+title: "Stability Fixes, Faster Search, and Tokens at the Top"
+description: "v0.39.0 ships memory-bounded sidecar streaming, blue-green search index migration, and token and cost hero cards on the analytics page."
+date: 2026-04-28
+author: claude-view team
+---
+
+You opened claude-view, scrolled through 100+ closed sessions in the Live Monitor, and watched it freeze. Or you waited through a long startup while the search index rebuilt. Or you wondered why your Mac's fan spun up after claude-view ran for an afternoon.
+
+v0.39.0 is the stability release. Three foundational fixes that you'll feel every day, plus an analytics tweak that surfaces the numbers you actually look at.
+
+## The problem with 100 closed sessions
+
+The Live Monitor reconciler — the loop that synchronizes session state between the sidecar and the database — used to bail out when too many sessions piled up. It hit a cooldown, scheduled a retry, and in the meantime the UI stopped responding to clicks. Open enough closed sessions and you'd see the panel just freeze.
+
+We replaced the cooldown with **lazy sidecar recovery**. Sessions are reconciled on-demand when you actually look at them, not eagerly across the entire history. The 100-session ceiling is gone. We tested with thousands.
+
+The companion fix is **bounded sidecar memory**. Each session's stream buffer used to grow without a cap as messages accumulated. Heavy users — running Claude Code 8 hours a day with multiple parallel agents — would notice claude-view's RSS climbing through the day. The cap is now enforced per-session, with heap telemetry exposed so we can catch regressions before users see them.
+
+## Blue-green search index migration
+
+The search index uses Tantivy, which has a versioned schema. When the schema changes (we add a field, change an analyzer, etc.), the old index isn't readable by the new code. Older versions handled this by rebuilding from scratch on startup — which meant a multi-second freeze the first time you launched the new version.
+
+v0.39.0 ships **blue-green index migration**: when claude-view detects a schema bump, it keeps serving queries from the previous-version index while building the new version at `v{N}/` in the background. When the new index is ready, it swaps in atomically. No startup pause, no broken search.
+
+This was foundational work for shipping schema changes safely going forward — we can iterate on search relevance without paying a perceived-startup-time tax.
+
+## Tokens and cost at the top
+
+The analytics page used to lead with a heatmap, then a project breakdown, then activity, then somewhere down the page: total tokens, total cost. Those are the numbers you actually look at — "how much did I spend last week?" — and they were buried.
+
+v0.39.0 moves **tokens processed** and **total cost** to the top of the page, above the heatmap. The hero cards adapt to time-range filters. If you select "last 7 days" they show the 7-day numbers. If you select "all time" you see the lifetime totals.
+
+There's also a date-range caption that says exactly what window the numbers represent, so you don't have to guess what "last 7 days" means against a weekend or a partial week.
+
+## Under the hood: a six-month database rebuild
+
+The biggest internal change in v0.39.0 doesn't have a UI — it's a multi-phase CQRS-style rewrite of the database write path. The old `sessions` table did everything: metadata, action history, derived stats, all in one row. Concurrent writers fought for the same row. Schema migrations were painful.
+
+The rebuild splits this into:
+
+- `session_stats` — the canonical writer-owned row, derived from JSONL parsing
+- `session_flags` — user actions (archive, classify, dismiss) that flip independently
+- `session_action_log` — append-only event log for audit and replay
+- `stage_c_outbox` — reliable cross-table fanout for derived rollups
+- 15 rollup tables — pre-aggregated stats so dashboard reads don't scan everything
+
+The legacy `sessions` table is gone, retired through dual-write phases, shadow parity monitors, and a drift detector that runs continuously. We landed it as 7 phases over six months because *retiring a hot table without breaking anything* is the kind of work that has to be done patiently.
+
+You won't see this directly. You'll feel it as: dashboard pages load faster, the writer doesn't stall, and adding new aggregations is a `derive(RollupTable)` away.
+
+## What's next
+
+- **Mobile pairing client.** v0.39.0 ships the server-side and Settings UI for pairing a phone via QR code. The receiving mobile app is the next milestone.
+- **Plan workflows.** Pairing the existing plan blocks with editable plan TODOs so you can drive a session from a written plan.
+- **Faster cold starts.** With the database rebuild done, the next bottleneck is the indexer — and we have ideas.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you've been holding off because of the 100-session freeze, this is the release to come back for. Open the analytics page first — the new hero cards are the smallest visible change but the one we use most.
+
+
 --- blog/v0-4-0-dashboard-analytics.mdx ---
 
 ---
@@ -3689,6 +3757,43 @@ version: v0.38.0
 - OpenAPI spec now includes field descriptions for all observability structs
 - Dead dependencies removed from `claude-view-core`
 - Anthropic pricing data synced to latest official rates
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.39.0.md ---
+
+---
+title: v0.39.0 — Stability and Analytics Polish
+date: 2026-04-28
+version: v0.39.0
+---
+
+## New features
+
+**Tokens and Cost Hero Cards** — total tokens processed and total cost now sit at the top of the analytics page, above everything else. The headline numbers shouldn't have to be scrolled to.
+
+**CLI Terminal Tab** — a new tab for tmux-managed sessions. Env-probe discovery resolves `TMUX_PANE` from the CLI process's environment, so attaching to an existing session "just works."
+
+**Auto-Recap Blocks** — when Claude Code emits an `away_summary` block (the recap it writes when you return after stepping away), claude-view now renders it as a proper system event in both chat and developer mode instead of falling through to a generic block.
+
+**Devices and Pairing Endpoints** — server-side scaffolding for paired-device support: `/api/devices`, `/api/pairing/qr`, JWT-authenticated relay protocol, Supabase-backed device registry with PII-aware RLS isolation. The receiving mobile client lands in a follow-up.
+
+## Improvements
+
+- **No more freeze at 100+ closed sessions.** Live Monitor's reconciler cooldown is replaced with lazy sidecar recovery so the UI stays responsive even with hundreds of historical sessions on screen (#53, #54).
+- **Sidecar memory bounded.** Per-session stream buffers now cap, with heap telemetry to catch regressions early — the slow leak under heavy load is fixed (#54).
+- **Blue-green search index migration.** When the search index schema bumps, the previous version keeps serving queries while the new one builds in the background. No more "rebuilding index, please wait" on startup.
+- **Quieter chat mode.** Hook noise and empty assistant blocks are hidden in chat mode for a cleaner conversation view.
+- **Worktree hooks fixed.** `WorktreeCreate` is a *replacement* hook — async observers were silently breaking `isolation: worktree`. Hooks now have explicit replacement-vs-observer taxonomy with a 3-layer defense.
+- **Cleaner relay logs.** WebSocket lazy-start stops spamming auth-rejected logs when nothing is paired.
+- **Pricing data updated.** Opus 4.7 added with a boot-time drift detector to flag stale pricing tables.
+- **Six-month database rebuild landed.** A multi-phase CQRS-style rewrite splits the writer hot path from the read path through `session_stats`, `session_flags`, and `session_action_log` tables, with a `stage_c_outbox` for reliable cross-table fanout. The legacy `sessions` table is gone.
+- **`rustls-webpki` security bump** — 0.103.12 → 0.103.13 (RUSTSEC-2026-0104).
 
 ## Getting started
 
