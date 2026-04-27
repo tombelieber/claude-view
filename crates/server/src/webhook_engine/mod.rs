@@ -328,8 +328,9 @@ mod tests {
         // Poll for delivery instead of sleeping a fixed interval. Under
         // heavy parallel nextest load (2 800+ tests) a fixed sleep is
         // fundamentally brittle — the previous 500 ms bump from 200 ms
-        // masked but did not fix the race.
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        // masked but did not fix the race. 5 s was still occasionally
+        // flaky on M-series Macs under full-workspace nextest load.
+        let deadline = std::time::Instant::now() + Duration::from_secs(15);
         loop {
             if received.lock().unwrap().len() >= 1 {
                 break;

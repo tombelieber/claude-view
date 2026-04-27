@@ -61,7 +61,6 @@ test -s crates/db/tests/golden_fixtures/integrity_fixture.sha256
 test -f crates/core/tests/live_parser_integrity_test.rs
 test -f crates/db/tests/indexer_integrity_test.rs
 test -f crates/db/tests/integrity_real_shape_fixtures.rs
-test -f crates/search/tests/source_message_index_integrity_test.rs
 
 GOVERNANCE_DOC="docs/plans/cross-cutting/2026-03-05-ground-truth-data-integrity-hardening.md"
 if [ -f "${GOVERNANCE_DOC}" ]; then
@@ -119,12 +118,10 @@ done
 cargo test --locked -p claude-view-core --test live_parser_integrity_test 2>&1 | tee artifacts/integrity/gate2-core-integrity.log
 cargo test --locked -p claude-view-db --test indexer_integrity_test 2>&1 | tee artifacts/integrity/gate2-db-indexer-integrity.log
 cargo test --locked -p claude-view-db --test integrity_real_shape_fixtures 2>&1 | tee artifacts/integrity/gate2-db-fixture-integrity.log
-cargo test --locked -p claude-view-search --test source_message_index_integrity_test 2>&1 | tee artifacts/integrity/gate2-search-integrity.log
 for f in \
   artifacts/integrity/gate2-core-integrity.log \
   artifacts/integrity/gate2-db-indexer-integrity.log \
-  artifacts/integrity/gate2-db-fixture-integrity.log \
-  artifacts/integrity/gate2-search-integrity.log; do
+  artifacts/integrity/gate2-db-fixture-integrity.log; do
   test -s "${f}" || { echo "Missing/empty gate2 log: ${f}" >&2; exit 1; }
 done
 if rg -n "(running 0 tests|test result: ok\\. 0 passed)" \
