@@ -502,6 +502,20 @@ export const devSystemBlocks = {
     } as Record<string, unknown>,
     rawJson: null,
   } satisfies SystemBlock,
+
+  /** away_summary — auto-recap when the user returns to a long-idle session */
+  awaySummary: {
+    type: 'system' as const,
+    id: 'dsb_019',
+    variant: 'away_summary' as const,
+    data: {
+      type: 'system',
+      subtype: 'away_summary',
+      content:
+        'Goal was to ship the release. Tests + lint passed; ready to push tag. Next: monitor CI build. (disable recaps in /config)',
+    } as Record<string, unknown>,
+    rawJson: null,
+  } satisfies SystemBlock,
 }
 
 // ── System blocks with rawJson for detail panels ────────────────────────────

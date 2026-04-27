@@ -1,6 +1,7 @@
 export { AgentNamePill } from './agent-name'
 export { AiTitlePill } from './ai-title'
 export { AttachmentPill } from './attachment'
+export { AwaySummaryPill } from './away-summary'
 export { CommandOutputBlock } from './command-output'
 export { CustomTitlePill } from './custom-title'
 export { ElicitationCompletePill } from './elicitation-complete'

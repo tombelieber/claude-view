@@ -374,6 +374,7 @@ const comparisons: ModeComparison[] = [
       devSystemBlocks.attachment as ConversationBlock,
       devSystemBlocks.permissionModeChange as ConversationBlock,
       devSystemBlocks.scheduledTaskFire as ConversationBlock,
+      devSystemBlocks.awaySummary as ConversationBlock,
     ],
   },
 

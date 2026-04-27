@@ -519,6 +519,19 @@ function ScheduledTaskFireDetail({ data }: { data: Record<string, unknown> }) {
   )
 }
 
+function AwaySummaryDetail({ data }: { data: Record<string, unknown> }) {
+  const content = (data?.content as string) ?? ''
+  return (
+    <EventCard
+      dot="gray"
+      chip="Recap"
+      chipColor="bg-gray-500/10 dark:bg-gray-500/20 text-gray-700 dark:text-gray-300"
+      label={content ? content.slice(0, 80) : 'Auto-recap on return'}
+      rawData={data}
+    />
+  )
+}
+
 // ── Main dispatcher ─────────────────────────────────────────────────────────
 
 export function DevSystemBlock({ block }: SystemBlockProps) {
@@ -581,6 +594,8 @@ export function DevSystemBlock({ block }: SystemBlockProps) {
         return <PermissionModeChangeDetail data={block.data as Record<string, unknown>} />
       case 'scheduled_task_fire':
         return <ScheduledTaskFireDetail data={block.data as Record<string, unknown>} />
+      case 'away_summary':
+        return <AwaySummaryDetail data={block.data as Record<string, unknown>} />
       default: {
         // Exhaustiveness check: if a new SystemVariant is added in blocks.ts,
         // TypeScript will error here because `_exhaustive` is not `never`.

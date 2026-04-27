@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "audit_date": "2026-04-06",
+  "audit_date": "2026-04-28",
   "methodology": "jq structural JSON parsing only — never text grep — to avoid miscategorizing message content as structural fields",
   "corpus_stats": {
     "files": 14194,
@@ -48,6 +48,7 @@
   "system_subtypes": {
     "known": [
       "api_error",
+      "away_summary",
       "compact_boundary",
       "informational",
       "local_command",
@@ -202,6 +203,9 @@
       "prNumber",
       "prUrl",
       "prRepository",
+      "apiErrorStatus",
+      "leafUuid",
+      "message.diagnostics",
       "toolUseResult.answers",
       "toolUseResult.annotations",
       "toolUseResult",

@@ -220,6 +220,7 @@ export type SystemBlock = {
     | 'attachment'
     | 'permission_mode_change'
     | 'scheduled_task_fire'
+    | 'away_summary'
     | 'unknown'
   data:
     | SessionInit

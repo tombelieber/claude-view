@@ -398,6 +398,14 @@ impl BlockAccumulator {
                     raw_json: None,
                 }));
             }
+            "away_summary" => {
+                self.blocks.push(ConversationBlock::System(SystemBlock {
+                    id: self.make_id("sys"),
+                    variant: SystemVariant::AwaySummary,
+                    data: entry.clone(),
+                    raw_json: None,
+                }));
+            }
             // Fallback: field-sniffing for entries without subtype (older JSONL files)
             _ => self.handle_system_by_fields(entry),
         }

@@ -4,6 +4,7 @@ import {
   AgentNamePill,
   AiTitlePill,
   AttachmentPill,
+  AwaySummaryPill,
   CommandOutputBlock,
   CustomTitlePill,
   ElicitationCompletePill,
@@ -89,6 +90,8 @@ export function ChatSystemBlock({ block }: SystemBlockProps) {
       return <PermissionModeChangePill data={block.data as Record<string, unknown>} />
     case 'scheduled_task_fire':
       return <ScheduledTaskFirePill data={block.data as Record<string, unknown>} />
+    case 'away_summary':
+      return <AwaySummaryPill data={block.data as Record<string, unknown>} />
     case 'unknown':
       return <UnknownSystemPill data={block.data as Record<string, unknown>} />
     default: {

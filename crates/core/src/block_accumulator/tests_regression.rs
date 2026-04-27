@@ -238,6 +238,30 @@ fn scheduled_task_fire_produces_system_block() {
 }
 
 #[test]
+fn away_summary_produces_system_block() {
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({
+        "type": "system",
+        "uuid": "s-away-1",
+        "subtype": "away_summary",
+        "content": "Goal was X. Done. Next: Y.",
+        "timestamp": "2026-04-28T01:00:00.000Z"
+    }));
+    let blocks = acc.finalize();
+    assert_eq!(blocks.len(), 1);
+    match &blocks[0] {
+        ConversationBlock::System(sys) => {
+            assert_eq!(sys.variant, SystemVariant::AwaySummary);
+            assert_eq!(
+                sys.data.get("content").and_then(|v| v.as_str()),
+                Some("Goal was X. Done. Next: Y.")
+            );
+        }
+        other => panic!("Expected SystemBlock, got {:?}", other),
+    }
+}
+
+#[test]
 fn attachment_top_level_type_produces_system_block() {
     let mut acc = BlockAccumulator::new();
     acc.process_line(&serde_json::json!({

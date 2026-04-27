@@ -352,6 +352,7 @@ pub enum SystemVariant {
     Attachment,
     PermissionModeChange,
     ScheduledTaskFire,
+    AwaySummary,
     Unknown,
 }
 
@@ -792,9 +793,10 @@ mod tests {
             SystemVariant::Attachment,
             SystemVariant::PermissionModeChange,
             SystemVariant::ScheduledTaskFire,
+            SystemVariant::AwaySummary,
             SystemVariant::Unknown,
         ];
-        assert_eq!(variants.len(), 25);
+        assert_eq!(variants.len(), 26);
         for variant in &variants {
             let block = SystemBlock {
                 id: "s1".into(),

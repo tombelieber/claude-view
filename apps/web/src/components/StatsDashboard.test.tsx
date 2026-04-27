@@ -25,6 +25,10 @@ vi.mock('./AIGenerationStats', () => ({
   AIGenerationStats: () => <div data-testid="ai-generation-stats">AI Generation Stats</div>,
 }))
 
+vi.mock('./TokenCostSummary', () => ({
+  TokenCostSummary: () => <div data-testid="token-cost-summary">Token Cost Summary</div>,
+}))
+
 vi.mock('./RecentCommits', () => ({
   RecentCommits: () => <div data-testid="recent-commits">Recent Commits</div>,
 }))

@@ -65,6 +65,10 @@ Show team activity, members, and currently active sessions.
 | **Live Tools** | |
 | `list_live_sessions` | Currently running sessions |
 | `get_live_summary` | Aggregate live session summary |
+| **Auth Tools** | |
+| `auth_post_session` | auth session |
+| `auth_delete_session` | auth session |
+| `auth_get_status` | auth status |
 | **Classify Tools** | |
 | `classify_start_classification` | Trigger a classification job. |
 | `classify_cancel_classification` | Cancel a running classification job. |
@@ -80,6 +84,10 @@ Show team activity, members, and currently active sessions.
 | `contributions_get_contributions` | Main contributions page data. |
 | `contributions_get_branch_sessions` | Sessions for a branch. |
 | `contributions_get_session_contribution` | Session contribution detail. |
+| **Devices Tools** | |
+| `devices_list_devices_handler` | devices |
+| `devices_terminate_others_handler` | others |
+| `devices_delete_device_handler` | devices {device_id} |
 | **Export Tools** | |
 | `export_sessions` | Export all sessions. |
 | **Facets Tools** | |
@@ -98,6 +106,8 @@ Show team activity, members, and currently active sessions.
 | `insights_get_insights` | Compute and return behavioral insights. |
 | `insights_get_benchmarks` | Compute personal progress benchmarks. |
 | `insights_get_categories` | Returns hierarchical category data. |
+| `insights_get_insights_models` | per-model usage aggregated from rollup tables. |
+| `insights_get_insights_projects` | per-project usage aggregated from rollup tables. |
 | `insights_get_insights_trends` | Get time-series trend data for charts. |
 | `insights_list_invocables` | List all invocables with their usage counts. |
 | **Jobs Tools** | |
@@ -121,9 +131,7 @@ Show team activity, members, and currently active sessions.
 | `oauth_get_oauth_usage` | oauth usage |
 | `oauth_post_oauth_usage_refresh` | oauth usage refresh |
 | **Pairing Tools** | |
-| `pairing_list_devices` | GET /pairing/devices — List paired devices. |
-| `pairing_unpair_device` | DELETE /pairing/devices/:id — Unpair a device. |
-| `pairing_generate_qr` | GET /pairing/qr — Generate QR payload for mobile pairing. |
+| `pairing_generate_qr` | Generate a QR payload via Supabase pair-offer. |
 | **Plans Tools** | |
 | `plans_get_session_plans` | - returns plan documents for the session's slug. |
 | **Plugins Tools** | |
@@ -138,9 +146,9 @@ Show team activity, members, and currently active sessions.
 | `processes_cleanup_processes` | processes cleanup |
 | `processes_kill_process` | processes {pid} kill |
 | **Projects Tools** | |
-| `projects_list_projects` | List all projects as lightweight summaries. |
+| `projects_list_projects` | list all projects backed by the in-memory catalog. |
 | `projects_list_project_branches` | List distinct branches with session counts. |
-| `projects_list_project_sessions` | Paginated sessions for a project. |
+| `projects_list_project_sessions` | paginated sessions for one project. |
 | **Prompts Tools** | |
 | `prompts_list_prompts` | List prompt history with optional search/filter. |
 | `prompts_get_prompt_stats` | Aggregate prompt statistics. |

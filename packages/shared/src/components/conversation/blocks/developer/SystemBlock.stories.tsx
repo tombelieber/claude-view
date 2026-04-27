@@ -125,6 +125,10 @@ export const ScheduledTaskFire: Story = {
   args: { block: devSystemBlocks.scheduledTaskFire },
 }
 
+export const AwaySummary: Story = {
+  args: { block: devSystemBlocks.awaySummary },
+}
+
 export const WithRetryRawJson: Story = {
   args: { block: devSystemBlocksWithRawJson.withRetry },
 }
