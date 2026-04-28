@@ -48,7 +48,7 @@ mod tests {
         db: &Database,
     ) -> Result<(usize, usize), String> {
         let hints = build_index_hints(claude_dir);
-        scan_and_index_all(claude_dir, db, &hints, None, None, |_| {}, |_| {}, || {}).await
+        scan_and_index_all(claude_dir, db, &hints, None, |_| {}, |_| {}, || {}).await
     }
 
     #[test]
@@ -636,7 +636,6 @@ mod tests {
             &db,
             &hints,
             None,
-            None,
             move |_| {
                 progress_clone.fetch_add(1, Ordering::Relaxed);
             },
@@ -993,7 +992,6 @@ mod scan_and_index_tests {
             &db,
             &HashMap::new(),
             None,
-            None,
             |_| {},
             |_| {},
             || {},
@@ -1006,7 +1004,6 @@ mod scan_and_index_tests {
             tmp.path(),
             &db,
             &HashMap::new(),
-            None,
             None,
             |_| {},
             |_| {},

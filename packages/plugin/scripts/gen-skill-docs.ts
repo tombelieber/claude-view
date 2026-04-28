@@ -63,7 +63,7 @@ export const HAND_WRITTEN_GROUPS: ToolGroup[] = [
     tools: [
       { name: 'list_sessions', description: 'List sessions with filters' },
       { name: 'get_session', description: 'Get session details' },
-      { name: 'search_sessions', description: 'Full-text search across sessions' },
+      { name: 'search_sessions', description: 'Grep search across sessions' },
     ],
   },
   {

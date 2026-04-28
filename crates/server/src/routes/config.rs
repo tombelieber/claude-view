@@ -16,8 +16,6 @@ use claude_view_core::telemetry_config::TelemetryStatus;
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(feature = "codegen", ts(export))]
 pub struct ConfigFeatureFlags {
-    /// Whether full-text search is enabled.
-    pub search: bool,
     /// Whether the system resource monitor is enabled.
     pub system_monitor: bool,
 }
@@ -76,7 +74,6 @@ pub async fn config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> 
         posthog_key,
         anonymous_id,
         features: ConfigFeatureFlags {
-            search: state.app_config.features.search,
             system_monitor: state.app_config.features.system_monitor,
         },
     })
@@ -152,8 +149,6 @@ mod tests {
         let (status, body) = do_get(app, "/api/config").await;
         assert_eq!(status, StatusCode::OK);
         let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        // Default config has all features enabled
-        assert_eq!(json["features"]["search"], true);
         assert_eq!(json["features"]["systemMonitor"], true);
     }
 }

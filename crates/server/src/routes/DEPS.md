@@ -17,8 +17,8 @@
 | sessions | db, live_sessions, pricing | DbDeps + LiveDeps |
 | stats | db, pricing | DbDeps + PricingDeps |
 | statusline | transcript_to_session, debug_statusline_log | StatuslineDeps |
-| sync | db, git_sync, indexing, registry, search_index, shutdown | SyncDeps (FullDeps) |
-| system | db, indexing, search_index, telemetry | SystemDeps |
+| sync | db, git_sync, indexing, registry, shutdown | SyncDeps (FullDeps) |
+| system | db, indexing, telemetry | SystemDeps |
 | terminal | db, live_sessions, recently_closed, terminal_connections, hook_event_channels | LiveDeps + TerminalDeps |
 | turns | db | DbDeps |
 | workflow_samples | (none) | NoDeps |

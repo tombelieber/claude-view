@@ -111,8 +111,8 @@ Claude Code does a lot behind `"thinking..."` that never shows in your terminal.
 
 | Feature | What it does |
 |---------|-------------|
-| **Full-text search** | Search across all sessions — messages, tool calls, file paths. Powered by Tantivy (Rust-native, Lucene-class) |
-| **Unified search engine** | Tantivy full-text + SQLite pre-filter run in parallel — one endpoint, sub-50ms results |
+| **Rust grep search** | Search across all sessions — messages, tool calls, file paths. Powered by ripgrep-core over raw JSONL |
+| **Filtered search engine** | SQLite pre-filter + grep search — one endpoint without maintaining a separate session search index |
 | **Project & branch filters** | Scope to the project or branch you're working on right now |
 | **Command palette** | <kbd>Cmd</kbd>+<kbd>K</kbd> to jump between sessions, switch views, find anything |
 
@@ -224,7 +224,7 @@ Every Claude Code session automatically starts the dashboard. No manual `npx cla
 |------|-------------|
 | `list_sessions` | Browse sessions with filters |
 | `get_session` | Full session detail with messages and metrics |
-| `search_sessions` | Full-text search across all conversations |
+| `search_sessions` | Grep search across all conversations |
 | `get_stats` | Dashboard overview — total sessions, costs, trends |
 | `get_fluency_score` | AI Fluency Score (0-100) with breakdown |
 | `get_token_stats` | Token usage with cache hit ratio |
@@ -297,7 +297,7 @@ Measured on an M-series Mac with 1,493 sessions across 26 projects:
 | **Index 1,500 sessions** | **< 1 s** | N/A |
 | **Runtime deps** | **0** | Node.js + Chromium |
 
-Key techniques: SIMD pre-filter (`memchr`), memory-mapped JSONL parsing, Tantivy full-text search, zero-copy slices from mmap through parse to response.
+Key techniques: SIMD pre-filter (`memchr`), memory-mapped JSONL parsing, ripgrep-core search over raw JSONL, zero-copy slices from mmap through parse to response.
 
 </details>
 
@@ -368,7 +368,7 @@ cp crates/server/.env.example .env
 # Uncomment CLAUDE_VIEW_DATA_DIR
 ```
 
-This keeps database, search index, and lock files inside the repo. Set `CLAUDE_VIEW_SKIP_HOOKS=1` to skip hook registration in read-only environments.
+This keeps database, prompt index, cache, and lock files inside the repo. Set `CLAUDE_VIEW_SKIP_HOOKS=1` to skip hook registration in read-only environments.
 
 </details>
 
@@ -396,7 +396,7 @@ If all checks pass and the banner persists, report it on [Discord](https://disco
 <summary><strong>What data does claude-view access?</strong></summary>
 <br>
 
-claude-view reads the JSONL session files that Claude Code writes to `~/.claude/projects/`. It indexes them locally using SQLite and Tantivy. **No data leaves your machine** unless you explicitly use the encrypted sharing feature. Telemetry is opt-in and off by default.
+claude-view reads the JSONL session files that Claude Code writes to `~/.claude/projects/`. It indexes session metadata locally in SQLite and searches session text with rust grep over local JSONL files. **No data leaves your machine** unless you explicitly use the encrypted sharing feature. Telemetry is opt-in and off by default.
 
 </details>
 

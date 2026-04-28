@@ -24,7 +24,7 @@ use crate::routes;
 use crate::sidecar;
 use crate::state::{
     self, AppState, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder, RegistryHolder,
-    SearchIndexHolder, ShareConfig,
+    ShareConfig,
 };
 use crate::teams;
 use crate::telemetry;
@@ -100,7 +100,6 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: None,
-        search_index: Arc::new(std::sync::RwLock::new(None)),
         shutdown: tokio::sync::watch::channel(false).1,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
@@ -227,7 +226,6 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: None,
-        search_index: Arc::new(std::sync::RwLock::new(None)),
         shutdown: tokio::sync::watch::channel(false).1,
         hook_event_channels: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
         sidecar: Arc::new(sidecar::SidecarManager::new()),
@@ -310,7 +308,6 @@ pub fn create_app_full(
     db: Database,
     indexing: Arc<IndexingState>,
     registry: RegistryHolder,
-    search_index: SearchIndexHolder,
     shutdown: tokio::sync::watch::Receiver<bool>,
     static_dir: Option<PathBuf>,
     sidecar: Arc<sidecar::SidecarManager>,
@@ -551,7 +548,6 @@ pub fn create_app_full(
     ) = live::manager::LiveSessionManager::start(
         pricing.clone(),
         db.clone(),
-        search_index.clone(),
         registry.clone(),
         Some(sidecar.clone()),
         teams.clone(),
@@ -638,7 +634,6 @@ pub fn create_app_full(
             .join("rules"),
         terminal_connections: Arc::new(terminal_state::TerminalConnectionManager::new()),
         live_manager: Some(manager),
-        search_index,
         shutdown,
         hook_event_channels,
         sidecar,

@@ -141,7 +141,7 @@ pub struct StorageStats {
     /// Size of SQLite database in bytes.
     #[ts(type = "number")]
     pub sqlite_bytes: u64,
-    /// Size of search index in bytes.
+    /// Size of obsolete session search cache in bytes.
     #[ts(type = "number")]
     pub index_bytes: u64,
     /// Total number of sessions.
@@ -178,7 +178,7 @@ pub struct StorageStats {
     pub jsonl_path: Option<String>,
     /// Path to SQLite database file.
     pub sqlite_path: Option<String>,
-    /// Path to Tantivy search index directory.
+    /// Path to obsolete session search cache directory.
     pub index_path: Option<String>,
     /// Parent app data directory — safe to delete, rebuilt on next launch.
     pub app_data_path: Option<String>,

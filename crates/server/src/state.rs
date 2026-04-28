@@ -26,7 +26,6 @@ use claude_view_core::prompt_history::PromptStats;
 use claude_view_core::Registry;
 use claude_view_db::{Database, PricingTable};
 use claude_view_search::prompt_index::PromptSearchIndex;
-use claude_view_search::SearchIndex;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::AtomicUsize;
@@ -60,13 +59,6 @@ pub struct ShareConfig {
 /// - Read operations are uncontended after the initial write
 /// - No need to hold the lock across `.await` points
 pub type RegistryHolder = Arc<RwLock<Option<Registry>>>;
-
-/// Type alias for the runtime-swappable search index holder.
-///
-/// Follows the same `Arc<RwLock<Option<...>>>` pattern as `RegistryHolder`.
-/// `None` means the index is unavailable (not yet opened, or mid-swap during clear-cache).
-/// Wrapped in `Arc` so `clear_cache` can take-drop-recreate without blocking readers.
-pub type SearchIndexHolder = Arc<RwLock<Option<Arc<SearchIndex>>>>;
 
 /// Type alias for the prompt search index holder.
 pub type PromptIndexHolder = Arc<RwLock<Option<Arc<PromptSearchIndex>>>>;
@@ -118,9 +110,6 @@ pub struct AppState {
     /// Live session manager (for hook handler to create/remove accumulators).
     /// `None` in test factories that don't start the manager.
     pub live_manager: Option<Arc<LiveSessionManager>>,
-    /// Full-text search index (Tantivy), runtime-swappable.
-    /// `None` inside the RwLock until the index is initialized, or mid-swap during clear-cache.
-    pub search_index: SearchIndexHolder,
     /// Shutdown signal receiver. When `true`, SSE streams should terminate cleanly.
     pub shutdown: tokio::sync::watch::Receiver<bool>,
     /// Per-session broadcast channels for hook events (WebSocket streaming).
@@ -334,7 +323,6 @@ impl AppStateBuilder {
                 .join("rules"),
             terminal_connections: Arc::new(TerminalConnectionManager::new()),
             live_manager: None,
-            search_index: Arc::new(RwLock::new(None)),
             shutdown: self
                 .shutdown
                 .unwrap_or_else(|| tokio::sync::watch::channel(false).1),

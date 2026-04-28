@@ -15,7 +15,7 @@ Landing page built with Astro 5 (zero client-side JS).
 - [Mobile App](/docs/guides/mobile-setup/): iOS/Android setup and pairing
 - [Cost Tracking](/docs/features/cost-tracking/): Token usage and model costs
 - [AI Fluency Score](/docs/features/ai-fluency-score/): Measure AI coding effectiveness
-- [Search](/docs/features/search/): Full-text search across sessions
+- [Search](/docs/features/search/): Grep search across sessions
 - [CLI Reference](/docs/reference/cli-options/): Command line options
 - [API Reference](/docs/reference/api/): HTTP API endpoints
 

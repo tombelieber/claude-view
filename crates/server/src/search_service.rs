@@ -1,8 +1,8 @@
-//! Unified search service.
+//! Session search service.
 //!
-//! The ONE search function. Both `/api/search` and `/api/sessions?q=`
-//! call `execute_search()` with the same `SearchFilters`.
-//! Only the response shape differs per endpoint.
+//! Both `/api/search` and `/api/sessions?q=` call `execute_search()` with
+//! the same `SearchFilters`. Search itself runs over raw JSONL files via
+//! ripgrep-core; SQLite is used only to pre-filter candidate session IDs.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -78,14 +78,7 @@ pub async fn execute_search(
         vec![]
     });
 
-    // 4. Get search index (optional — Tantivy primary, grep fallback).
-    let search_index = state
-        .search_index
-        .read()
-        .map_err(|_| ApiError::Internal("search index lock poisoned".into()))?
-        .clone();
-
-    // 5. Run unified search in spawn_blocking.
+    // 4. Run grep search in spawn_blocking.
     let q_owned = query.to_string();
     let start = std::time::Instant::now();
 
@@ -97,7 +90,7 @@ pub async fn execute_search(
             offset,
             skip_snippets,
         };
-        unified_search(search_index.as_deref(), &jsonl_files, &opts)
+        unified_search(&jsonl_files, &opts)
     })
     .await
     .map_err(|e| {

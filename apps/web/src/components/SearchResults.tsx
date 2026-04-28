@@ -58,7 +58,6 @@ export function SearchResults() {
   const totalSessions = searchResults?.totalSessions ?? 0
   const totalMatches = searchResults?.totalMatches ?? 0
   const elapsedMs = searchResults?.elapsedMs ?? 0
-  const hasGrepResults = sessions.some((s) => s.engines.includes('grep'))
 
   return (
     <div className="h-full overflow-y-auto p-6">
@@ -77,11 +76,6 @@ export function SearchResults() {
               <span className="font-mono">{query}</span>&rdquo;
               <span className="ml-1 text-gray-400 dark:text-gray-500">({elapsedMs}ms)</span>
             </p>
-            {hasGrepResults && (
-              <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded">
-                Substring matches
-              </span>
-            )}
           </div>
           <button
             onClick={handleClearSearch}

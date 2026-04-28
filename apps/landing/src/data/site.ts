@@ -150,7 +150,7 @@ export const MCP_TOOLS = [
     description: 'Browse sessions with filters (project, model, date, status)',
   },
   { name: 'get_session', description: 'Session detail with messages, tool calls, and metrics' },
-  { name: 'search_sessions', description: 'Full-text search across all conversations' },
+  { name: 'search_sessions', description: 'Grep search across all conversations' },
   { name: 'get_stats', description: 'Dashboard overview — total sessions, costs, trends' },
   { name: 'get_fluency_score', description: 'AI Fluency Score (0-100) with breakdown' },
   { name: 'get_token_stats', description: 'Token usage with cache hit ratio' },

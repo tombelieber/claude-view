@@ -472,7 +472,7 @@ async fn a10_4_parallel_indexing_no_data_corruption() {
     // Run unified indexing pipeline
     let hints = build_index_hints(&claude_dir);
     let (indexed, _skipped) =
-        scan_and_index_all(&claude_dir, &db, &hints, None, None, |_| {}, |_| {}, || {})
+        scan_and_index_all(&claude_dir, &db, &hints, None, |_| {}, |_| {}, || {})
             .await
             .unwrap();
 

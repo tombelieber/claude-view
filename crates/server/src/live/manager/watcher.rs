@@ -213,7 +213,6 @@ impl LiveSessionManager {
         };
         let claude_dir = home.join(".claude");
         let hints = build_index_hints(&claude_dir);
-        let search_for_rescan = self.search_index.read().unwrap().clone();
         let registry_for_rescan = self
             .registry
             .read()
@@ -224,7 +223,6 @@ impl LiveSessionManager {
             &claude_dir,
             &self.db,
             &hints,
-            search_for_rescan,
             registry_for_rescan,
             |_| {},
             |_| {},

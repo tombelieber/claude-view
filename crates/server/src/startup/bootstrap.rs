@@ -17,7 +17,7 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 
 use crate::local_llm::LocalLlmService;
-use crate::startup::indexer::{spawn_indexer_task, spawn_search_rebuild_if_pending, IndexerDeps};
+use crate::startup::indexer::{spawn_indexer_task, IndexerDeps};
 use crate::startup::{auth, data_dir, paths::get_static_dir, search, server_bind, tasks, tui};
 use crate::{
     create_app_full, IndexingState, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder,
@@ -48,11 +48,11 @@ pub async fn bootstrap(app_config: AppConfig, startup_start: Instant) -> Result<
 
     data_dir::recover_stale_classification_jobs(&db).await;
 
-    // Shared state: indexing status, registry holder, search index, shutdown
-    // channel, prompt-history holders, auth + telemetry.
+    // Shared state: indexing status, registry holder, shutdown channel,
+    // prompt-history holders, auth + telemetry.
     let indexing = Arc::new(IndexingState::new());
     let registry_holder = Arc::new(RwLock::new(None));
-    let (search_index_holder, pending_search_migration) = search::open_index(&app_config);
+    search::cleanup_obsolete_session_index_logged();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let prompt_index_holder: PromptIndexHolder = Arc::new(RwLock::new(None));
     let prompt_stats_holder: PromptStatsHolder = Arc::new(RwLock::new(None));
@@ -69,7 +69,6 @@ pub async fn bootstrap(app_config: AppConfig, startup_start: Instant) -> Result<
         db.clone(),
         indexing.clone(),
         registry_holder.clone(),
-        search_index_holder.clone(),
         shutdown_rx,
         get_static_dir(),
         sidecar,
@@ -94,15 +93,11 @@ pub async fn bootstrap(app_config: AppConfig, startup_start: Instant) -> Result<
         claude_dir,
         indexing: indexing.clone(),
         registry_holder,
-        search_holder: search_index_holder,
         prompt_index_holder,
         prompt_stats_holder,
         prompt_templates_holder,
         telemetry,
     };
-    // ORDERING: indexer spawn BEFORE search rebuild — rebuild polls
-    // `registry_holder`, which is only populated inside the indexer closure.
-    spawn_search_rebuild_if_pending(pending_search_migration, &indexer_deps);
     spawn_indexer_task(indexer_deps);
 
     tui::spawn_tui_task(indexing, startup_start, port);

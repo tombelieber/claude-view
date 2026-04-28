@@ -42,10 +42,7 @@ fn decompress_gz(data: &[u8]) -> Option<Vec<u8>> {
 ///
 /// This is a best-effort ingest: corrupt gz files, parse failures, and
 /// missing dirs are silently skipped. Returns (imported, skipped).
-pub async fn ingest_backup_sessions(
-    db: &Database,
-    search_index: Option<Arc<claude_view_search::SearchIndex>>,
-) -> (usize, usize) {
+pub async fn ingest_backup_sessions(db: &Database) -> (usize, usize) {
     let machines_dir = match backup_machines_dir() {
         Some(d) => d,
         None => {
@@ -290,12 +287,6 @@ pub async fn ingest_backup_sessions(
                 entrypoint: parse_result.entrypoint.clone(),
             };
 
-            let project_for_search = parse_result
-                .cwd
-                .as_deref()
-                .and_then(claude_view_core::infer_git_root_from_worktree_path)
-                .unwrap_or_else(|| resolved.full_path.clone());
-
             let turns = std::mem::take(&mut parse_result.turns);
             let models_seen: Vec<String> = turns
                 .iter()
@@ -315,13 +306,11 @@ pub async fn ingest_backup_sessions(
                     turns,
                     models_seen,
                     classified_invocations,
-                    search_messages: std::mem::take(&mut parse_result.search_messages),
                     cwd: parse_result.cwd.clone(),
                     git_root: parse_result
                         .cwd
                         .as_deref()
                         .and_then(claude_view_core::infer_git_root_from_worktree_path),
-                    project_for_search,
                     diagnostics: parse_result.diagnostics,
                     hook_progress_events: parse_result.deep.hook_progress_events,
                 }),
@@ -439,36 +428,6 @@ pub async fn ingest_backup_sessions(
                 skipped += chunk.len();
             }
         }
-    }
-
-    // Phase 3: Search index (optional)
-    if let Some(ref search) = search_index {
-        for session in &indexed_sessions {
-            if session.search_messages.is_empty() {
-                continue;
-            }
-            let docs: Vec<claude_view_search::SearchDocument> = session
-                .search_messages
-                .iter()
-                .enumerate()
-                .map(|(i, msg)| claude_view_search::SearchDocument {
-                    session_id: session.parsed.id.clone(),
-                    project: session.project_for_search.clone(),
-                    branch: session.parsed.git_branch.clone().unwrap_or_default(),
-                    model: session.parsed.primary_model.clone().unwrap_or_default(),
-                    role: msg.role.clone(),
-                    content: msg.content.clone(),
-                    turn_number: (i + 1) as u64,
-                    timestamp: msg.timestamp.unwrap_or(0),
-                    skills: serde_json::from_str(&session.parsed.skills_used).unwrap_or_default(),
-                })
-                .collect();
-            if let Err(e) = search.index_session(&session.parsed.id, &docs) {
-                tracing::debug!(session_id = %session.parsed.id, error = %e, "Backup search index error");
-            }
-        }
-        let _ = search.commit();
-        let _ = search.reader.reload();
     }
 
     tracing::info!(imported, skipped, "Backup ingest complete");

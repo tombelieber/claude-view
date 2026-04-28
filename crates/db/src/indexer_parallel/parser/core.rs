@@ -212,10 +212,8 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
             let has_interactive_tool_result_marker = is_tool_result
                 && (tool_result_questions_finder.find(line).is_some()
                     || tool_result_rejected_finder.find(line).is_some());
-            let mut is_human_tool_result = false;
-            let mut user_text_for_search: Option<String> = None;
             if let Some(content) = extract_first_text_content(line, &content_finder, &text_finder) {
-                is_human_tool_result = is_tool_result
+                let is_human_tool_result = is_tool_result
                     && (has_interactive_tool_result_marker
                         || is_human_tool_result_content(&content));
                 let is_real_user_input =
@@ -246,9 +244,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     result.deep.current_turn_start_ts = current_ts;
                     result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
                 }
-                if !is_system_user_content(&content) {
-                    user_text_for_search = Some(content);
-                }
             }
             let user_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
             if let Some(ts) = user_ts {
@@ -258,27 +253,12 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 }
                 last_timestamp = Some(ts);
             }
-            if let Some(text) = user_text_for_search {
-                let search_role = if is_tool_result && !is_human_tool_result {
-                    SOURCE_MESSAGE_ROLE_TOOL
-                } else {
-                    SOURCE_MESSAGE_ROLE_USER
-                };
-                result
-                    .search_messages
-                    .push(claude_view_core::SearchableMessage {
-                        role: search_role.to_string(),
-                        content: text,
-                        timestamp: user_ts,
-                    });
-            }
             continue;
         }
 
         // Assistant lines: typed struct parse (skips text/thinking content allocation)
         if type_assistant.find(line).is_some() {
             diag.json_parse_attempts += 1;
-            let assistant_ts = extract_timestamp_from_bytes(line, &timestamp_finder);
             match serde_json::from_slice::<AssistantLine>(line) {
                 Ok(parsed) => {
                     handle_assistant_line(
@@ -304,20 +284,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         let (added, removed) = extract_loc_from_assistant_tool_uses(line);
                         result.lines_added = result.lines_added.saturating_add(added);
                         result.lines_removed = result.lines_removed.saturating_add(removed);
-                    }
-
-                    if let Some(text) =
-                        extract_first_text_content(line, &content_finder, &text_finder)
-                    {
-                        if !text.is_empty() {
-                            result
-                                .search_messages
-                                .push(claude_view_core::SearchableMessage {
-                                    role: SOURCE_MESSAGE_ROLE_ASSISTANT.to_string(),
-                                    content: text,
-                                    timestamp: assistant_ts,
-                                });
-                        }
                     }
                 }
                 Err(_) => {
@@ -378,9 +344,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                 diag.lines_user += 1;
                 user_count += 1;
                 let is_tool_result = tool_result_finder.find(line).is_some();
-                let mut is_human_tool_result = false;
                 let fallback_user_ts = extract_timestamp_from_value(&value);
-                let mut fallback_user_text: Option<String> = None;
                 if let Some(content) =
                     extract_first_text_content(line, &content_finder, &text_finder)
                 {
@@ -389,7 +353,7 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                             tr.get("questions").is_some()
                                 || tr.as_str() == Some("User rejected tool use")
                         });
-                    is_human_tool_result = is_tool_result
+                    let is_human_tool_result = is_tool_result
                         && (has_interactive_tool_result_marker
                             || is_human_tool_result_content(&content));
                     let is_real_user_input = !is_system_user_content(&content)
@@ -420,29 +384,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                         result.deep.current_turn_start_ts = current_ts;
                         result.deep.current_turn_prompt = Some(content.chars().take(60).collect());
                     }
-                    if !is_system_user_content(&content) {
-                        fallback_user_text = Some(content);
-                    }
-                }
-                if let Some(text) = fallback_user_text {
-                    let search_role = if is_tool_result && !is_human_tool_result {
-                        SOURCE_MESSAGE_ROLE_TOOL
-                    } else {
-                        SOURCE_MESSAGE_ROLE_USER
-                    };
-                    result
-                        .search_messages
-                        .push(claude_view_core::SearchableMessage {
-                            role: search_role.to_string(),
-                            content: text,
-                            timestamp: fallback_user_ts,
-                        });
                 }
             }
             "assistant" => {
                 diag.lines_assistant += 1;
                 assistant_count += 1;
-                let fallback_assistant_ts = extract_timestamp_from_value(&value);
                 handle_assistant_value(
                     &value,
                     byte_offset,
@@ -464,30 +410,6 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     let (added, removed) = extract_loc_from_assistant_tool_uses(line);
                     result.lines_added = result.lines_added.saturating_add(added);
                     result.lines_removed = result.lines_removed.saturating_add(removed);
-                }
-
-                let (text_content, tool_entries) = extract_search_content_from_value(&value);
-                if let Some(text) = text_content {
-                    if !text.is_empty() {
-                        result
-                            .search_messages
-                            .push(claude_view_core::SearchableMessage {
-                                role: SOURCE_MESSAGE_ROLE_ASSISTANT.to_string(),
-                                content: text,
-                                timestamp: fallback_assistant_ts,
-                            });
-                    }
-                }
-                for tool_text in tool_entries {
-                    if !tool_text.is_empty() {
-                        result
-                            .search_messages
-                            .push(claude_view_core::SearchableMessage {
-                                role: SOURCE_MESSAGE_ROLE_TOOL.to_string(),
-                                content: tool_text,
-                                timestamp: fallback_assistant_ts,
-                            });
-                    }
                 }
             }
             "system" => {

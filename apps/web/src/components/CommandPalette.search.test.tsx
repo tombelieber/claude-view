@@ -12,7 +12,9 @@ import searchResultsSource from './SearchResults.tsx?raw'
  * These tests verify that:
  * 1. There is no isRegex branching — all queries go through useSearch
  * 2. useGrep is NOT imported or used in the main search flow
- * 3. SearchResults page uses per-session engines field for the grep indicator
+ * 3. SearchResults page does NOT differentiate engines in the UI
+ *    (grep is the only engine, so a "substring matches"
+ *    badge would be noise — every result is a substring match)
  *
  * Design principle: "One Endpoint Per Capability" (CLAUDE.md)
  */
@@ -28,14 +30,14 @@ describe('CommandPalette search wiring', () => {
     expect(commandPaletteSource).not.toContain('hasRegexMetacharacters')
   })
 
-  it('SearchResults page uses per-session engines field for grep indicator', () => {
-    // Positive assertion: SearchResults checks per-session engines array,
-    // not the removed response-level searchEngine field
-    expect(searchResultsSource).toContain('engines')
-    expect(searchResultsSource).toContain('hasGrepResults')
-    // Negative assertion: response-level searchEngine is gone
+  it('SearchResults page does not differentiate engines in the UI', () => {
+    // Negative: the old response-level engine flag is gone
     expect(searchResultsSource).not.toContain('searchEngine')
-    // Negative assertion: no direct grep hook usage
+    // Negative: no per-session "came from grep" branching is rendered —
+    // grep is the only engine, so the badge is noise.
+    expect(searchResultsSource).not.toContain('hasGrepResults')
+    expect(searchResultsSource).not.toContain('Substring matches')
+    // Negative: no direct grep hook usage
     expect(searchResultsSource).not.toContain("from '../hooks/use-grep'")
   })
 })

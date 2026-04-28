@@ -13,7 +13,7 @@ export type StorageStats = {
    */
   sqliteBytes: number
   /**
-   * Size of search index in bytes.
+   * Size of obsolete session search cache in bytes.
    */
   indexBytes: number
   /**
@@ -65,7 +65,7 @@ export type StorageStats = {
    */
   sqlitePath: string | null
   /**
-   * Path to Tantivy search index directory.
+   * Path to obsolete session search cache directory.
    */
   indexPath: string | null
   /**

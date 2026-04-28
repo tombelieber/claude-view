@@ -17,12 +17,12 @@ use super::types::StorageStats;
 /// GET /api/stats/storage - Storage statistics for the settings page.
 ///
 /// Returns:
-/// - Storage sizes: JSONL files, SQLite database, search index
+/// - Storage sizes: JSONL files, SQLite database, obsolete search index cache
 /// - Counts: sessions, projects, commits
 /// - Timing: oldest session, last index, last git sync
 #[utoipa::path(get, path = "/api/stats/storage", tag = "stats",
     responses(
-        (status = 200, description = "Storage usage statistics (JSONL, SQLite, search index)", body = StorageStats),
+        (status = 200, description = "Storage usage statistics (JSONL, SQLite, cache)", body = StorageStats),
     )
 )]
 pub async fn storage_stats(State(state): State<Arc<AppState>>) -> ApiResult<Json<StorageStats>> {
@@ -69,8 +69,9 @@ pub async fn storage_stats(State(state): State<Arc<AppState>>) -> ApiResult<Json
         }
     };
 
-    // Search index size — measured from actual directory on disk
-    let index_bytes = match claude_view_core::paths::search_index_dir() {
+    // Obsolete session search cache size — measured from actual directory on disk.
+    // Startup normally removes this now that session search is grep-only.
+    let index_bytes = match claude_view_core::paths::obsolete_session_search_index_dir() {
         Some(dir) if dir.exists() => calculate_directory_size(&dir).await,
         _ => 0,
     };
@@ -89,7 +90,7 @@ pub async fn storage_stats(State(state): State<Arc<AppState>>) -> ApiResult<Json
 
     let jsonl_path = shorten(claude_projects_dir().ok());
     let sqlite_path = shorten(claude_view_core::paths::db_path());
-    let index_path = shorten(claude_view_core::paths::search_index_dir());
+    let index_path = shorten(claude_view_core::paths::obsolete_session_search_index_dir());
     let app_data_path = shorten(Some(claude_view_core::paths::data_dir()));
 
     record_request("storage_stats", "200", start.elapsed());

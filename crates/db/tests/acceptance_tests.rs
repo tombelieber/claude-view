@@ -73,7 +73,7 @@ fn setup_single_session() -> (tempfile::TempDir, std::path::PathBuf) {
 /// Drive `scan_and_index_all` with no-op callbacks. Returns `(indexed, skipped)`.
 async fn run_scan(claude_dir: &std::path::Path, db: &Database) -> Result<(usize, usize), String> {
     let hints = build_index_hints(claude_dir);
-    scan_and_index_all(claude_dir, db, &hints, None, None, |_| {}, |_| {}, || {}).await
+    scan_and_index_all(claude_dir, db, &hints, None, |_| {}, |_| {}, || {}).await
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +261,6 @@ async fn ac9_callbacks_fire_correctly() {
         &claude_dir,
         &db,
         &hints,
-        None,
         None,
         move |_session_id| {
             fdc.fetch_add(1, Ordering::Relaxed);

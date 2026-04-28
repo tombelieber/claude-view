@@ -56,7 +56,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 ### History & Search
 
 - **Rich chat history** — every conversation rendered with markdown, code blocks, tool calls
-- **Full-text search** — Tantivy + SQLite search across sessions, messages, tool calls, file paths
+- **Rust grep search** — ripgrep-core + SQLite pre-filter across sessions, messages, tool calls, file paths
 - **Export** — markdown export for context resumption or sharing
 - **Encrypted sharing** — share any session via E2E encrypted link
 

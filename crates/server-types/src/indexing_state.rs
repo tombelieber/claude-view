@@ -14,13 +14,13 @@ pub enum IndexingStatus {
     Idle = 0,
     /// Pass 1 – reading existing indexes / lightweight scan.
     ReadingIndexes = 1,
-    /// Pass 2 – deep indexing (JSONL parsing, full-text, etc.).
+    /// Pass 2 – deep indexing (JSONL parsing, derived metadata, etc.).
     DeepIndexing = 2,
     /// Indexing finished successfully.
     Done = 3,
     /// Indexing terminated with an error (see [`IndexingState::error`]).
     Error = 4,
-    /// All DB writes done, building search index (Tantivy commit + reload).
+    /// All DB writes done, running final bookkeeping.
     Finalizing = 5,
 }
 

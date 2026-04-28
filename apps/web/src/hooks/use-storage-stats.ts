@@ -5,7 +5,7 @@ import type { StorageStats } from '../types/generated'
  * Fetch storage statistics from /api/stats/storage.
  *
  * Returns:
- * - Storage sizes: JSONL, SQLite, search index
+ * - Storage sizes: JSONL, SQLite, obsolete search cache
  * - Counts: sessions, projects, commits
  * - Timing: oldest session, last index, last git sync
  */

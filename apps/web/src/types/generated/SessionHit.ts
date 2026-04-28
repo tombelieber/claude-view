@@ -17,7 +17,7 @@ export type SessionHit = {
    */
   matchCount: number
   /**
-   * BM25 score of the best-scoring match in this session.
+   * Search score. Grep-backed session search sets this to 0.
    */
   bestScore: number
   /**
@@ -30,7 +30,7 @@ export type SessionHit = {
   matches: Array<MatchHit>
   /**
    * Which search engines contributed to this session's results.
-   * e.g. ["grep"], ["tantivy"], ["grep", "tantivy"]
+   * Session search currently returns ["grep"].
    */
   engines: Array<string>
 }

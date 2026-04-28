@@ -72,8 +72,6 @@ pub struct LiveSessionManager {
     pricing: Arc<HashMap<String, ModelPricing>>,
     /// Database handle for batched writes.
     db: Database,
-    /// Search index holder for passing to scan_and_index_all on overflow reconciliation.
-    search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
     /// Registry holder for passing to scan_and_index_all on overflow reconciliation.
     registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
     /// Channel to request snapshot writes. Debounced to max 1 write/sec.
@@ -151,7 +149,6 @@ impl LiveSessionManager {
     pub fn start(
         pricing: Arc<HashMap<String, ModelPricing>>,
         db: Database,
-        search_index: Arc<StdRwLock<Option<Arc<claude_view_search::SearchIndex>>>>,
         registry: Arc<StdRwLock<Option<claude_view_core::Registry>>>,
         sidecar: Option<Arc<crate::sidecar::SidecarManager>>,
         teams: Arc<crate::teams::TeamsStore>,
@@ -220,7 +217,6 @@ impl LiveSessionManager {
             process_count: Arc::new(AtomicU32::new(0)),
             pricing,
             db,
-            search_index,
             registry,
             snapshot_tx,
             sidecar,

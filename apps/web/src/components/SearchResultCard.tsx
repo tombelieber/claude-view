@@ -4,12 +4,12 @@ import { Link } from 'react-router-dom'
 import type { MatchHit, SessionHit } from '../types/generated'
 
 /**
- * Render snippet HTML from Tantivy search results.
+ * Render snippet HTML from grep search results.
  * The snippet contains only <mark> tags for highlighting matched terms.
- * These come from our own backend (Tantivy highlight), not from user input.
+ * These come from our own backend, not from user input.
  */
 function SnippetHighlight({ html }: { html: string }) {
-  // Only allow <mark> tags from Tantivy — strip anything else as a safety measure
+  // Only allow <mark> tags from search snippets; strip anything else as a safety measure.
   const sanitized = html.replace(/<(?!\/?mark\b)[^>]*>/gi, '')
   return <span dangerouslySetInnerHTML={{ __html: sanitized }} />
 }

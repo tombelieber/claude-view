@@ -1,9 +1,9 @@
 // crates/db/src/indexer_parallel/orchestrator/mod.rs
-// 3-phase startup scan: parse (parallel) -> SQLite write (chunked) -> search index.
+// Startup scan: parse (parallel) -> SQLite write (chunked) -> finalization.
 
 mod discovery;
+mod phase_finalize;
 mod phase_parse;
-mod phase_search;
 mod phase_write;
 
 use claude_view_core::Registry;
@@ -15,11 +15,11 @@ use crate::Database;
 
 use super::types::IndexHints;
 
-/// 3-phase startup scan: parse (parallel) -> SQLite write (chunked) -> search index.
+/// Startup scan: parse (parallel) -> SQLite write (chunked) -> finalization.
 ///
 /// Phase 1: Parse all changed JSONL files in parallel (CPU-bound, zero DB writes).
 /// Phase 2: Write sessions, turns, models, invocations in chunked transactions.
-/// Phase 3: Write search index to Tantivy (after SQLite success).
+/// Phase 3: Finalize index-run bookkeeping.
 ///
 /// Returns (indexed_count, skipped_count).
 ///
@@ -35,7 +35,6 @@ pub async fn scan_and_index_all<F, T, W>(
     claude_dir: &Path,
     db: &Database,
     hints: &HashMap<String, IndexHints>,
-    search_index: Option<Arc<claude_view_search::SearchIndex>>,
     registry: Option<Arc<Registry>>,
     on_file_done: F,
     on_total_known: T,
@@ -50,20 +49,6 @@ where
     if !projects_dir.exists() {
         return Ok((0, 0));
     }
-
-    // When the search index was rebuilt (schema version mismatch), force re-parse
-    // of ALL sessions so search_messages get regenerated and fed to Tantivy.
-    let force_search_reindex = search_index
-        .as_ref()
-        .map(|idx| idx.needs_full_reindex)
-        .unwrap_or(false);
-
-    if force_search_reindex {
-        tracing::info!(
-            "Search index was rebuilt -- forcing full re-parse to repopulate search data"
-        );
-    }
-    let source_docs_validation_enabled = search_index.is_some();
 
     // Discover all .jsonl files
     let files = discovery::discover_jsonl_files(&projects_dir)?;
@@ -94,8 +79,7 @@ where
         hints,
         &existing_map,
         registry,
-        force_search_reindex,
-        source_docs_validation_enabled,
+        false,
         on_file_done.clone(),
     )
     .await?;
@@ -104,23 +88,13 @@ where
         return Ok((0, skipped_count));
     }
 
-    let total_search_bytes: usize = indexed_sessions
-        .iter()
-        .map(|s| {
-            s.search_messages
-                .iter()
-                .map(|m| m.content.len())
-                .sum::<usize>()
-        })
-        .sum();
     tracing::info!(
         sessions = indexed_sessions.len(),
-        search_bytes = total_search_bytes,
         "Phase 1 parse complete, starting Phase 2 SQLite write"
     );
 
     // Aggregate integrity counters + create index run record
-    let integrity = phase_search::aggregate_integrity(&indexed_sessions);
+    let integrity = phase_finalize::aggregate_integrity(&indexed_sessions);
 
     let index_run_start = std::time::Instant::now();
     let index_run_id = match db.create_index_run("full", None, Some(&integrity)).await {
@@ -138,18 +112,13 @@ where
 
     tracing::info!(
         indexed = indexed_count,
-        "Phase 2 SQLite write complete, starting Phase 3 search index"
+        "Phase 2 SQLite write complete, starting finalization"
     );
 
     on_finalize_start();
 
-    // Phase 3: SEARCH INDEX (sequential, after SQLite success)
-    if let Some(ref search) = search_index {
-        phase_search::run_phase_search(&indexed_sessions, search, force_search_reindex);
-    }
-
     // Persist index run completion with aggregated integrity counters
-    phase_search::finalize_index_run(
+    phase_finalize::finalize_index_run(
         db,
         &indexed_sessions,
         indexed_count,

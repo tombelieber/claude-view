@@ -172,7 +172,6 @@ mod tests {
             process_count: Arc::new(AtomicU32::new(0)),
             pricing: Arc::new(HashMap::<String, ModelPricing>::new()),
             db,
-            search_index: Arc::new(StdRwLock::new(None)),
             registry: Arc::new(StdRwLock::new(None)),
             snapshot_tx,
             sidecar: None,

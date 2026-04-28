@@ -152,15 +152,10 @@ pub async fn trigger_reindex(
     }))
 }
 
-/// POST /api/system/clear-cache - Clear search index and cached data.
+/// POST /api/system/clear-cache - Clear obsolete search cache.
 ///
-/// Uses a take-drop-recreate pattern:
-/// 1. Write-lock the holder, `.take()` the old `Arc<SearchIndex>` (holder becomes `None`)
-/// 2. Call `clear_all()` on the old index (flushes deletes via Tantivy API)
-/// 3. Drop the old index — releases mmap handles and file locks
-/// 4. `remove_dir_all()` — now safe, no live handles
-/// 5. `SearchIndex::open()` — creates fresh empty index
-/// 6. Write-lock holder, swap in the new `Arc<SearchIndex>`
+/// Session search is grep-only now, so this endpoint only removes any obsolete
+/// session-search cache left by older versions. It does not recreate an index.
 #[utoipa::path(post, path = "/api/system/clear-cache", tag = "system",
     responses(
         (status = 200, description = "Cache cleared, returns bytes freed", body = serde_json::Value),
@@ -169,7 +164,7 @@ pub async fn trigger_reindex(
 pub async fn clear_cache(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<ClearCacheResponse>> {
-    let cache_dir = claude_view_core::paths::search_index_dir();
+    let cache_dir = claude_view_core::paths::obsolete_session_search_index_dir();
 
     // Measure size before clearing
     let size_before = cache_dir
@@ -178,45 +173,8 @@ pub async fn clear_cache(
         .map(|d| calculate_dir_size(d))
         .unwrap_or(0);
 
-    // Step 1: Take the old index out of the holder (sets holder to None)
-    let old_index = state
-        .search_index
-        .write()
-        .map_err(|_| ApiError::Internal("search index lock poisoned".into()))?
-        .take();
-
-    // Step 2-3: Clear and drop the old index (releases mmap handles)
-    if let Some(old) = old_index {
-        if let Err(e) = old.clear_all() {
-            tracing::warn!("Failed to clear old search index: {}", e);
-        }
-        drop(old);
-    }
-
-    // Step 4: Remove the directory on disk (safe — no live handles)
-    if let Some(ref dir) = cache_dir {
-        if dir.exists() {
-            if let Err(e) = std::fs::remove_dir_all(dir) {
-                tracing::warn!("Failed to remove search index directory: {}", e);
-            }
-        }
-    }
-
-    // Step 5-6: Create a fresh index and swap it into the holder
-    if let Some(ref dir) = cache_dir {
-        match claude_view_search::SearchIndex::open(dir) {
-            Ok(new_idx) => {
-                let mut guard = state
-                    .search_index
-                    .write()
-                    .map_err(|_| ApiError::Internal("search index lock poisoned".into()))?;
-                *guard = Some(Arc::new(new_idx));
-                tracing::info!("Search index recreated at {}", dir.display());
-            }
-            Err(e) => {
-                tracing::warn!("Failed to recreate search index: {}. Search will be unavailable until next restart.", e);
-            }
-        }
+    if let Err(e) = crate::startup::search::cleanup_obsolete_session_index() {
+        tracing::warn!("Failed to remove obsolete search cache directory: {}", e);
     }
 
     // Measure size after clearing to compute freed bytes
@@ -283,13 +241,8 @@ pub async fn reset_all(
         .await
         .map_err(|e| ApiError::Internal(format!("Failed to reset data: {}", e)))?;
 
-    // Also clear the search index
-    if let Ok(guard) = state.search_index.read() {
-        if let Some(ref search) = *guard {
-            if let Err(e) = search.clear_all() {
-                tracing::warn!("Failed to clear search index during reset: {}", e);
-            }
-        }
+    if let Err(e) = crate::startup::search::cleanup_obsolete_session_index() {
+        tracing::warn!("Failed to remove obsolete search cache during reset: {}", e);
     }
 
     Ok(Json(ActionResponse {

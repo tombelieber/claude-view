@@ -2,8 +2,8 @@
 //!
 //! Pipeline:
 //!   1. SessionCatalog filter (project, time window) — in-memory, cheap.
-//!   2. Optional `q` full-text search — intersects IDs from the tantivy
-//!      index via `search_service::execute_search`.
+//!   2. Optional `q` text search — intersects IDs from grep over JSONL
+//!      via `search_service::execute_search`.
 //!   3. `session_stats::extract_stats` for every surviving candidate —
 //!      ~0.28ms p95 per session (JSONL parse).
 //!   4. `enrichment::fetch_enrichments` — bulk DB lookup for archived_at,
@@ -93,7 +93,7 @@ pub async fn list_sessions(
             .session_catalog
             .list(&cat_filter, CatSort::LastTsDesc, usize::MAX);
 
-    // 2. Optional full-text search via tantivy — intersect IDs with catalog.
+    // 2. Optional text search via grep — intersect IDs with catalog.
     if let Some(q_trimmed) = query.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
         let search_filters = crate::search_service::SearchFilters {
             project: query.project.clone(),

@@ -4,11 +4,6 @@
 
 use memchr::memmem;
 
-use super::types::ParseDiagnostics;
-
-pub(crate) const SOURCE_MESSAGE_ROLE_USER: &str = "user";
-pub(crate) const SOURCE_MESSAGE_ROLE_ASSISTANT: &str = "assistant";
-pub(crate) const SOURCE_MESSAGE_ROLE_TOOL: &str = "tool";
 pub(crate) const TOOL_INPUT_FILE_PATH_KEYS: [&str; 5] = [
     "file_path",
     "path",
@@ -16,37 +11,6 @@ pub(crate) const TOOL_INPUT_FILE_PATH_KEYS: [&str; 5] = [
     "filePath",
     "entrypoint_path",
 ];
-
-pub(crate) fn is_valid_source_message_role(role: &str) -> bool {
-    matches!(
-        role,
-        SOURCE_MESSAGE_ROLE_USER | SOURCE_MESSAGE_ROLE_ASSISTANT | SOURCE_MESSAGE_ROLE_TOOL
-    )
-}
-
-pub(crate) fn sanitize_source_search_messages(
-    messages: Vec<claude_view_core::SearchableMessage>,
-    diag: &mut ParseDiagnostics,
-) -> Vec<claude_view_core::SearchableMessage> {
-    messages
-        .into_iter()
-        .filter_map(|msg| {
-            if is_valid_source_message_role(msg.role.as_str()) {
-                Some(msg)
-            } else {
-                diag.unknown_source_role_count = diag.unknown_source_role_count.saturating_add(1);
-                None
-            }
-        })
-        .collect()
-}
-
-pub(crate) fn note_rejected_derived_source_doc(diag: &mut ParseDiagnostics) {
-    diag.derived_source_message_doc_count = diag.derived_source_message_doc_count.saturating_add(1);
-    diag.source_message_non_source_provenance_count = diag
-        .source_message_non_source_provenance_count
-        .saturating_add(1);
-}
 
 pub(crate) fn extract_tool_input_file_path(input: &serde_json::Value) -> Option<&str> {
     for key in TOOL_INPUT_FILE_PATH_KEYS {
@@ -202,74 +166,6 @@ pub(crate) fn split_lines_with_offsets(data: &[u8]) -> impl Iterator<Item = (usi
             (offset, line)
         })
     })
-}
-
-/// Extract text content from a JSONL `serde_json::Value` for full-text search indexing.
-///
-/// Returns a tuple of (text_content, tool_use_entries) where:
-/// - text_content: concatenated text blocks from the message (for "user" or "assistant" role)
-/// - tool_use_entries: individual tool_use block descriptions (role="tool")
-///
-/// Handles both string content (`"content": "..."`) and array content
-/// (`"content": [{"type": "text", "text": "..."}, {"type": "tool_use", ...}]`).
-pub(crate) fn extract_search_content_from_value(
-    value: &serde_json::Value,
-) -> (Option<String>, Vec<String>) {
-    let mut tool_entries = Vec::new();
-
-    let message = match value.get("message") {
-        Some(m) => m,
-        None => return (None, tool_entries),
-    };
-
-    let content = match message.get("content") {
-        Some(c) => c,
-        None => return (None, tool_entries),
-    };
-
-    match content {
-        serde_json::Value::String(s) => (Some(s.clone()), tool_entries),
-        serde_json::Value::Array(arr) => {
-            let mut text_parts = Vec::new();
-            for block in arr {
-                let block_type = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
-                match block_type {
-                    "text" => {
-                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
-                            text_parts.push(text.to_string());
-                        }
-                    }
-                    "tool_use" => {
-                        // Include tool name + stringified input for searchability
-                        let name = block
-                            .get("name")
-                            .and_then(|n| n.as_str())
-                            .unwrap_or("unknown");
-                        if let Some(input) = block.get("input") {
-                            if let Some(s) = input.as_str() {
-                                tool_entries.push(format!("{}: {}", name, s));
-                            }
-                            // For object inputs, include only if small (e.g., command field)
-                            else if let Some(cmd) = input.get("command").and_then(|c| c.as_str())
-                            {
-                                tool_entries.push(format!("{}: {}", name, cmd));
-                            } else if let Some(fp) = extract_tool_input_file_path(input) {
-                                tool_entries.push(format!("{}: {}", name, fp));
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            let text = if text_parts.is_empty() {
-                None
-            } else {
-                Some(text_parts.join("\n"))
-            };
-            (text, tool_entries)
-        }
-        _ => (None, tool_entries),
-    }
 }
 
 /// Extract the first text content from a JSONL line (best-effort, no full JSON parse).

@@ -1,23 +1,7 @@
-use claude_view_search::indexer::SearchDocument;
 use claude_view_search::unified::{unified_search, SearchEngine, UnifiedSearchOptions};
-use claude_view_search::{JsonlFile, SearchIndex};
+use claude_view_search::JsonlFile;
 use std::fs;
 use tempfile::TempDir;
-
-fn index_doc(idx: &SearchIndex, session_id: &str, content: &str) {
-    let doc = SearchDocument {
-        session_id: session_id.to_string(),
-        project: "integration-test".to_string(),
-        branch: "main".to_string(),
-        model: "opus".to_string(),
-        role: "user".to_string(),
-        content: content.to_string(),
-        turn_number: 1,
-        timestamp: 1710000000,
-        skills: vec![],
-    };
-    idx.index_session(session_id, &[doc]).unwrap();
-}
 
 fn make_jsonl_file(
     dir: &std::path::Path,
@@ -36,14 +20,8 @@ fn make_jsonl_file(
     }
 }
 
-/// Tantivy-primary: when Tantivy finds the session, only tantivy engine tag appears.
 #[test]
-fn test_tantivy_primary_returns_tantivy_engine_only() {
-    let idx = SearchIndex::open_in_ram().unwrap();
-    index_doc(&idx, "s1", "deploy to production");
-    idx.commit().unwrap();
-    idx.reader.reload().unwrap();
-
+fn test_session_search_uses_grep() {
     let tmp = TempDir::new().unwrap();
     let files = vec![make_jsonl_file(
         tmp.path(),
@@ -60,20 +38,15 @@ fn test_tantivy_primary_returns_tantivy_engine_only() {
         skip_snippets: false,
     };
 
-    let result = unified_search(Some(&idx), &files, &opts).unwrap();
+    let result = unified_search(&files, &opts).unwrap();
     assert_eq!(result.response.total_sessions, 1);
-    assert_eq!(result.engine, SearchEngine::Tantivy);
-    assert_eq!(result.response.sessions[0].engines, vec!["tantivy"]);
+    assert_eq!(result.engine, SearchEngine::Grep);
+    assert_eq!(result.response.sessions[0].engines, vec!["grep"]);
 }
 
-/// CJK — Tantivy can't tokenize CJK, falls back to grep.
+/// CJK works via grep over the raw JSONL line.
 #[test]
-fn test_cjk_grep_fallback() {
-    let idx = SearchIndex::open_in_ram().unwrap();
-    index_doc(&idx, "s1", "自動部署到生產環境完成");
-    idx.commit().unwrap();
-    idx.reader.reload().unwrap();
-
+fn test_cjk_grep_search() {
     let tmp = TempDir::new().unwrap();
     let files = vec![make_jsonl_file(
         tmp.path(),
@@ -90,7 +63,7 @@ fn test_cjk_grep_fallback() {
         skip_snippets: false,
     };
 
-    let result = unified_search(Some(&idx), &files, &opts).unwrap();
+    let result = unified_search(&files, &opts).unwrap();
     assert_eq!(result.response.total_sessions, 1);
     assert_eq!(result.engine, SearchEngine::Grep);
     assert!(result.response.sessions[0]
@@ -98,13 +71,9 @@ fn test_cjk_grep_fallback() {
         .contains(&"grep".to_string()));
 }
 
-/// Results sorted by recency (modified_at DESC) — grep fallback path.
+/// Results sorted by recency (modified_at DESC).
 #[test]
-fn test_grep_fallback_sorted_by_recency() {
-    let idx = SearchIndex::open_in_ram().unwrap();
-    idx.commit().unwrap();
-    idx.reader.reload().unwrap();
-
+fn test_grep_sorted_by_recency() {
     let tmp = TempDir::new().unwrap();
     let files = vec![
         make_jsonl_file(
@@ -129,8 +98,7 @@ fn test_grep_fallback_sorted_by_recency() {
         skip_snippets: false,
     };
 
-    // Tantivy has nothing indexed → grep fallback
-    let result = unified_search(Some(&idx), &files, &opts).unwrap();
+    let result = unified_search(&files, &opts).unwrap();
     assert_eq!(result.engine, SearchEngine::Grep);
     assert_eq!(result.response.sessions.len(), 2);
     assert_eq!(result.response.sessions[0].session_id, "s-new");

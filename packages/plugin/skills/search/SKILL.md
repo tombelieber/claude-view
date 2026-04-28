@@ -15,7 +15,7 @@ You have access to the claude-view MCP server which provides tools for monitorin
 
 # Session Search
 
-Find sessions across the user's Claude Code history using full-text search.
+Find sessions across the user's Claude Code history using grep-backed session search.
 
 ## Steps
 
@@ -51,7 +51,7 @@ Find sessions across the user's Claude Code history using full-text search.
 | **Session Tools** | |
 | `list_sessions` | List sessions with filters |
 | `get_session` | Get session details |
-| `search_sessions` | Full-text search across sessions |
+| `search_sessions` | Grep search across sessions |
 | **Stats Tools** | |
 | `get_stats` | Dashboard statistics |
 | `get_fluency_score` | AI Fluency Score (0-100) |
@@ -190,7 +190,7 @@ Find sessions across the user's Claude Code history using full-text search.
 | **System Tools** | |
 | `system_check_path` | Check whether a filesystem path still exists. |
 | `system_get_system_status` | Get comprehensive system status. |
-| `system_clear_cache` | Clear search index and cached data. |
+| `system_clear_cache` | Clear obsolete search cache. |
 | `system_trigger_git_resync` | Trigger full git re-sync. |
 | `system_trigger_reindex` | Trigger a full re-index. |
 | `system_reset_all` | Factory reset all data. |

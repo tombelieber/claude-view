@@ -81,7 +81,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
   const { recentSearches, addRecentSearch } = useAppStore()
   const trackEvent = useTrackEvent()
 
-  // Live search results from unified backend (Tantivy + grep fallback handled server-side)
+  // Live search results from the grep-backed session search endpoint.
   const {
     data: searchResults,
     isLoading: isSearching,
@@ -566,7 +566,7 @@ export function CommandPalette({ isOpen, onClose, projects, liveContext }: Comma
             </div>
           )}
 
-          {/* Live search results from unified backend */}
+          {/* Live search results from the session search endpoint */}
           {hasLiveResults && (
             <div className="py-2 border-b border-slate-200/80 dark:border-white/[0.06]">
               <p className="px-4 py-1 text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider">

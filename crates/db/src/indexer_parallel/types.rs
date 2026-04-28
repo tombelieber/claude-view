@@ -13,13 +13,13 @@ use std::path::Path;
 /// Version 4: LOC estimation, AI contribution tracking, work type classification.
 /// Version 5: Git branch extraction, primary model detection.
 /// Version 6: Wall-clock task time fields (total_task_time_seconds, longest_task_seconds).
-/// Version 7: Search index uses effective project identity (git_root or project_id) for sidebar filter alignment.
-/// Version 8: Model field changed to TEXT for partial matching, skills piped to Tantivy.
+/// Version 7: Effective project identity changed to git_root/project_id for sidebar filter alignment.
+/// Version 8: Model normalization and skills extraction update.
 /// Version 9: Token dedup via message.id:requestId, api_call_count from unique API calls.
 /// Version 10: Persist session total_cost_usd.
 /// Version 11: Unified session pipeline — single-pass parse-before-write.
 /// Version 12: valid_sessions view no longer requires last_message_at > 0.
-/// Version 13: Unified pipeline writes turns, models, invocations, and search index.
+/// Version 13: Unified pipeline writes turns, models, invocations, and session metadata.
 /// Version 14: Task-time turns split on interactive human tool_result responses.
 /// Version 15: Cost computed from token counts.
 /// Version 16: Per-turn cost computation (200k tiering per-API-request, not per-session).
@@ -246,9 +246,6 @@ pub struct ParseResult {
     pub cwd: Option<String>,
     /// Session slug from top-level JSONL field (e.g. "async-greeting-dewdrop").
     pub slug: Option<String>,
-    /// Collected message content for full-text search indexing.
-    /// Only user, assistant text, and tool_use inputs are included.
-    pub search_messages: Vec<claude_view_core::SearchableMessage>,
     /// How the session was launched (cli, claude-vscode, sdk-ts).
     pub entrypoint: Option<String>,
     /// Observability trace ID injected by claude-view into the CLI env.
@@ -267,7 +264,7 @@ pub struct ParseResult {
 pub struct DeepIndexResult {
     pub session_id: String,
     pub file_path: String,
-    /// Effective project identity (git_root or project_id), used for search indexing.
+    /// Effective project identity (git_root or project_id).
     pub project: String,
     pub parse_result: ParseResult,
     /// Pre-classified invocations: (source_file, byte_offset, invocable_id, session_id, project, timestamp)
@@ -360,7 +357,7 @@ pub fn read_file_fast(path: &Path) -> io::Result<FileData> {
     }
 }
 
-/// Collected results from one session's parse phase, ready for batched DB + search write.
+/// Collected results from one session's parse phase, ready for batched DB write.
 pub(crate) struct IndexedSession {
     pub parsed: ParsedSession,
     // CQRS Phase 6.4: `turns` + `classified_invocations` are produced
@@ -372,11 +369,8 @@ pub(crate) struct IndexedSession {
     pub models_seen: Vec<String>,
     #[allow(dead_code)]
     pub classified_invocations: Vec<(String, i64, String, String, String, i64)>,
-    pub search_messages: Vec<claude_view_core::SearchableMessage>,
     pub cwd: Option<String>,
     pub git_root: Option<String>,
-    /// Project name for search indexing
-    pub project_for_search: String,
     /// Per-session parse diagnostics for integrity counter aggregation
     pub diagnostics: ParseDiagnostics,
     /// Hook progress events extracted from JSONL for backfill into hook_events table

@@ -220,7 +220,7 @@ export function ColdStartOverlay({ progress }: ColdStartOverlayProps) {
             )}
 
             {progress.phase === 'finalizing' && (
-              <p className="text-sm text-blue-700 dark:text-blue-300">Building search index...</p>
+              <p className="text-sm text-blue-700 dark:text-blue-300">Finalizing sessions...</p>
             )}
 
             {isDone && (

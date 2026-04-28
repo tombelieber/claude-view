@@ -2,7 +2,7 @@
 //!
 //! Each "feature" is a self-contained module that:
 //! - Subscribes to session lifecycle events from the core.
-//! - Owns its own storage (SQLite tables, tantivy index, etc).
+//! - Owns its own storage (SQLite tables, cache directories, etc).
 //! - Can be enabled/disabled at runtime via config.
 //! - Has explicit init/shutdown lifecycle hooks.
 //!

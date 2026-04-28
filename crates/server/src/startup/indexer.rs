@@ -16,7 +16,6 @@ use crate::startup::background::{run_git_sync_logged, run_snapshot_generation};
 use crate::telemetry::TelemetryClient;
 use crate::{
     IndexingState, IndexingStatus, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder,
-    SearchIndexHolder,
 };
 
 /// All the shared state the indexer task needs. Bundled into a struct so
@@ -26,7 +25,6 @@ pub struct IndexerDeps {
     pub claude_dir: PathBuf,
     pub indexing: Arc<IndexingState>,
     pub registry_holder: Arc<RwLock<Option<claude_view_core::registry::Registry>>>,
-    pub search_holder: SearchIndexHolder,
     pub prompt_index_holder: PromptIndexHolder,
     pub prompt_stats_holder: PromptStatsHolder,
     pub prompt_templates_holder: PromptTemplatesHolder,
@@ -34,17 +32,12 @@ pub struct IndexerDeps {
 }
 
 /// Spawn the background indexer task.
-///
-/// ORDERING: must be called BEFORE [`spawn_search_rebuild_if_pending`]. The
-/// rebuild polls `registry_holder`, which is only populated inside this
-/// task's closure after Pass 1 completes.
 pub fn spawn_indexer_task(deps: IndexerDeps) {
     let IndexerDeps {
         db: idx_db,
         claude_dir,
         indexing: idx_state,
         registry_holder: idx_registry,
-        search_holder: idx_search,
         prompt_index_holder: idx_prompt_index,
         prompt_stats_holder: idx_prompt_stats,
         prompt_templates_holder: idx_prompt_templates,
@@ -131,9 +124,6 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
         let registry_arc = Arc::new(registry);
         *idx_registry.write().unwrap() = Some((*registry_arc).clone());
 
-        // Extract search index Arc from holder (clone Arc, don't hold lock during scan)
-        let search_for_scan = idx_search.read().unwrap().clone();
-
         // 3. Single-pass scan: parse + upsert for each changed file
         idx_state.set_status(IndexingStatus::DeepIndexing);
         let state_for_progress = idx_state.clone();
@@ -143,7 +133,6 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
             &claude_dir,
             &idx_db,
             &hints,
-            search_for_scan,
             Some(registry_arc.clone()),
             move |_session_id| {
                 state_for_progress.increment_indexed();
@@ -171,13 +160,8 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
                 // Ingest backup sessions from ~/.claude-backup (optimistic, best-effort).
                 // Runs after primary scan so dedup check against DB is accurate.
                 {
-                    let search_for_backup = idx_search.read().unwrap().clone();
                     let (backup_imported, backup_skipped) =
-                        claude_view_db::indexer_parallel::ingest_backup_sessions(
-                            &idx_db,
-                            search_for_backup,
-                        )
-                        .await;
+                        claude_view_db::indexer_parallel::ingest_backup_sessions(&idx_db).await;
                     if backup_imported > 0 {
                         tracing::info!(
                             backup_imported,
@@ -187,7 +171,7 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
                     }
                 }
 
-                // Signal Done immediately — search index is ready.
+                // Signal Done immediately — session data is ready.
                 // Post-scan cleanup below is housekeeping, not indexing.
                 idx_state.set_status(IndexingStatus::Done);
 
@@ -278,12 +262,10 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
                     // Lightweight re-scan: picks up any files the watcher missed
                     let hints = build_index_hints(&claude_dir);
                     let rescan_start = Instant::now();
-                    let search_rescan = idx_search.read().unwrap().clone();
                     match scan_and_index_all(
                         &claude_dir,
                         &idx_db,
                         &hints,
-                        search_rescan,
                         Some(registry_arc.clone()),
                         |_| {},
                         |_| {},
@@ -352,7 +334,7 @@ async fn index_prompt_history(
     let templates = claude_view_core::prompt_templates::detect_templates(&prompt_strs, 3);
     *prompt_templates_holder.write().unwrap() = Some(templates);
 
-    // Build Tantivy index
+    // Build prompt-history index.
     let index_path = claude_view_core::paths::prompt_index_dir();
     let index = match claude_view_search::prompt_index::PromptSearchIndex::open(&index_path) {
         Ok(index) => index,
@@ -396,34 +378,5 @@ async fn index_prompt_history(
         count = documents.len(),
         elapsed_ms = ph_start.elapsed().as_millis() as u64,
         "prompt history indexed"
-    );
-}
-
-/// Schedule a background search-index rebuild when a schema bump is pending.
-///
-/// ORDERING: must be called AFTER [`spawn_indexer_task`]. The rebuild task
-/// polls `registry_holder`, which is only populated inside the indexer's
-/// closure — calling this first would hang the rebuild for
-/// `REGISTRY_WAIT_TIMEOUT` (60s) before aborting.
-pub fn spawn_search_rebuild_if_pending(
-    pending: Option<claude_view_search::migration::PendingMigration>,
-    deps: &IndexerDeps,
-) {
-    let Some(plan) = pending else {
-        return;
-    };
-    tracing::info!(
-        target_version = plan.target_version,
-        fallback_path = ?plan.old_version_path,
-        "scheduling background search index rebuild (blue-green migration)"
-    );
-    let rebuild_hints = build_index_hints(&deps.claude_dir);
-    crate::search_migration::spawn_background_rebuild(
-        plan,
-        deps.search_holder.clone(),
-        deps.claude_dir.clone(),
-        deps.db.clone(),
-        rebuild_hints,
-        deps.registry_holder.clone(),
     );
 }

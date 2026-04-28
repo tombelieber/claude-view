@@ -156,19 +156,6 @@ impl Message {
     }
 }
 
-/// Message content collected during JSONL parsing for full-text search indexing.
-/// Only User, Assistant, and ToolUse messages are included (ToolResult, System,
-/// Progress, Summary are excluded as noise).
-#[derive(Debug, Clone)]
-pub struct SearchableMessage {
-    /// "user", "assistant", or "tool"
-    pub role: String,
-    /// The message text content
-    pub content: String,
-    /// Unix timestamp in seconds, parsed from ISO-8601. None if timestamp missing.
-    pub timestamp: Option<i64>,
-}
-
 /// Session metadata extracted from parsing
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[cfg_attr(feature = "codegen", ts(export))]

@@ -133,7 +133,7 @@ export function HistoryView() {
     ? indexingProgress?.phase === 'reading-indexes' || indexingProgress?.phase === 'ready'
       ? 'Preparing search...'
       : indexingProgress?.phase === 'finalizing'
-        ? 'Building search index...'
+        ? 'Finalizing sessions...'
         : `Search (indexing ${indexingPercent}%)...`
     : 'Search sessions, files, skills...'
   const { ids: liveSessionIds, costById: liveSessionCosts } = useLiveSessionPresence()

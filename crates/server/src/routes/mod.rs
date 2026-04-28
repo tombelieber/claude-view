@@ -90,7 +90,7 @@ use crate::state::AppState;
 /// - PUT /api/settings/git-sync-interval - Update git sync interval
 /// - GET /api/system - Comprehensive system status
 /// - POST /api/system/reindex - Trigger full re-index
-/// - POST /api/system/clear-cache - Clear search index and cache
+/// - POST /api/system/clear-cache - Clear obsolete search cache
 /// - POST /api/system/git-resync - Trigger full git re-sync
 /// - POST /api/system/reset - Factory reset all data
 /// - POST /api/classify - Trigger classification job
@@ -117,7 +117,7 @@ use crate::state::AppState;
 /// - GET  /api/live/summary             - Aggregate live session statistics
 /// - GET  /api/live/pricing             - Model pricing table
 /// - GET /api/sessions/:id/turns - Per-turn breakdown for a session
-/// - GET /api/search?q=...&scope=...&limit=...&offset=... - Full-text search
+/// - GET /api/search?q=...&scope=...&limit=...&offset=... - Grep session search
 /// - GET /api/settings - Read current app settings (model, timeout)
 /// - PUT /api/settings - Update app settings (partial, validates model + timeout)
 /// - GET /api/oauth/usage - OAuth usage (reads credentials, fetches from Anthropic API)

@@ -42,7 +42,6 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
         Ok(guard) => {
             let db = state.db.clone();
             let indexing = state.indexing.clone();
-            let search_holder = state.search_index.clone();
             let registry_holder = state.registry.clone();
 
             // Reset indexing state BEFORE spawning so SSE clients that
@@ -90,7 +89,6 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                 let indexing_cb = indexing.clone();
                 let indexing_total = indexing.clone();
                 let indexing_finalize = indexing.clone();
-                let search_for_scan = search_holder.read().unwrap().clone();
                 let registry_for_scan = registry_holder
                     .read()
                     .unwrap()
@@ -100,7 +98,6 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                     &claude_dir,
                     &db,
                     &hints,
-                    search_for_scan,
                     registry_for_scan,
                     move |_session_id| {
                         indexing_cb.increment_indexed();

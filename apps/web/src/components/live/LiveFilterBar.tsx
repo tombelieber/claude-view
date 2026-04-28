@@ -90,7 +90,7 @@ export function LiveFilterBar({
     ? indexingPhase === 'reading-indexes' || indexingPhase === 'ready'
       ? 'Preparing search...'
       : indexingPhase === 'finalizing'
-        ? 'Building search index...'
+        ? 'Finalizing sessions...'
         : `Search (indexing ${indexingPercent}%)...`
     : 'Search sessions...'
 

@@ -717,7 +717,7 @@ body {
   animation: live-compact-shimmer 3s linear infinite;
 }
 
-/* Search highlight: <mark> tags from Tantivy snippet generator */
+/* Search highlight: <mark> tags from backend snippets */
 mark {
   background: #fef08a;
   color: #1c1917;

@@ -9,8 +9,8 @@ export const systemGeneratedTools: ToolDef[] = [
     name: 'system_check_path',
     description: 'Check whether a filesystem path still exists.',
     inputSchema: z.object({
-    path: z.string().optional(),
-  }),
+      path: z.string().optional(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
       const result = await client.request('GET', '/api/check-path', { params: { path: args.path } })
@@ -29,7 +29,7 @@ export const systemGeneratedTools: ToolDef[] = [
   },
   {
     name: 'system_clear_cache',
-    description: 'Clear search index and cached data.',
+    description: 'Clear obsolete search cache.',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, _args) => {
@@ -66,5 +66,5 @@ export const systemGeneratedTools: ToolDef[] = [
       const result = await client.request('POST', '/api/system/reset')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

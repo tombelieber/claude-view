@@ -2,7 +2,7 @@
 import type { SessionHit } from './SessionHit'
 
 /**
- * Response from a full-text search query across all sessions.
+ * Response from a grep search query across all sessions.
  */
 export type SearchResponse = {
   /**
@@ -22,7 +22,7 @@ export type SearchResponse = {
    */
   elapsedMs: number
   /**
-   * Session-grouped results, sorted by best BM25 score descending.
+   * Session-grouped results, sorted by session recency descending.
    */
   sessions: Array<SessionHit>
 }

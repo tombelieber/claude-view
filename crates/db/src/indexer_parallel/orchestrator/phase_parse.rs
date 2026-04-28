@@ -27,7 +27,6 @@ pub(crate) async fn run_phase_parse<F>(
     existing_map: &HashMap<String, (Option<i64>, Option<i64>, i32, Option<String>)>,
     registry: Option<Arc<Registry>>,
     force_search_reindex: bool,
-    source_docs_validation_enabled: bool,
     on_file_done: Arc<F>,
 ) -> Result<(Vec<IndexedSession>, usize), String>
 where
@@ -52,7 +51,6 @@ where
         let registry = registry.clone();
         let force_reindex = force_search_reindex;
         let pricing = pricing.clone();
-        let validate_source_docs = source_docs_validation_enabled;
 
         let handle = tokio::spawn(async move {
             let _permit = sem
@@ -157,7 +155,6 @@ where
                 current_mtime,
                 &mut parse_result,
                 registry.as_ref(),
-                validate_source_docs,
                 &pricing,
             );
 
@@ -207,7 +204,6 @@ fn build_indexed_session(
     current_mtime: i64,
     parse_result: &mut ParseResult,
     registry: Option<&Arc<Registry>>,
-    validate_source_docs: bool,
     pricing: &HashMap<String, ModelPricing>,
 ) -> IndexedSession {
     let meta = &parse_result.deep;
@@ -351,36 +347,13 @@ fn build_indexed_session(
         entrypoint: parse_result.entrypoint.clone(),
     };
 
-    // Use git_root as project identity for search (matches sidebar filter).
-    let project_for_search = git_root
-        .as_deref()
-        .filter(|s| !s.is_empty())
-        .unwrap_or(effective_encoded)
-        .to_string();
-
-    let search_messages = if validate_source_docs {
-        let messages = sanitize_source_search_messages(
-            std::mem::take(&mut parse_result.search_messages),
-            &mut parse_result.diagnostics,
-        );
-        let has_summary_candidate = !parsed.preview.is_empty() || !project_for_search.is_empty();
-        if has_summary_candidate {
-            note_rejected_derived_source_doc(&mut parse_result.diagnostics);
-        }
-        messages
-    } else {
-        std::mem::take(&mut parse_result.search_messages)
-    };
-
     IndexedSession {
         parsed,
         turns: parse_result.turns.clone(),
         models_seen: parse_result.models_seen.clone(),
         classified_invocations: classified,
-        search_messages,
         cwd: cwd_owned,
         git_root,
-        project_for_search,
         diagnostics: parse_result.diagnostics.clone(),
         hook_progress_events: parse_result.deep.hook_progress_events.clone(),
     }

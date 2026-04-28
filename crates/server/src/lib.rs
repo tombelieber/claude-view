@@ -23,7 +23,6 @@ pub mod local_llm;
 pub use claude_view_server_types::metrics;
 pub mod openapi;
 pub mod routes;
-pub mod search_migration;
 pub mod search_service;
 pub mod session_catalog_adapter;
 pub mod share_serializer;
@@ -55,7 +54,7 @@ pub use routes::api_routes;
 pub use sidecar::SidecarManager;
 pub use state::{
     AppState, AvailableIdesHolder, PromptIndexHolder, PromptStatsHolder, PromptTemplatesHolder,
-    RegistryHolder, SearchIndexHolder, ShareConfig,
+    RegistryHolder, ShareConfig,
 };
 
 // Re-export all app factory functions at crate root to preserve public API.

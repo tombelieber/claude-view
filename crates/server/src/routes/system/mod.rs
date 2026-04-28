@@ -2,7 +2,7 @@
 //!
 //! - GET  /system           — Comprehensive system status
 //! - POST /system/reindex   — Trigger full re-index
-//! - POST /system/clear-cache — Clear search index and cache
+//! - POST /system/clear-cache — Clear obsolete search cache
 //! - POST /system/git-resync — Trigger full git re-sync (stub -- not yet implemented)
 //! - POST /system/reset     — Factory reset (requires confirmation)
 

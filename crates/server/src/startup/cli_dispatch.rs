@@ -19,7 +19,7 @@ pub fn handle_cleanup_if_requested(cli_parsed: &cli::Cli) {
     actions.extend(crate::live::hook_registrar::cleanup(0));
     crate::live::statusline_injector::cleanup();
 
-    // 2. Remove cache directory (DB + Tantivy index)
+    // 2. Remove cache directory (DB + obsolete session search cache)
     actions.extend(claude_view_core::paths::remove_cache_data());
 
     // 3. Remove lock files from /tmp

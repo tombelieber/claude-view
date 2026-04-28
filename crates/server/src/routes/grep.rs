@@ -1,7 +1,7 @@
 //! JSONL file collection utility for search.
 //!
 //! Scans `~/.claude/projects/` for session JSONL files.
-//! Used by `search_service::execute_search()` for grep fallback.
+//! Used by `search_service::execute_search()` for session search.
 
 use std::collections::HashSet;
 
@@ -13,7 +13,7 @@ use crate::error::ApiError;
 /// Scan ~/.claude/projects/ for all JSONL session files.
 /// Optionally filter by project display name or full path.
 ///
-/// Used by `search_service::execute_search()` (unified search grep fallback).
+/// Used by `search_service::execute_search()`.
 ///
 /// NOTE: project filter checks BOTH display_name AND full_path to match
 /// the polymorphic project filter pattern (CLAUDE.md Hard Rule).

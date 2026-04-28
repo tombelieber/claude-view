@@ -8,7 +8,7 @@ import type { ConfigResponse } from '../types/generated/ConfigResponse'
 // authoritative value will replace this once the response arrives.
 // sharing defaults to false (safe side) — disabled→enabled flicker is less jarring
 // than enabled→disabled if auth is configured but sharing isn't.
-const defaultFeatures = { search: true, systemMonitor: true }
+const defaultFeatures = { systemMonitor: true }
 
 const placeholder: ConfigResponse = {
   auth: supabase !== null,

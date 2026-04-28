@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.38.0"
+    "version": "0.39.0"
   },
   "paths": {
     "/api/active-sessions": {
@@ -3022,7 +3022,7 @@
         "tags": [
           "search"
         ],
-        "summary": "GET /api/search - Full-text search across sessions.",
+        "summary": "GET /api/search - Search raw session JSONL files with grep.",
         "operationId": "search_handler",
         "parameters": [
           {
@@ -4506,11 +4506,11 @@
           "stats"
         ],
         "summary": "GET /api/stats/storage - Storage statistics for the settings page.",
-        "description": "Returns:\n- Storage sizes: JSONL files, SQLite database, search index\n- Counts: sessions, projects, commits\n- Timing: oldest session, last index, last git sync",
+        "description": "Returns:\n- Storage sizes: JSONL files, SQLite database, obsolete search index cache\n- Counts: sessions, projects, commits\n- Timing: oldest session, last index, last git sync",
         "operationId": "storage_stats",
         "responses": {
           "200": {
-            "description": "Storage usage statistics (JSONL, SQLite, search index)",
+            "description": "Storage usage statistics (JSONL, SQLite, cache)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4660,8 +4660,8 @@
         "tags": [
           "system"
         ],
-        "summary": "POST /api/system/clear-cache - Clear search index and cached data.",
-        "description": "Uses a take-drop-recreate pattern:\n1. Write-lock the holder, `.take()` the old `Arc<SearchIndex>` (holder becomes `None`)\n2. Call `clear_all()` on the old index (flushes deletes via Tantivy API)\n3. Drop the old index — releases mmap handles and file locks\n4. `remove_dir_all()` — now safe, no live handles\n5. `SearchIndex::open()` — creates fresh empty index\n6. Write-lock holder, swap in the new `Arc<SearchIndex>`",
+        "summary": "POST /api/system/clear-cache - Clear obsolete search cache.",
+        "description": "Session search is grep-only now, so this endpoint only removes any obsolete\nsession-search cache left by older versions. It does not recreate an index.",
         "operationId": "clear_cache",
         "responses": {
           "200": {
@@ -7079,14 +7079,9 @@
       "ConfigFeatureFlags": {
         "type": "object",
         "required": [
-          "search",
           "systemMonitor"
         ],
         "properties": {
-          "search": {
-            "type": "boolean",
-            "description": "Whether full-text search is enabled."
-          },
           "systemMonitor": {
             "type": "boolean",
             "description": "Whether the system resource monitor is enabled."
@@ -13564,7 +13559,7 @@
           "indexBytes": {
             "type": "integer",
             "format": "int64",
-            "description": "Size of search index in bytes.",
+            "description": "Size of obsolete session search cache in bytes.",
             "minimum": 0
           },
           "indexPath": {
@@ -13572,7 +13567,7 @@
               "string",
               "null"
             ],
-            "description": "Path to Tantivy search index directory."
+            "description": "Path to obsolete session search cache directory."
           },
           "jsonlBytes": {
             "type": "integer",
@@ -15073,7 +15068,7 @@
     },
     {
       "name": "search",
-      "description": "Full-text search"
+      "description": "Grep-backed session search"
     },
     {
       "name": "turns",

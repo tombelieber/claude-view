@@ -108,7 +108,6 @@ mod tests {
             rules_dir: std::env::temp_dir().join("claude-rules-test"),
             terminal_connections: Arc::new(crate::terminal_state::TerminalConnectionManager::new()),
             live_manager: None,
-            search_index: Arc::new(std::sync::RwLock::new(None)),
             shutdown: tokio::sync::watch::channel(false).1,
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(
                 std::collections::HashMap::new(),

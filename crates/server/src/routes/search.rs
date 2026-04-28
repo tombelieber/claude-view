@@ -1,4 +1,4 @@
-//! Full-text search endpoint.
+//! Session search endpoint.
 //!
 //! GET /search?q=...&limit=...&offset=...&project=...&branch=...&model=...&after=...&before=...
 //!
@@ -33,7 +33,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new().route("/search", get(search_handler))
 }
 
-/// GET /api/search - Full-text search across sessions.
+/// GET /api/search - Search raw session JSONL files with grep.
 #[utoipa::path(get, path = "/api/search", tag = "search",
     params(SearchQuery),
     responses(

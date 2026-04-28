@@ -58,7 +58,7 @@ These tools have hand-crafted response shaping for optimal Claude consumption.
 |------|-------------|
 | `list_sessions` | List/filter/paginate sessions with summaries |
 | `get_session` | Full session detail + commits + derived metrics |
-| `search_sessions` | Full-text search across all sessions |
+| `search_sessions` | Grep search across all sessions |
 | `get_stats` | Dashboard overview: projects, skills, trends |
 | `get_fluency_score` | AI Fluency Score (0-100 composite) |
 | `get_token_stats` | Token usage breakdown (input/output/cache) |

@@ -2,10 +2,6 @@
 
 export type ConfigFeatureFlags = {
   /**
-   * Whether full-text search is enabled.
-   */
-  search: boolean
-  /**
    * Whether the system resource monitor is enabled.
    */
   systemMonitor: boolean

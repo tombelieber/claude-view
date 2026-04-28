@@ -29,7 +29,7 @@ pub fn db_path() -> Option<PathBuf> {
     Some(data_dir().join("claude-view.db"))
 }
 
-pub fn search_index_dir() -> Option<PathBuf> {
+pub fn obsolete_session_search_index_dir() -> Option<PathBuf> {
     Some(data_dir().join("search-index"))
 }
 
@@ -75,7 +75,7 @@ pub fn log_dir() -> PathBuf {
     data_dir().join("logs")
 }
 
-/// Remove all claude-view cache data (DB, WAL, search index, prompt index).
+/// Remove all claude-view cache data (DB, WAL, obsolete search cache, prompt index).
 pub fn remove_cache_data() -> Vec<String> {
     let dir = data_dir();
     let mut removed = Vec::new();
@@ -186,10 +186,10 @@ mod tests {
     }
 
     #[test]
-    fn test_search_index_dir_derives_from_data_dir() {
+    fn test_obsolete_session_search_index_dir_derives_from_data_dir() {
         let _guard = ENV_LOCK.lock().unwrap();
         env::set_var("CLAUDE_VIEW_DATA_DIR", "/tmp/test-cv");
-        let path = search_index_dir().unwrap();
+        let path = obsolete_session_search_index_dir().unwrap();
         assert_eq!(path, PathBuf::from("/tmp/test-cv/search-index"));
         env::remove_var("CLAUDE_VIEW_DATA_DIR");
     }

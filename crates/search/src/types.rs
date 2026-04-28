@@ -1,7 +1,7 @@
 use serde::Serialize;
 use ts_rs::TS;
 
-/// Response from a full-text search query across all sessions.
+/// Response from a grep search query across all sessions.
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
@@ -14,7 +14,7 @@ pub struct SearchResponse {
     pub total_matches: usize,
     /// Time spent executing the search, in milliseconds.
     pub elapsed_ms: f64,
-    /// Session-grouped results, sorted by best BM25 score descending.
+    /// Session-grouped results, sorted by session recency descending.
     pub sessions: Vec<SessionHit>,
 }
 
@@ -31,14 +31,14 @@ pub struct SessionHit {
     pub modified_at: i64,
     /// How many individual messages matched in this session.
     pub match_count: usize,
-    /// BM25 score of the best-scoring match in this session.
+    /// Search score. Grep-backed session search sets this to 0.
     pub best_score: f32,
     /// The single best-scoring match (for collapsed view).
     pub top_match: MatchHit,
     /// All matches in this session (for expanded view).
     pub matches: Vec<MatchHit>,
     /// Which search engines contributed to this session's results.
-    /// e.g. ["grep"], ["tantivy"], ["grep", "tantivy"]
+    /// Session search currently returns ["grep"].
     pub engines: Vec<String>,
 }
 

@@ -1,54 +1,118 @@
-//! Tantivy full-text search index bootstrap.
+//! Obsolete session search index cleanup.
 //!
-//! Extracted from `main.rs` in CQRS Phase 7.f. Uses the blue-green
-//! versioned layout: if a schema bump is detected, the previous-version
-//! index keeps serving queries while a background task builds the new
-//! version at `v{N}/`. Returns a pending-migration descriptor that the
-//! indexer spawner consumes after Pass 2 completes.
+//! Session search runs directly over Claude JSONL files with ripgrep-core.
+//! On startup, remove the old session-search cache so updated installs
+//! automatically reclaim disk and stop old file-watcher noise.
 
-use std::sync::{Arc, RwLock};
-
-use claude_view_core::app_config::AppConfig;
-
-use crate::SearchIndexHolder;
-
-/// Open the search index using the blue-green versioned layout.
-///
-/// Returns `(holder, pending_migration)`:
-/// - `holder` is `Some(Arc<SearchIndex>)` when the current version opened
-///   successfully, `None` when the feature is disabled or the open failed.
-/// - `pending_migration` carries the rebuild plan when the open detected a
-///   schema bump (holder points at the previous version as a fallback).
-pub fn open_index(
-    app_config: &AppConfig,
-) -> (
-    SearchIndexHolder,
-    Option<claude_view_search::migration::PendingMigration>,
-) {
-    if !app_config.features.search {
-        tracing::info!("Search feature disabled by config");
-        return (Arc::new(RwLock::new(None)), None);
-    }
-
-    let index_dir = claude_view_core::paths::search_index_dir()
-        .expect("search_index_dir() always returns Some after data_dir() refactor");
-
-    match claude_view_search::SearchIndex::open_versioned(&index_dir) {
-        Ok(result) => {
+/// Remove the obsolete session-search cache and log the migration outcome.
+pub fn cleanup_obsolete_session_index_logged() {
+    match cleanup_obsolete_session_index() {
+        Ok(bytes) if bytes > 0 => {
             tracing::info!(
-                "Search index opened at {} (pending_migration={})",
-                index_dir.display(),
-                result.pending_migration.is_some()
+                bytes,
+                "Removed obsolete session search cache; session search is grep-only"
             );
-            let holder = Arc::new(RwLock::new(Some(Arc::new(result.index))));
-            (holder, result.pending_migration)
+        }
+        Ok(_) => {
+            tracing::info!("Session search is grep-only; no obsolete cache cleanup needed");
         }
         Err(e) => {
             tracing::warn!(
-                "Failed to open search index: {}. Search will be unavailable.",
-                e
+                error = %e,
+                "Failed to remove obsolete session search cache"
             );
-            (Arc::new(RwLock::new(None)), None)
         }
+    }
+}
+
+/// Remove the obsolete session-search cache directory and return bytes reclaimed.
+/// Missing directories are treated as already migrated.
+pub fn cleanup_obsolete_session_index() -> std::io::Result<u64> {
+    let Some(index_dir) = claude_view_core::paths::obsolete_session_search_index_dir() else {
+        return Ok(0);
+    };
+
+    if !index_dir.exists() {
+        return Ok(0);
+    }
+
+    let bytes = calculate_dir_size(&index_dir);
+    std::fs::remove_dir_all(index_dir)?;
+    Ok(bytes)
+}
+
+fn calculate_dir_size(dir: &std::path::Path) -> u64 {
+    if !dir.exists() {
+        return 0;
+    }
+
+    let mut total = 0;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            } else if path.is_dir() {
+                total += calculate_dir_size(&path);
+            }
+        }
+    }
+    total
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<OsString>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &std::path::Path) -> Self {
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            if let Some(previous) = &self.previous {
+                std::env::set_var(self.key, previous);
+            } else {
+                std::env::remove_var(self.key);
+            }
+        }
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cleanup_obsolete_session_index_removes_legacy_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = EnvGuard::set("CLAUDE_VIEW_DATA_DIR", dir.path());
+        let index_dir = claude_view_core::paths::obsolete_session_search_index_dir().unwrap();
+        std::fs::create_dir_all(index_dir.join("v7")).unwrap();
+        std::fs::write(index_dir.join("v7").join("meta.json"), "legacy").unwrap();
+
+        let bytes = cleanup_obsolete_session_index().unwrap();
+
+        assert!(bytes > 0);
+        assert!(!index_dir.exists());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cleanup_obsolete_session_index_ignores_missing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let _guard = EnvGuard::set("CLAUDE_VIEW_DATA_DIR", dir.path());
+        let index_dir = claude_view_core::paths::obsolete_session_search_index_dir().unwrap();
+
+        let bytes = cleanup_obsolete_session_index().unwrap();
+
+        assert_eq!(bytes, 0);
+        assert!(!index_dir.exists());
     }
 }

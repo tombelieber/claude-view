@@ -416,7 +416,7 @@ use utoipa::OpenApi;
         (name = "insights", description = "Behavioral insights and patterns"),
         (name = "contributions", description = "Contribution metrics"),
         (name = "stats", description = "Dashboard statistics and trends"),
-        (name = "search", description = "Full-text search"),
+        (name = "search", description = "Grep-backed session search"),
         (name = "turns", description = "Per-turn session breakdown"),
         (name = "plans", description = "Session plans"),
         (name = "coaching", description = "Coaching rules management"),
