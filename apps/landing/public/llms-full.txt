@@ -1969,6 +1969,68 @@ npx claude-view@latest
 Check `~/.claude-view/logs/` after running a few sessions to see structured traces in action.
 
 
+--- blog/v0-40-0-trustworthy-usage-pill.mdx ---
+
+---
+title: "Building a Usage Pill You Can Actually Trust"
+description: "v0.40.0 reworks the OAuth usage pill to handle six new Anthropic rate-limit windows, hide decommissioned buckets, and render multi-currency extras — trust over accuracy."
+date: 2026-04-29
+author: claude-view team
+---
+
+Open the dashboard and look at the top-right corner. That little pill that says "Weekly Sonnet 0%, no reset"? Until v0.40.0, that was a lie.
+
+Anthropic quietly retired the Sonnet weekly bucket weeks ago. The API still returns it for backward compatibility — utilization at 0, `resets_at` set to null — but the bucket itself is gone. Older claude-view versions saw the data and dutifully rendered it as "Weekly Sonnet, 0% used." If you took that pill at face value, you'd think you had unlimited Sonnet headroom for the week. You didn't. Sonnet just doesn't have a weekly window anymore.
+
+This is the kind of bug that's worse than not shipping the feature at all. **Wrong information destroys trust permanently** — once you see one wrong number from a tool, you stop believing any of them.
+
+## What v0.40.0 does
+
+The OAuth usage pill now follows a hard rule: if we aren't confident, we don't show it. Specifically:
+
+- **Trust gate.** Any tier where utilization is unknown, OR where utilization is exactly 0 _and_ `resets_at` is null, is hidden. The decommissioned Sonnet bucket disappears entirely. So do new buckets we don't have a label for yet but can't read confidently.
+- **Six new windows recognised.** Anthropic shipped buckets we hadn't seen before — `seven_day_opus`, `seven_day_omelette`, `seven_day_oauth_apps`, `seven_day_cowork`, plus a couple more codenames. Older versions failed to parse the response when one of these appeared, dropping the entire pill. v0.40.0 reads them all, with curated labels for the known ones and a humanised fallback ("seven_day_omelette" → "Weekly · omelette") for the rest.
+- **Multi-currency extras.** `extra_usage` now respects the `currency` field. EUR gets "EUR", JPY gets "JPY". No fabricated dollar signs on European invoices.
+- **Grouped tooltip.** When the pill expands, tiers are organised by kind: Session, Weekly windows, Additional tiers, Extra usage. If there's only one group, the layout collapses to its old single-tier form so nothing feels heavier than it needs to.
+
+## The principle
+
+claude-view treats every inferred or derived display through a **confidence-gated** lens. Better to show nothing than to show something wrong. Better to admit "we don't have a label for this codename yet" than to make up a friendly name. Better to lose a row than to confuse you about what's running on your account.
+
+We have a phrase in the codebase: _寧願唔顯示，都唔顯示錯嘅嘢_ — better to display nothing than to display the wrong thing. It's borrowed from how Apple handles uncertainty in surfaces like Siri and the Lock Screen: precision over recall, every time.
+
+## Under the hood
+
+The fix is structural, not a band-aid. The OAuth handler used to be a single 574-line `oauth.rs` that parsed the raw API response straight into typed structs. One unknown field would break the whole response.
+
+We split it into five focused files (`mod.rs`, `anthropic.rs`, `tiers.rs`, `identity.rs`, `handlers.rs`) and changed the parser shape:
+
+- `utilization` is now `Option<f64>` instead of `f64`. A null in any window no longer poisons the whole response.
+- `#[serde(flatten)] extra_windows: HashMap<String, _>` catches every codename Anthropic ships, known or not, without a code change.
+- A `TierKind` enum (`session | window | other | extra`) lets the frontend group rows correctly when new tiers appear.
+- `humanize_id` provides a fallback label for codenames we haven't curated yet.
+
+The frontend pill component went through the same treatment — 364 lines became 6 small files, none over 154. Backward compatibility is preserved: pre-2026-04 backends without `kind`/`currency` fields render exactly as before.
+
+## A small thing that wasn't really small
+
+While we were in there, we also renamed the `/usage` plugin command to `/cv-usage`. Claude Code shipped a built-in `/usage` that shadowed ours, making the plugin command silently unreachable. The `cv-` prefix matches the npm package name and lets both coexist. Update your aliases.
+
+## What's next
+
+- **Subagent attribution surfacing.** Claude Code 2.1.123 added metadata tagging which subagent / skill / plugin dispatched each sidechain message. v0.40.0 baselines these new fields so the integrity check passes; the next release wires them into the session view so you can see at a glance _who_ was driving each turn.
+- **Mobile pairing client.** The phone app to pair with claude-view (server-side scaffolding shipped in v0.39.0) is in active development.
+- **Plan-driven sessions.** Editable plan TODOs paired with plan blocks so you can drive a session from a written plan.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If you've been ignoring the pill in the corner, re-open the dashboard and click it. The tooltip is the difference.
+
+
 --- blog/v0-39-0-stability-and-tokens-at-the-top.mdx ---
 
 ---
@@ -3794,6 +3856,37 @@ version: v0.39.0
 - **Pricing data updated.** Opus 4.7 added with a boot-time drift detector to flag stale pricing tables.
 - **Six-month database rebuild landed.** A multi-phase CQRS-style rewrite splits the writer hot path from the read path through `session_stats`, `session_flags`, and `session_action_log` tables, with a `stage_c_outbox` for reliable cross-table fanout. The legacy `sessions` table is gone.
 - **`rustls-webpki` security bump** — 0.103.12 → 0.103.13 (RUSTSEC-2026-0104).
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.40.0.md ---
+
+---
+title: v0.40.0 — Trustworthy OAuth Pill and Plugin Cleanup
+date: 2026-04-29
+version: v0.40.0
+---
+
+## New features
+
+**Trustworthy OAuth usage pill** — the rate-limit pill now recognises six new Anthropic windows (`seven_day_opus`, `seven_day_omelette`, `seven_day_oauth_apps`, `seven_day_cowork`, plus extras), groups tiers by kind in the tooltip (Session / Weekly windows / Additional / Extra usage), and hides any bucket whose utilization is unknown or that has been quietly decommissioned. Goodbye misleading "Weekly Sonnet 0%, no reset" pill.
+
+**Multi-currency `extra_usage`** — non-USD spend (EUR, etc.) renders correctly with the actual currency code instead of a fabricated dollar sign.
+
+**Subagent attribution metadata recognised** — Claude Code 2.1.123 added `attributionAgent`, `attributionSkill`, and `attributionPlugin` to sidechain JSONL entries. claude-view's evidence audit now baselines these so future schema additions don't break the integrity gate while we work on surfacing the data in the UI.
+
+## Improvements
+
+- **Plugin: `/usage` renamed to `/cv-usage`.** Claude Code shipped a built-in `/usage` skill that shadowed the plugin's. Updating it to `cv-usage` (matching the npm package) keeps both addressable. Update bookmarks and aliases.
+- **Legacy Tantivy session-search index fully removed.** Post-v0.39.0 cleanup — the search migration is complete.
+- **Webhook engine integration test stabilised.** Bumped the poll deadline from 5s to 15s to fix a race that surfaced under full nextest load on M-series hardware.
+- **Plugin SKILL.md reference tables now match the live OpenAPI spec.** OAuth endpoint descriptions are concrete paths (`GET /api/oauth/usage`) instead of generic labels.
+- **Backend OAuth handler split into 5 focused files** (`oauth/{mod,anthropic,tiers,identity,handlers}.rs`), and the OAuth pill component into 6 (`oauth-usage-pill/{format,statusline-overlay,tier-row,tooltip-content,types}`). Both well inside the CLAUDE.md size ceilings.
 
 ## Getting started
 
