@@ -1,5 +1,5 @@
 ---
-name: usage
+name: cv-usage
 description: "Use when the user asks about usage analytics, statistics, token usage, or cost summary — e.g. 'usage stats', 'token usage', 'how many sessions this week', 'show me my numbers', 'cost summary', 'usage report'"
 allowed-tools:
   - mcp__claude-view__get_stats
@@ -127,9 +127,9 @@ Show usage statistics, token consumption, storage, and trends. This skill focuse
 | **Monitor Tools** | |
 | `monitor_snapshot` | - One-shot JSON snapshot of current resources. |
 | **Oauth Tools** | |
-| `oauth_get_auth_identity` | oauth identity |
-| `oauth_get_oauth_usage` | oauth usage |
-| `oauth_post_oauth_usage_refresh` | oauth usage refresh |
+| `oauth_get_auth_identity` | `GET /api/oauth/identity` |
+| `oauth_get_oauth_usage` | `GET /api/oauth/usage` |
+| `oauth_post_oauth_usage_refresh` | `POST /api/oauth/usage/refresh` |
 | **Pairing Tools** | |
 | `pairing_generate_qr` | Generate a QR payload via Supabase pair-offer. |
 | **Plans Tools** | |

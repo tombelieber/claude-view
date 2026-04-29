@@ -5,7 +5,7 @@ import { join } from 'node:path'
 const PLUGIN_ROOT = join(import.meta.dir, '..', '..')
 
 describe('skill generation', () => {
-  const skillDirs = ['daily-cost', 'session-recap', 'standup', 'system-monitor', 'live', 'usage']
+  const skillDirs = ['daily-cost', 'session-recap', 'standup', 'system-monitor', 'live', 'cv-usage']
 
   for (const skill of skillDirs) {
     test(`${skill}/SKILL.md exists and has preamble`, () => {
@@ -80,9 +80,9 @@ describe('skill generation', () => {
       expect(content).toContain('## Available Tools')
     })
 
-    test('usage SKILL.md has expected sections', () => {
-      const content = readFileSync(join(PLUGIN_ROOT, 'skills', 'usage', 'SKILL.md'), 'utf-8')
-      expect(content).toContain('name: usage')
+    test('cv-usage SKILL.md has expected sections', () => {
+      const content = readFileSync(join(PLUGIN_ROOT, 'skills', 'cv-usage', 'SKILL.md'), 'utf-8')
+      expect(content).toContain('name: cv-usage')
       expect(content).toContain('# Usage Report')
       expect(content).toContain('get_stats')
       expect(content).toContain('get_token_stats')
@@ -91,7 +91,7 @@ describe('skill generation', () => {
     })
 
     const phantomEndpoints = ['handle_hook', 'bind_control', 'get_session_parsed']
-    const newSkills = ['system-monitor', 'live', 'usage']
+    const newSkills = ['system-monitor', 'live', 'cv-usage']
 
     for (const skill of newSkills) {
       test(`${skill} has no phantom internal endpoints`, () => {

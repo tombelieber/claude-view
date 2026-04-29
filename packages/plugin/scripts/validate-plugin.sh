@@ -44,7 +44,7 @@ check "skills/coaching/SKILL.md"
 check "skills/project-overview/SKILL.md"
 check "skills/system-monitor/SKILL.md"
 check "skills/live/SKILL.md"
-check "skills/usage/SKILL.md"
+check "skills/cv-usage/SKILL.md"
 check "README.md"
 
 echo ""
