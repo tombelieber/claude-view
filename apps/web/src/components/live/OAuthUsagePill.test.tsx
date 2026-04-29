@@ -345,4 +345,178 @@ describe('OAuthUsagePill', () => {
       expect(mockForceRefreshMutate).toHaveBeenCalledTimes(1)
     })
   })
+
+  describe('2026-04-30 expanded tier set', () => {
+    function getPopperWrapper(): Element | null {
+      return document.querySelector('[data-radix-popper-content-wrapper]')
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      vi.setSystemTime(new Date('2026-04-30T00:00:00Z'))
+    })
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('renders section headings when multiple tier kinds are present', async () => {
+      const data: OAuthUsage = {
+        hasAuth: true,
+        error: null,
+        plan: 'Max',
+        tiers: [
+          {
+            id: 'five_hour',
+            label: 'Session (5hr)',
+            kind: 'session',
+            percentage: 12,
+            resetAt: '2026-04-30T05:00:00Z',
+          },
+          {
+            id: 'seven_day',
+            label: 'Weekly',
+            kind: 'window',
+            percentage: 5,
+            resetAt: '2026-05-01T05:00:00Z',
+          },
+          {
+            id: 'seven_day_opus',
+            label: 'Weekly Opus',
+            kind: 'window',
+            percentage: 0,
+            resetAt: '2026-05-07T05:00:00Z',
+          },
+          {
+            id: 'seven_day_omelette',
+            label: 'Weekly · omelette',
+            kind: 'other',
+            percentage: 8,
+            resetAt: '2026-05-03T05:00:00Z',
+          },
+          {
+            id: 'extra',
+            label: 'Extra usage',
+            kind: 'extra',
+            percentage: 24.68,
+            resetAt: '',
+            spent: '12.34 EUR / 50.00 EUR spent',
+            currency: 'EUR',
+          },
+        ],
+      }
+      mockUseOAuthUsage.mockReturnValue({
+        data,
+        isLoading: false,
+        error: null,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
+      })
+
+      render(<OAuthUsagePill />)
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.hover(screen.getByText('12%'))
+      await waitFor(() => expect(getPopperWrapper()).not.toBeNull())
+
+      const wrapper = getPopperWrapper()!
+      // Section headings present
+      expect(wrapper.textContent).toContain('Session')
+      expect(wrapper.textContent).toContain('Weekly windows')
+      expect(wrapper.textContent).toContain('Additional tiers')
+      expect(wrapper.textContent).toContain('Extra usage')
+      // New tiers visible by their backend-curated label
+      expect(wrapper.textContent).toContain('Weekly Opus')
+      expect(wrapper.textContent).toContain('Weekly · omelette')
+      // Non-USD currency badge appears
+      expect(wrapper.textContent).toContain('EUR')
+      expect(wrapper.textContent).toContain('12.34 EUR / 50.00 EUR spent')
+    })
+
+    it('hydrates kind from id for old backends that omit it', async () => {
+      // Pre-2026-04 backend: no `kind` field at all. UI must still group correctly.
+      const data: OAuthUsage = {
+        hasAuth: true,
+        error: null,
+        plan: 'Max',
+        tiers: [
+          {
+            id: 'session',
+            label: 'Session (5hr)',
+            percentage: 12,
+            resetAt: '2026-04-30T05:00:00Z',
+          },
+          {
+            id: 'weekly',
+            label: 'Weekly (7 day)',
+            percentage: 5,
+            resetAt: '2026-05-01T05:00:00Z',
+          },
+        ],
+      }
+      mockUseOAuthUsage.mockReturnValue({
+        data,
+        isLoading: false,
+        error: null,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
+      })
+
+      render(<OAuthUsagePill />)
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.hover(screen.getByText('12%'))
+      await waitFor(() => expect(getPopperWrapper()).not.toBeNull())
+
+      const wrapper = getPopperWrapper()!
+      // Both tiers render with their original labels
+      expect(wrapper.textContent).toContain('Session (5hr)')
+      expect(wrapper.textContent).toContain('Weekly (7 day)')
+      // Section headings appear because two distinct kinds were inferred
+      expect(wrapper.textContent).toContain('Session')
+      expect(wrapper.textContent).toContain('Weekly windows')
+    })
+
+    it('USD spent string omits the currency badge in the tooltip', async () => {
+      // Verifies the rule: when currency is USD (or absent), no extra " · USD"
+      // suffix is rendered — the `$` symbol in the spent string already says it.
+      const data: OAuthUsage = {
+        hasAuth: true,
+        error: null,
+        plan: null,
+        tiers: [
+          {
+            id: 'five_hour',
+            label: 'Session (5hr)',
+            kind: 'session',
+            percentage: 12,
+            resetAt: '2026-04-30T05:00:00Z',
+          },
+          {
+            id: 'extra',
+            label: 'Extra usage',
+            kind: 'extra',
+            percentage: 50,
+            resetAt: '',
+            spent: '$25.00 / $50.00 spent',
+            currency: 'USD',
+          },
+        ],
+      }
+      mockUseOAuthUsage.mockReturnValue({
+        data,
+        isLoading: false,
+        error: null,
+        dataUpdatedAt: Date.now(),
+        forceRefresh: { mutate: vi.fn(), isPending: false, isError: false },
+      })
+      render(<OAuthUsagePill />)
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+      await user.hover(screen.getByText('12%'))
+      await waitFor(() => expect(getPopperWrapper()).not.toBeNull())
+
+      const wrapper = getPopperWrapper()!
+      expect(wrapper.textContent).toContain('$25.00 / $50.00 spent')
+      // No "· USD" badge appended when the spent string is USD.
+      expect(wrapper.textContent).not.toContain('· USD')
+    })
+  })
 })

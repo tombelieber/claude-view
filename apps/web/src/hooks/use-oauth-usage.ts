@@ -1,15 +1,26 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
+/**
+ * Grouping hint emitted by the backend on 2026-04-30 alongside the new tier set.
+ * Optional/string-typed for backward compat: older backends omit it, newer ones
+ * may emit codenames we don't yet have a TS literal for.
+ */
+export type TierKind = 'session' | 'window' | 'other' | 'extra'
+
 export interface UsageTier {
   id: string
   label: string
+  /** Grouping hint for the tooltip. Missing on responses from pre-2026-04 backends. */
+  kind?: TierKind | string
   /** 0-100 */
   percentage: number
-  /** ISO-8601 reset timestamp */
+  /** ISO-8601 reset timestamp. Empty string when unknown. */
   resetAt: string
-  /** Dollar description for budget tiers, e.g. "$51.25 / $50.00 spent" */
+  /** Dollar description for budget tiers, e.g. "$51.25 / $50.00 spent". */
   spent?: string | null
+  /** ISO 4217 code for credit tiers, when known. */
+  currency?: string | null
 }
 
 export interface OAuthUsage {

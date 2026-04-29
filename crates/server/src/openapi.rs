@@ -291,6 +291,7 @@ use utoipa::OpenApi;
         crate::routes::share::ShareResponse,
         // Batch 5: OAuth
         crate::routes::oauth::UsageTier,
+        crate::routes::oauth::TierKind,
         crate::routes::oauth::OAuthUsageResponse,
         crate::routes::oauth::AuthIdentityResponse,
         // Batch 5: Pairing

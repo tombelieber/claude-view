@@ -2153,7 +2153,7 @@
         "tags": [
           "oauth"
         ],
-        "summary": "GET /api/oauth/identity",
+        "summary": "`GET /api/oauth/identity`",
         "description": "Returns cached auth identity (email, org, plan).\nCalls `claude auth status` on first request only, caches forever.",
         "operationId": "get_auth_identity",
         "responses": {
@@ -2175,8 +2175,8 @@
         "tags": [
           "oauth"
         ],
-        "summary": "GET /api/oauth/usage",
-        "description": "Returns cached usage data (5-min TTL). Multiple tabs/hovers share one cache.\nSets `Cache-Control: max-age=<remaining_ttl>` so the frontend respects the\nserver's TTL without hardcoding its own polling interval.",
+        "summary": "`GET /api/oauth/usage`",
+        "description": "Returns cached usage data (5-min TTL). Sets `Cache-Control: max-age=<ttl>`\nso the frontend's polling interval follows the server's TTL.",
         "operationId": "get_oauth_usage",
         "responses": {
           "200": {
@@ -2197,8 +2197,8 @@
         "tags": [
           "oauth"
         ],
-        "summary": "POST /api/oauth/usage/refresh",
-        "description": "Bypass TTL cache and fetch fresh data from Anthropic.\nReturns 429 + Retry-After header if called within 60s of the last attempt.",
+        "summary": "`POST /api/oauth/usage/refresh`",
+        "description": "Bypass TTL cache and fetch fresh data. Returns 429 + `Retry-After` if\ncalled within 60s of the last attempt.",
         "operationId": "post_oauth_usage_refresh",
         "responses": {
           "200": {
@@ -5822,6 +5822,7 @@
       },
       "AuthIdentityResponse": {
         "type": "object",
+        "description": "Public response shape for `GET /api/oauth/identity`.",
         "required": [
           "hasAuth"
         ],
@@ -14149,6 +14150,16 @@
           }
         }
       },
+      "TierKind": {
+        "type": "string",
+        "description": "How the frontend should group a tier in the tooltip.",
+        "enum": [
+          "session",
+          "window",
+          "other",
+          "extra"
+        ]
+      },
       "TodoItem": {
         "type": "object",
         "description": "A single todo item from a TodoWrite output file.\n\nWritten by Claude Code CLI — external data we don't control.\nEvery field uses `#[serde(default)]` so missing fields never\ncause silent deserialization failures.",
@@ -14579,18 +14590,33 @@
       },
       "UsageTier": {
         "type": "object",
+        "description": "One pill row in the usage tooltip.\n\n**Backward compat:** all new fields are optional or have a stable default.\n`kind` was added 2026-04-30 alongside the new tier set; older clients will\nread it as a string they don't recognise and just render the row generically.",
         "required": [
           "id",
           "label",
+          "kind",
           "percentage",
           "resetAt"
         ],
         "properties": {
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 4217 code for credit tiers, when known. `None` for non-credit tiers."
+          },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable id (`five_hour`, `seven_day`, `seven_day_opus`, …, `extra`)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TierKind",
+            "description": "Grouping hint for the UI: see [`TierKind`]."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable label for the row (e.g. \"Session (5hr)\")."
           },
           "percentage": {
             "type": "number",
@@ -14599,14 +14625,14 @@
           },
           "resetAt": {
             "type": "string",
-            "description": "ISO-8601 reset timestamp"
+            "description": "ISO-8601 reset timestamp. Empty string when unknown — kept as `String`\nrather than `Option<String>` for backward compat with older frontends."
           },
           "spent": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Dollar description for budget tiers"
+            "description": "Dollar / amount description for budget tiers\n(e.g. `\"$51.25 / $50.00 spent\"`). `None` for non-credit tiers."
           }
         }
       },
