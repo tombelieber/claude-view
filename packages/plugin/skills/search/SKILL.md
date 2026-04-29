@@ -121,9 +121,9 @@ Find sessions across the user's Claude Code history using grep-backed session se
 | **Monitor Tools** | |
 | `monitor_snapshot` | - One-shot JSON snapshot of current resources. |
 | **Oauth Tools** | |
-| `oauth_get_auth_identity` | oauth identity |
-| `oauth_get_oauth_usage` | oauth usage |
-| `oauth_post_oauth_usage_refresh` | oauth usage refresh |
+| `oauth_get_auth_identity` | `GET /api/oauth/identity` |
+| `oauth_get_oauth_usage` | `GET /api/oauth/usage` |
+| `oauth_post_oauth_usage_refresh` | `POST /api/oauth/usage/refresh` |
 | **Pairing Tools** | |
 | `pairing_generate_qr` | Generate a QR payload via Supabase pair-offer. |
 | **Plans Tools** | |
