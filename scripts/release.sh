@@ -90,6 +90,16 @@ fi
 # Regenerate Cargo.lock with new version
 cargo generate-lockfile --quiet
 
+# Regenerate the OpenAPI snapshot consumed by the plugin codegen.
+# crates/server/src/openapi.rs::export_openapi_spec writes
+# packages/plugin/scripts/openapi.json, embedding the workspace version
+# from utoipa derive. Without this, the bumped Cargo.toml leaves
+# openapi.json stale; the pre-push rust-test hook then re-runs the test
+# and dirties the working tree, forcing a follow-up commit + retag dance.
+"$ROOT/scripts/cq" test -p claude-view-server --lib -- export_openapi_spec >/dev/null 2>&1
+OPENAPI_JSON="$ROOT/packages/plugin/scripts/openapi.json"
+[ -f "$OPENAPI_JSON" ] && BUMPED_PKGS+=("$OPENAPI_JSON")
+
 # Commit and tag — include Cargo files + all bumped package.json files + site.ts
 git add Cargo.toml Cargo.lock "${BUMPED_PKGS[@]}"
 git commit -m "release: v${VERSION}"
