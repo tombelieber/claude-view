@@ -864,6 +864,9 @@ Every JSONL entry with session context shares a set of metadata fields. Presence
 | `isApiErrorMessage` | assistant | ~0.07% | Boolean flag on error responses |
 | `error` | assistant, system | rare | Error details object |
 | `teamName` | assistant, system, progress | <0.2% | Team context |
+| `attributionAgent` | assistant, user (sidechain) | ~0.4% | Subagent name that dispatched the sidechain (added 2.1.123) |
+| `attributionSkill` | assistant, user (sidechain) | ~0.3% | Skill that dispatched the sidechain (added 2.1.123) |
+| `attributionPlugin` | assistant, user (sidechain) | ~0.3% | Plugin that dispatched the sidechain (added 2.1.123) |
 
 ### Types WITHOUT Standard Metadata
 

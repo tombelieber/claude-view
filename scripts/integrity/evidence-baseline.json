@@ -262,8 +262,11 @@
       "maxRetries",
       "isApiErrorMessage",
       "planContent",
-      "entrypoint"
+      "entrypoint",
+      "attributionAgent",
+      "attributionPlugin",
+      "attributionSkill"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin — not yet wired into the UI."
   }
 }
