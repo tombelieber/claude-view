@@ -1,7 +1,7 @@
 {
   "name": "claude-view",
   "description": "Mission Control for Claude Code — auto-starts a web dashboard, provides 85+ MCP tools (sessions, stats, live monitoring, projects, teams, insights, coaching, and more), and adds 12 skills including /system-monitor, /live, /cv-usage, /session-recap, /daily-cost, /standup, /coaching, /insights, and /team-status.",
-  "version": "0.39.0",
+  "version": "0.40.0",
   "author": {
     "name": "tombelieber",
     "email": "nicholasgee1997@gmail.com"
