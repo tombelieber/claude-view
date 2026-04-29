@@ -179,6 +179,9 @@ jobs:
       attestations: read
 
     steps:
+      - name: Checkout source at tag
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
       - name: Download all artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
@@ -270,6 +273,27 @@ jobs:
             echo "::error::linux-arm64 tarball contains wrong architecture"
             exit 1
           }
+
+      - name: Contract — openapi.json snapshot version matches tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          snapshot=packages/plugin/scripts/openapi.json
+          if [[ ! -f "$snapshot" ]]; then
+            echo "::error::Missing $snapshot at tag — release.sh must regenerate before commit"
+            exit 1
+          fi
+          actual=$(jq -r '.info.version' "$snapshot")
+          expected="${REF_NAME#v}"
+          echo "openapi.json reports version: $actual"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "::error::openapi.json version '$actual' != tag '$expected' — run cq test export_openapi_spec and re-tag"
+            exit 1
+          fi
+          echo "OK: openapi.json version matches tag ($expected)"
 
       - name: Contract — attestations verify
         if: github.event_name == 'push'
