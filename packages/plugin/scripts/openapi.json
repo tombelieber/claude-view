@@ -4939,6 +4939,31 @@
         }
       }
     },
+    "/api/telemetry/event": {
+      "post": {
+        "tags": [
+          "telemetry"
+        ],
+        "summary": "POST /api/telemetry/event — ingress for web journey events.",
+        "description": "Routed through the server (not posthog-js directly) so ad-blockers on\nthe PostHog domain can't blind us and the closed-enum guarantee is\nenforced server-side. Always 204: a disabled/absent client accepts and\ndrops silently (the browser must not care whether telemetry is on).",
+        "operationId": "ingest_event",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TelemetryEventRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Accepted (forwarded only when telemetry is enabled)"
+          }
+        }
+      }
+    },
     "/api/trends": {
       "get": {
         "tags": [
@@ -5423,6 +5448,21 @@
           }
         ],
         "description": "AI generation response wrapper with additive metadata."
+      },
+      "ActionId": {
+        "type": "string",
+        "description": "A high-intent action for `feature_action` — the depth /\nwillingness-to-pay signal that distinguishes \"opened a surface\" from\n\"actually did the valuable thing\". Counts only; the variant itself\ncarries no user content.",
+        "enum": [
+          "chat_message_sent",
+          "search_run",
+          "analytics_dashboard_opened",
+          "session_opened_in_ide",
+          "share_link_created",
+          "workflow_run",
+          "plan_viewed",
+          "on_device_ai_used",
+          "settings_opened"
+        ]
       },
       "ActionResponse": {
         "type": "object",
@@ -13658,6 +13698,28 @@
           }
         }
       },
+      "Surface": {
+        "type": "string",
+        "description": "A navigable product surface — one variant per real top-level route in\nthe web app. `feature_opened { surface }` answers BOTH \"which features\nget used\" and (via PostHog Paths over the ordered event stream) \"what's\nthe user journey\" — no separate page-view event needed.\n\nClosed by design: a route the enum doesn't know about emits nothing\nrather than leaking a raw path. Keep in lock-step with `router.tsx`.",
+        "enum": [
+          "live_monitor",
+          "chat",
+          "history",
+          "session_detail",
+          "search",
+          "analytics",
+          "activity",
+          "reports",
+          "prompts",
+          "teams",
+          "workflows",
+          "plugins",
+          "memory",
+          "system_monitor",
+          "insights",
+          "settings"
+        ]
+      },
       "SyncAcceptedResponse": {
         "type": "object",
         "description": "Response for successful sync initiation.",
@@ -14097,6 +14159,49 @@
             "type": "string"
           }
         }
+      },
+      "TelemetryEventRequest": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Navigation to a product surface — drives \"which features used\" and\n(via PostHog Paths) the user journey.",
+            "required": [
+              "surface",
+              "event"
+            ],
+            "properties": {
+              "event": {
+                "type": "string",
+                "enum": [
+                  "feature_opened"
+                ]
+              },
+              "surface": {
+                "$ref": "#/components/schemas/Surface"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "A high-intent action — the depth / monetization signal.",
+            "required": [
+              "action",
+              "event"
+            ],
+            "properties": {
+              "action": {
+                "$ref": "#/components/schemas/ActionId"
+              },
+              "event": {
+                "type": "string",
+                "enum": [
+                  "feature_action"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Web journey event. The closed enums (`Surface`/`ActionId`) ARE the\nprivacy boundary: any free-form string (a path, a prompt, a project\nname) fails to deserialize, so axum rejects the request with 422\ninstead of forwarding invented data."
       },
       "TelemetryStatus": {
         "type": "string",
