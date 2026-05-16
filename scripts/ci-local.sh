@@ -60,7 +60,11 @@ else echo "  SKIP (SKIP_TS=1)"; fi
 # migrated off.
 gate "Rust lint (clippy)"
 if [ "${SKIP_RUST:-0}" != "1" ]; then
-  S=$(date +%s); ./scripts/cq clippy --workspace -- -D warnings -D deprecated; elapsed $S
+  # -A unnecessary_sort_by / collapsible_match: pinned toolchain
+  # (rust-toolchain.toml = 1.94.1) does not fire these style lints; clippy
+  # 1.95 does. Keep gate consistent with the pinned toolchain. Mirror of
+  # lefthook pre-push.
+  S=$(date +%s); ./scripts/cq clippy --workspace -- -D warnings -D deprecated -A clippy::unnecessary_sort_by -A clippy::collapsible_match; elapsed $S
 else echo "  SKIP (SKIP_RUST=1)"; fi
 
 # ── 5. Rust tests ──
