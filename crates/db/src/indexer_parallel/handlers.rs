@@ -545,10 +545,8 @@ pub(crate) fn handle_system_line(
         "compact_boundary" | "microcompact_boundary" => {
             deep.compaction_count += 1;
         }
-        "stop_hook_summary" => {
-            if parsed.prevented_continuation == Some(true) {
-                deep.hook_blocked_count += 1;
-            }
+        "stop_hook_summary" if parsed.prevented_continuation == Some(true) => {
+            deep.hook_blocked_count += 1;
         }
         _ => {}
     }

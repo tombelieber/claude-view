@@ -430,12 +430,11 @@ pub fn parse_bytes(data: &[u8]) -> ParseResult {
                     "compact_boundary" | "microcompact_boundary" => {
                         result.deep.compaction_count += 1;
                     }
-                    "stop_hook_summary" => {
+                    "stop_hook_summary"
                         if value.get("preventedContinuation").and_then(|v| v.as_bool())
-                            == Some(true)
-                        {
-                            result.deep.hook_blocked_count += 1;
-                        }
+                            == Some(true) =>
+                    {
+                        result.deep.hook_blocked_count += 1;
                     }
                     _ => {}
                 }
