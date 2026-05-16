@@ -1,11 +1,55 @@
+# Cloudflare Pages — claudeview.ai cache policy
+#
+# CRITICAL: Cloudflare Pages COMBINES every matching rule (it does NOT
+# override / first-match). If two rules match the same path, their same-name
+# header values are concatenated. A catch-all `/*` therefore poisons every
+# asset: `/_astro/x.js` matched both `/_astro/*` and `/*`, producing
+#   Cache-Control: public, max-age=31536000, immutable, public, max-age=0, must-revalidate
+# whose trailing `max-age=0, must-revalidate` forced the edge to revalidate
+# on every request (cf-cache-status: REVALIDATED) — the cause of the ~0%
+# cache hit rate. So: NO `/*` rule. Every rule targets a DISJOINT path set.
+# Paths with no rule fall through to Cloudflare Pages' default
+# (`public, max-age=0, must-revalidate`), which is correct for HTML.
+#
+# Two-tier caching (RFC 9213): Cache-Control = browser tier;
+# Cloudflare-CDN-Cache-Control = edge tier. The latter is immune to the
+# zone's "Browser Cache TTL = 4h" override (which rewrites only the
+# browser-facing Cache-Control) and is what makes the edge return HIT.
+# Aggressive edge TTLs are safe: Pages purges the whole edge cache on deploy.
+
+# Fingerprinted build output — filename changes on every content change.
 /_astro/*
   Cache-Control: public, max-age=31536000, immutable
+  Cloudflare-CDN-Cache-Control: public, max-age=31536000, immutable
 
-/*
-  Cache-Control: public, max-age=0, must-revalidate
+# Self-hosted fonts — stable paths, effectively immutable; deploy purges.
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+  Cloudflare-CDN-Cache-Control: public, max-age=31536000, immutable
 
+# Static brand assets — change only on deploy (which purges the edge).
+/favicon.svg
+  Cache-Control: public, max-age=604800
+  Cloudflare-CDN-Cache-Control: public, max-age=2592000
+/og-image.png
+  Cache-Control: public, max-age=604800
+  Cloudflare-CDN-Cache-Control: public, max-age=2592000
+
+# Crawler files — short browser TTL, longer at the edge.
+/robots.txt
+  Cache-Control: public, max-age=3600
+  Cloudflare-CDN-Cache-Control: public, max-age=86400
+/sitemap-index.xml
+  Cache-Control: public, max-age=3600
+  Cloudflare-CDN-Cache-Control: public, max-age=86400
+/sitemap-0.xml
+  Cache-Control: public, max-age=3600
+  Cloudflare-CDN-Cache-Control: public, max-age=86400
+
+# LLM context files — refreshed each deploy.
 /llms.txt
   Cache-Control: public, max-age=3600
-
+  Cloudflare-CDN-Cache-Control: public, max-age=86400
 /llms-full.txt
   Cache-Control: public, max-age=3600
+  Cloudflare-CDN-Cache-Control: public, max-age=86400
