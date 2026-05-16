@@ -136,6 +136,7 @@ use utoipa::OpenApi;
         crate::routes::processes::kill_process,
         crate::routes::processes::cleanup_processes,
         crate::routes::telemetry::set_consent,
+        crate::routes::telemetry::ingest_event,
         crate::routes::sync::trigger_git_sync,
         crate::routes::sync::git_sync_progress,
         crate::routes::sync::trigger_deep_index,
@@ -181,6 +182,9 @@ use utoipa::OpenApi;
         crate::routes::settings::UpdateSettingsRequest,
         crate::routes::coaching::ApplyRuleRequest,
         crate::routes::telemetry::ConsentRequest,
+        crate::routes::telemetry::TelemetryEventRequest,
+        claude_view_core::telemetry_events::Surface,
+        claude_view_core::telemetry_events::ActionId,
         // Batch 1: Sessions schemas
         crate::routes::sessions::SessionsListResponse,
         crate::routes::sessions::SessionActivityResponse,
