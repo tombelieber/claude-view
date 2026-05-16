@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { LiveSession } from '../components/live/use-live-sessions'
+import { getSharedAudioContext, installAudioUnlock, resumeSharedAudio } from '../lib/audio-unlock'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,10 +132,10 @@ function playPreset(ctx: AudioContext, preset: SoundPreset, volume: number): voi
 
 export function useNotificationSound(sessions: LiveSession[]): UseNotificationSoundResult {
   const [settings, setSettings] = useState<NotificationSoundSettings>(loadSettings)
-  const [audioUnlocked, setAudioUnlocked] = useState(false)
 
-  // Lazy AudioContext — created on first play attempt
-  const audioCtxRef = useRef<AudioContext | null>(null)
+  // Truthful: only ever true when the shared AudioContext is actually
+  // `running`. Driven by the global unlock module — never set optimistically.
+  const [audioUnlocked, setAudioUnlocked] = useState(false)
 
   // Map of sessionId → previous group for transition detection
   const prevGroupsRef = useRef<Map<string, string>>(new Map())
@@ -143,22 +144,12 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
   const lastPlayTimeRef = useRef(0)
 
   // -----------------------------------------------------------------------
-  // AudioContext lifecycle
+  // AudioContext lifecycle — arm a one-time global gesture unlock so the
+  // shared context is `running` before any notification fires (browser
+  // autoplay policy). `audioUnlocked` mirrors the real ctx state.
   // -----------------------------------------------------------------------
 
-  const getAudioContext = useCallback((): AudioContext => {
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new AudioContext()
-    }
-    return audioCtxRef.current
-  }, [])
-
-  const ensureResumed = useCallback(async (ctx: AudioContext): Promise<void> => {
-    if (ctx.state === 'suspended') {
-      await ctx.resume()
-    }
-    setAudioUnlocked(true)
-  }, [])
+  useEffect(() => installAudioUnlock(setAudioUnlocked), [])
 
   // -----------------------------------------------------------------------
   // Play sound with debounce
@@ -170,13 +161,20 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
       if (now - lastPlayTimeRef.current < DEBOUNCE_COOLDOWN_MS) {
         return
       }
-      lastPlayTimeRef.current = now
 
-      const ctx = getAudioContext()
-      await ensureResumed(ctx)
+      const ctx = getSharedAudioContext()
+      if (!ctx) return
+      // Best-effort resume. If still autoplay-locked, skip silently — the
+      // armed global gesture listener will unlock for the next notification.
+      // Do NOT schedule oscillators into a suspended context (the original
+      // silent-failure bug) and do NOT consume the debounce slot on a no-op.
+      const running = await resumeSharedAudio()
+      if (!running) return
+
+      lastPlayTimeRef.current = now
       playPreset(ctx, preset ?? settings.sound, vol ?? settings.volume)
     },
-    [settings.sound, settings.volume, getAudioContext, ensureResumed],
+    [settings.sound, settings.volume],
   )
 
   // -----------------------------------------------------------------------
@@ -196,10 +194,14 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
   // -----------------------------------------------------------------------
 
   const previewSound = useCallback(async () => {
-    const ctx = getAudioContext()
-    await ensureResumed(ctx)
+    // Invoked from the Preview button click — itself a user gesture, so
+    // resume() is guaranteed to succeed here.
+    const ctx = getSharedAudioContext()
+    if (!ctx) return
+    const running = await resumeSharedAudio()
+    if (!running) return
     playPreset(ctx, settings.sound, settings.volume)
-  }, [settings.sound, settings.volume, getAudioContext, ensureResumed])
+  }, [settings.sound, settings.volume])
 
   // -----------------------------------------------------------------------
   // Transition detection

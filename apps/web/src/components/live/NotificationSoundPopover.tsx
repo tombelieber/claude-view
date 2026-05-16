@@ -20,9 +20,13 @@ export function NotificationSoundPopover({
   settings,
   onSettingsChange,
   onPreview,
-  audioUnlocked: _audioUnlocked,
+  audioUnlocked,
 }: NotificationSoundPopoverProps) {
   const isEnabled = settings.enabled
+  // Truthful state: only surfaced when sound genuinely cannot play yet
+  // (browser autoplay policy, no user gesture observed). Disappears the
+  // instant the shared AudioContext resumes. No setting, no guessing.
+  const showLockedHint = isEnabled && !audioUnlocked
 
   return (
     <Popover.Root>
@@ -128,6 +132,13 @@ export function NotificationSoundPopover({
             <Play className="w-3.5 h-3.5" />
             Preview
           </button>
+
+          {showLockedHint && (
+            <p className="mt-2 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+              Click anywhere on the page once to enable notification sound (your browser blocks
+              audio until you interact).
+            </p>
+          )}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>
