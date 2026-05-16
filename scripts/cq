@@ -21,8 +21,24 @@
 set -euo pipefail
 
 LOCK_FILE="/tmp/claude-view-cargo.lock"
-CARGO="${CARGO:-$(command -v cargo)}"
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# --- Honor rust-toolchain.toml (Homebrew-shadow guard) ---
+# Homebrew's cargo/rustc/cargo-clippy are real binaries that sit in PATH
+# ahead of rustup's shims, so they IGNORE rust-toolchain.toml and silently
+# run a newer toolchain whose clippy flags lints the pinned channel does
+# not (and `rustup run`/`+toolchain` don't fix it — cargo-clippy still
+# resolves via PATH). Prepend the pinned toolchain's bin dir so cargo,
+# rustc and cargo-clippy all resolve to exactly the pinned channel.
+# No pin / unmatched / explicit $CARGO override → behaviour unchanged.
+_cq_channel="$(sed -n 's/^[[:space:]]*channel[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT_DIR/rust-toolchain.toml" 2>/dev/null || true)"
+if [[ -n "${_cq_channel:-}" ]]; then
+  for _cq_tc_bin in "$HOME"/.rustup/toolchains/"${_cq_channel}"-*/bin; do
+    [[ -d "$_cq_tc_bin" ]] && { export PATH="$_cq_tc_bin:$PATH"; break; }
+  done
+fi
+
+CARGO="${CARGO:-$(command -v cargo)}"
 COMMON_GIT_DIR="$(git -C "$ROOT_DIR" rev-parse --git-common-dir)"
 case "$COMMON_GIT_DIR" in
   /*) ;;

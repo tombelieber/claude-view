@@ -47,13 +47,11 @@ pre-push:
       # catches deprecated by default) so any new caller of a legacy writer
       # fails the gate immediately.
       #
-      # -A unnecessary_sort_by / collapsible_match: clippy 1.95 strengthened
-      # these two *style* lints to fire workspace-wide on pre-existing code.
-      # This repo pins 1.94.1 (rust-toolchain.toml), where neither fires —
-      # the gate must not enforce lints the project's own pinned toolchain
-      # doesn't (esp. via a Homebrew-shadowed 1.95). Drop these `-A`s if/when
-      # the pin moves to >= 1.95 (and fix the ~20 sites then).
-      run: ./scripts/cq clippy --workspace -- -D warnings -D deprecated -A clippy::unnecessary_sort_by -A clippy::collapsible_match
+      # `scripts/cq` pins clippy to rust-toolchain.toml (Homebrew otherwise
+      # shadows rustup and runs a newer clippy whose extra style lints would
+      # false-fail this gate). So the FULL -D warnings runs under the pinned
+      # 1.94.1 — no per-lint allowances needed (root cause fixed, not masked).
+      run: ./scripts/cq clippy --workspace -- -D warnings -D deprecated
     # NOTE: generated-types moved to post-merge. Drift is now caught at pull
     # time (when it's upstream-owned) instead of push time (when it's the
     # next pusher's problem). Keep this commented reminder for future eng.
