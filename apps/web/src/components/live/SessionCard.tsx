@@ -1,3 +1,5 @@
+import { useInteractionResponder } from '@claude-view/shared'
+import { SessionInteractionCard } from '@claude-view/shared/components/conversation/blocks/shared/SessionInteractionCard'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   AlertTriangle,
@@ -5,6 +7,7 @@ import {
   Bell,
   CheckCircle,
   CirclePause,
+  ClipboardList,
   Clock,
   FileCheck,
   FolderOpen,
@@ -18,23 +21,22 @@ import {
   TreePine,
 } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
+import { useFullInteraction } from '../../hooks/use-full-interaction'
+import { useTeamSidechains } from '../../hooks/use-teams'
 import { formatCostUsd } from '../../lib/format-utils'
 import { buildSessionUrl } from '../../lib/url-utils'
 import { cleanPreviewText } from '../../utils/get-session-title'
 import { PhaseBadge, PhaseBadgeSkeleton } from '../PhaseBadge'
 import { SourceBadge } from '../shared/SourceBadge'
 import { SessionSpinner, pickVerb } from '../spinner'
-import { useInteractionResponder } from '@claude-view/shared'
-import { SessionInteractionCard } from '@claude-view/shared/components/conversation/blocks/shared/SessionInteractionCard'
-import { useFullInteraction } from '../../hooks/use-full-interaction'
 import { ContextGauge } from './ContextGauge'
 import { CostTooltip } from './CostTooltip'
 import { TaskProgressList } from './TaskProgressList'
 import { hasUnavailableCost, unavailableCostReason } from './cost-display'
 import { getEffectiveBranch } from './effective-branch'
+import { sortSubAgentsForCard } from './sort-sub-agents'
 import type { AgentState } from './types'
 import { GROUP_DEFAULTS, KNOWN_STATES } from './types'
-import { useTeamSidechains } from '../../hooks/use-teams'
 import { type LiveSession, sessionTotalCost } from './use-live-sessions'
 
 // ─── StateBadge (exported — used by Harness, ListView, TerminalOverlay) ──
@@ -82,6 +84,26 @@ function StateBadge({ agentState }: { agentState: AgentState }) {
 }
 
 export { StateBadge }
+
+// ─── PlanModeBadge (issue #61) ────────────────────────────────────────
+// Confidence-gated: rendered ONLY when the session is *actually* in plan
+// mode. `permissionMode` is the value the most recent Claude Code hook
+// reported (see HookFields::permission_mode, Latest-wins). Every other
+// mode — and the absence of any reported mode — renders nothing. No
+// guessing, no "unknown" pill: 寧願唔顯示，都唔顯示錯嘅嘢.
+function PlanModeBadge({ permissionMode }: { permissionMode?: string | null }) {
+  if (permissionMode !== 'plan') return null
+
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+      title="Session is in plan mode (read-only — Claude is planning, not editing)"
+    >
+      <ClipboardList className="h-3 w-3" />
+      Plan
+    </span>
+  )
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────
 
@@ -199,7 +221,7 @@ const STATUS_DOT: Record<string, string> = {
 
 function AgentsLine({ subAgents }: { subAgents: LiveSession['subAgents'] }) {
   if (!subAgents || subAgents.length === 0) return null
-  const visible = subAgents.slice(0, 3)
+  const visible = sortSubAgentsForCard(subAgents).slice(0, 3)
   const overflow = subAgents.length - 3
 
   return (
@@ -395,6 +417,7 @@ export function SessionCard({
           ) : isClassifying ? (
             <PhaseBadgeSkeleton />
           ) : null}
+          <PlanModeBadge permissionMode={session.permissionMode} />
         </div>
         <CostTooltip
           cost={session.cost}

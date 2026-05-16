@@ -154,6 +154,78 @@ describe('SessionCard sub-agent pills', () => {
     renderCard(session)
     expect(screen.queryByText(/agents/)).not.toBeInTheDocument()
   })
+
+  // Issue #62: the Agents list must show running + newest first, so the
+  // `+N more` overflow hides the OLDEST agents, not the active ones.
+  it('orders the Agents list running + newest first and overflows the oldest', () => {
+    const session = createMockSession({
+      subAgents: [
+        {
+          toolUseId: 'a1',
+          agentType: 'a-oldest',
+          description: 'd',
+          status: 'complete',
+          startedAt: 1_000,
+        },
+        {
+          toolUseId: 'a2',
+          agentType: 'b-mid',
+          description: 'd',
+          status: 'complete',
+          startedAt: 2_000,
+        },
+        {
+          toolUseId: 'a3',
+          agentType: 'c-newer',
+          description: 'd',
+          status: 'complete',
+          startedAt: 3_000,
+        },
+        {
+          toolUseId: 'a4',
+          agentType: 'd-live',
+          description: 'd',
+          status: 'running',
+          startedAt: 1_500,
+        },
+      ],
+    })
+    renderCard(session)
+
+    const live = screen.getByText('d-live')
+    const newer = screen.getByText('c-newer')
+    // Running agent renders before the newest completed agent in the DOM.
+    expect(live.compareDocumentPosition(newer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText('b-mid')).toBeInTheDocument()
+    // Oldest is pushed into the "+1 more" overflow, not rendered as a row.
+    expect(screen.queryByText('a-oldest')).not.toBeInTheDocument()
+    expect(screen.getByText('+1 more')).toBeInTheDocument()
+  })
+})
+
+// Issue #61: a Plan-mode badge, confidence-gated. It must appear ONLY when
+// the session is actually in plan mode — never guessed. Any other mode, or
+// no reported mode, shows nothing (寧願唔顯示，都唔顯示錯嘅嘢).
+describe('SessionCard plan mode badge', () => {
+  it('shows the Plan badge when permissionMode is "plan"', () => {
+    renderCard(createMockSession({ permissionMode: 'plan' }))
+    expect(screen.getByText('Plan')).toBeInTheDocument()
+  })
+
+  it('does NOT show the Plan badge for non-plan modes', () => {
+    renderCard(createMockSession({ permissionMode: 'default' }))
+    expect(screen.queryByText('Plan')).not.toBeInTheDocument()
+  })
+
+  it('does NOT show the Plan badge for acceptEdits/bypassPermissions', () => {
+    renderCard(createMockSession({ permissionMode: 'bypassPermissions' }))
+    expect(screen.queryByText('Plan')).not.toBeInTheDocument()
+  })
+
+  it('does NOT show the Plan badge when permissionMode is absent', () => {
+    renderCard(createMockSession({ permissionMode: undefined }))
+    expect(screen.queryByText('Plan')).not.toBeInTheDocument()
+  })
 })
 
 describe('SessionCard interaction display', () => {

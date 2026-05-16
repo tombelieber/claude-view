@@ -2,6 +2,7 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import { CheckCircle, Loader2, XCircle } from 'lucide-react'
 import { useCallback } from 'react'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
+import { sortSubAgentsForCard } from './sort-sub-agents'
 
 interface SubAgentPillsProps {
   subAgents: SubAgentInfo[]
@@ -37,8 +38,9 @@ const STATUS_ICON = {
 } as const
 
 export function SubAgentPills({ subAgents, onExpand }: SubAgentPillsProps) {
-  const displayAgents = subAgents.slice(0, 4)
-  const overflowAgents = subAgents.slice(4)
+  const ordered = sortSubAgentsForCard(subAgents)
+  const displayAgents = ordered.slice(0, 4)
+  const overflowAgents = ordered.slice(4)
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

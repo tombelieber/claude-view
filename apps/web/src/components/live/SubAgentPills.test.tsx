@@ -195,4 +195,37 @@ describe('SubAgentPills', () => {
     expect(screen.getByText('code-reviewer')).toBeInTheDocument()
     expect(screen.getByText('search')).toBeInTheDocument()
   })
+
+  // Issue #62: newest + active agents must surface first; overflow hides oldest.
+  it('renders running agents and newest-spawned agents first', () => {
+    const agents: SubAgentInfo[] = [
+      { ...mockCompleteAgent, toolUseId: 't1', agentType: 'oldest-done', startedAt: 1000 },
+      { ...mockCompleteAgent, toolUseId: 't2', agentType: 'newer-done', startedAt: 3000 },
+      { ...mockRunningAgent, toolUseId: 't3', agentType: 'active-agent', startedAt: 2000 },
+    ]
+    const { container } = render(<SubAgentPills subAgents={agents} />)
+
+    const renderedOrder = Array.from(container.querySelectorAll('[aria-label]')).map(
+      (el) => el.getAttribute('aria-label')?.split(':')[0],
+    )
+
+    expect(renderedOrder).toEqual(['active-agent', 'newer-done', 'oldest-done'])
+  })
+
+  it('keeps the newest active agents visible and pushes oldest into +N more', () => {
+    const agents: SubAgentInfo[] = [
+      { ...mockCompleteAgent, toolUseId: 'o1', agentType: 'oldest', startedAt: 1000 },
+      { ...mockCompleteAgent, toolUseId: 'o2', agentType: 'second', startedAt: 2000 },
+      { ...mockCompleteAgent, toolUseId: 'o3', agentType: 'third', startedAt: 3000 },
+      { ...mockCompleteAgent, toolUseId: 'o4', agentType: 'fourth', startedAt: 4000 },
+      { ...mockRunningAgent, toolUseId: 'r1', agentType: 'live', startedAt: 1500 },
+    ]
+    render(<SubAgentPills subAgents={agents} />)
+
+    // Running + 3 newest complete are visible; the single oldest is hidden.
+    expect(screen.getByText('live')).toBeInTheDocument()
+    expect(screen.getByText('fourth')).toBeInTheDocument()
+    expect(screen.queryByText('oldest')).not.toBeInTheDocument()
+    expect(screen.getByText('+1 more')).toBeInTheDocument()
+  })
 })
