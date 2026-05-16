@@ -206,6 +206,11 @@ main() {
   # Write version marker
   echo "$version" > "${INSTALL_DIR}/version"
 
+  # Write install-source marker — the explicit contract read by
+  # detect_install_source() in the server. Co-located with the binary so
+  # it can never drift from it (survives CLAUDE_VIEW_INSTALL_DIR override).
+  echo "install_sh" > "${INSTALL_DIR}/install-source"
+
   # Install sidecar dependencies if Node.js is available
   if [ -d "${BIN_DIR}/sidecar" ] && command -v npm >/dev/null 2>&1; then
     if [ ! -d "${BIN_DIR}/sidecar/node_modules" ]; then
