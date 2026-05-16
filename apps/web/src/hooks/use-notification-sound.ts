@@ -143,6 +143,11 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
   // Debounce: timestamp of last played sound
   const lastPlayTimeRef = useRef(0)
 
+  // Re-entrancy guard: playSound awaits an async resume(); without this, two
+  // transitions landing inside that await window would both schedule a tone
+  // (a doubled ding). One play in flight at a time — impossible state removed.
+  const playInFlightRef = useRef(false)
+
   // -----------------------------------------------------------------------
   // AudioContext lifecycle — arm a one-time global gesture unlock so the
   // shared context is `running` before any notification fires (browser
@@ -161,18 +166,23 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
       if (now - lastPlayTimeRef.current < DEBOUNCE_COOLDOWN_MS) {
         return
       }
+      if (playInFlightRef.current) return
+      playInFlightRef.current = true
+      try {
+        const ctx = getSharedAudioContext()
+        if (!ctx) return
+        // Best-effort resume. If still autoplay-locked, skip silently — the
+        // armed global gesture listener will unlock for the next notification.
+        // Do NOT schedule oscillators into a suspended context (the original
+        // silent-failure bug) and do NOT consume the debounce slot on a no-op.
+        const running = await resumeSharedAudio()
+        if (!running) return
 
-      const ctx = getSharedAudioContext()
-      if (!ctx) return
-      // Best-effort resume. If still autoplay-locked, skip silently — the
-      // armed global gesture listener will unlock for the next notification.
-      // Do NOT schedule oscillators into a suspended context (the original
-      // silent-failure bug) and do NOT consume the debounce slot on a no-op.
-      const running = await resumeSharedAudio()
-      if (!running) return
-
-      lastPlayTimeRef.current = now
-      playPreset(ctx, preset ?? settings.sound, vol ?? settings.volume)
+        lastPlayTimeRef.current = now
+        playPreset(ctx, preset ?? settings.sound, vol ?? settings.volume)
+      } finally {
+        playInFlightRef.current = false
+      }
     },
     [settings.sound, settings.volume],
   )

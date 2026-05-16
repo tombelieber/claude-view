@@ -17,6 +17,7 @@ import { useNotificationSound } from '../use-notification-sound'
 // ---------------------------------------------------------------------------
 
 let gestureGranted = false
+let resumeGate: Promise<void> | null = null
 const createOscillatorSpy = vi.fn()
 const createGainSpy = vi.fn()
 
@@ -26,6 +27,9 @@ class MockAudioContext {
   destination = {} as AudioDestinationNode
 
   async resume(): Promise<void> {
+    // Optional gate to deterministically hold a resume() in flight, so the
+    // re-entrancy window can be exercised.
+    if (resumeGate) await resumeGate
     // Promise resolves either way; state only flips when activated.
     if (gestureGranted) this.state = 'running'
   }
@@ -73,6 +77,7 @@ async function fireGesture(): Promise<void> {
 
 beforeEach(() => {
   gestureGranted = false
+  resumeGate = null
   createOscillatorSpy.mockClear()
   createGainSpy.mockClear()
   localStorage.clear()
@@ -196,5 +201,42 @@ describe('useNotificationSound — autoplay-policy regression', () => {
     })
 
     expect(createOscillatorSpy).not.toHaveBeenCalled()
+  })
+
+  it('re-entrancy guard: two transitions inside the resume() window ding only once', async () => {
+    let releaseResume!: () => void
+    resumeGate = new Promise<void>((r) => {
+      releaseResume = r
+    })
+    gestureGranted = true // resume() runs the ctx once the gate releases
+
+    const { rerender } = renderHook(({ sessions }) => useNotificationSound(sessions), {
+      initialProps: {
+        sessions: [sess('s1', 'autonomous'), sess('s2', 'autonomous')] as never[],
+      },
+    })
+
+    // Transition #1 (s1): playSound starts, blocks awaiting the held resume().
+    await act(async () => {
+      rerender({ sessions: [sess('s1', 'needs_you'), sess('s2', 'autonomous')] as never[] })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    // Transition #2 (s2) lands while #1 is still in flight (awaiting resume()).
+    await act(async () => {
+      rerender({ sessions: [sess('s1', 'needs_you'), sess('s2', 'needs_you')] as never[] })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Release the held resume(); without the guard, BOTH would now play.
+    await act(async () => {
+      releaseResume()
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(createOscillatorSpy).toHaveBeenCalledTimes(1)
   })
 })
