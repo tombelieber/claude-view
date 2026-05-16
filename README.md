@@ -42,7 +42,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 ## What Is claude-view?
 
-claude-view is an open-source dashboard that monitors every Claude Code session on your machine — live agents, past conversations, costs, sub-agents, hooks, tool calls — in one place. Rust backend, React frontend, ~10 MB binary. Zero config, zero accounts, 100% local.
+claude-view is an open-source dashboard that monitors every Claude Code session on your machine — live agents, past conversations, costs, sub-agents, hooks, tool calls — in one place. Rust backend, React frontend, ~10 MB binary. Zero config, zero accounts, local-first — your sessions, code and prompts never leave your machine ([anonymous usage analytics](#privacy--telemetry) in official builds; one-command opt-out; source builds send nothing).
 
 **50+ releases. 85 MCP tools. 9 skills. One `npx claude-view`.**
 
@@ -278,7 +278,7 @@ Plus **77 auto-generated tools** from the OpenAPI spec across 26 categories (con
 | **Fast** | Rust backend with SIMD-accelerated JSONL parsing, memory-mapped I/O — indexes thousands of sessions in seconds |
 | **Real-time** | File watcher + SSE + multiplexed WebSocket with heartbeat, event replay, and crash recovery |
 | **Tiny** | ~10 MB download, ~27 MB on disk. No runtime dependencies, no background daemons |
-| **100% local** | All data stays on your machine. Zero telemetry by default, zero required accounts |
+| **Local-first** | Your sessions, code & prompts never leave your machine. Official builds send anonymous feature-usage analytics (no content, ever) — opt out with `CLAUDE_VIEW_TELEMETRY=0`; source builds send nothing. Zero required accounts |
 | **Zero config** | `npx claude-view` and you're done. No API keys, no setup, no accounts |
 | **FSM-driven** | Chat sessions run on a finite state machine with explicit phases and typed events — deterministic, race-free |
 
@@ -314,6 +314,34 @@ Key techniques: SIMD pre-filter (`memchr`), memory-mapped JSONL parsing, ripgrep
 | [claude-run](https://github.com/kamranahmedse/claude-run) | History viewer | TypeScript | ~500 KB | Partial | No | Basic | No | No |
 
 > Chat UIs (CodePilot, CUI, claude-code-webui) are interfaces *for* Claude Code. claude-view is a dashboard that watches your existing terminal sessions. They're complementary.
+
+---
+
+## Privacy & Telemetry
+
+claude-view is local-first. **Your sessions, code, prompts, file paths and project names never leave your machine** (the only exception is the encrypted Share feature, which you trigger explicitly).
+
+To guide development with real data — instead of guessing — **official builds send anonymous usage analytics on by default**. This is how the prebuilt binary is distributed:
+
+| Build | Telemetry |
+|-------|-----------|
+| `npx claude-view` · `curl … install.sh \| sh` (official binary) | **On by default** — anonymous, one-time notice on first run, opt out anytime |
+| Built from source (`cargo build`) | **Off, always** — no analytics key is compiled in; there is no code path that can send |
+| `CLAUDE_VIEW_TELEMETRY=0` or CI detected | **Off** — hard override, beats everything |
+
+**What is collected** (official builds, until you opt out): which feature/screen was opened, high-intent action counts, app version, OS/platform, install source, a daily active ping, and a random per-install UUID.
+
+**What is *never* collected:** code, prompts, message/session content, file paths, project or repo names, branch names, environment variables, API keys, IP/geo, or anything tied to your identity. This is enforced by a **closed event schema in the type system** — an event physically cannot carry a path or prompt — not just by policy.
+
+**Opt out** (takes effect immediately, permanently):
+
+```bash
+export CLAUDE_VIEW_TELEMETRY=0      # or set it in your shell profile
+```
+
+…or use the toggle in **Settings → Telemetry**. Full detail: [claudeview.ai/privacy](https://claudeview.ai/privacy).
+
+Why default-on for official builds? With thousands of anonymous installs and zero signal, every product decision is a guess. Anonymous, content-free usage counts let the project build what people actually use. This is the same model Next.js, Astro, Homebrew and VS Code use. If you'd rather send nothing, the opt-out above is one line and source builds never send at all.
 
 ---
 
@@ -396,7 +424,7 @@ If all checks pass and the banner persists, report it on [Discord](https://disco
 <summary><strong>What data does claude-view access?</strong></summary>
 <br>
 
-claude-view reads the JSONL session files that Claude Code writes to `~/.claude/projects/`. It indexes session metadata locally in SQLite and searches session text with rust grep over local JSONL files. **No data leaves your machine** unless you explicitly use the encrypted sharing feature. Telemetry is opt-in and off by default.
+claude-view reads the JSONL session files that Claude Code writes to `~/.claude/projects/`. It indexes session metadata locally in SQLite and searches session text with rust grep over local JSONL files. **Your session content never leaves your machine** unless you explicitly use the encrypted sharing feature. Official builds (`npx claude-view` / install.sh) send **anonymous usage analytics** — which features/screens are opened, app version, OS, install source, a random per-install UUID — and **never** code, prompts, paths or session content; opt out anytime with `CLAUDE_VIEW_TELEMETRY=0`. Builds from source contain no analytics key and send nothing. See [Privacy & Telemetry](#privacy--telemetry).
 
 </details>
 

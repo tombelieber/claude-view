@@ -34,7 +34,8 @@ const LAST_UPDATED = 'April 17, 2026';
 
       <h2>Quick summary</h2>
       <ul>
-        <li><strong>Local tool (desktop/CLI):</strong> reads your Claude Code session files locally. Nothing is uploaded. Ever.</li>
+        <li><strong>Local tool (desktop/CLI):</strong> reads your Claude Code session files locally — your conversations, code, prompts and session content are never uploaded.</li>
+        <li><strong>Anonymous usage analytics:</strong> official builds (<code>npx claude-view</code> / install.sh) send anonymous feature-usage counts (which screens/actions, never content) to guide development. One-command opt-out (<code>CLAUDE_VIEW_TELEMETRY=0</code>); builds from source send nothing.</li>
         <li><strong>Waitlist:</strong> we store your email to notify you at launch.</li>
         <li><strong>Mobile app:</strong> requires an account for pairing and relay. We collect the minimum needed to make it work.</li>
         <li><strong>Share viewer:</strong> opt-in only. You control what gets shared and can delete it any time.</li>
@@ -46,10 +47,12 @@ const LAST_UPDATED = 'April 17, 2026';
         The desktop CLI (<code>npx claude-view</code>) and web app read your Claude Code session logs
         (<code>~/.claude/projects/**/*.jsonl</code>), project metadata, and prompt history entirely
         on your local disk. This data is indexed locally in SQLite and Tantivy under
-        <code>~/.claude-view/</code>. It is never transmitted to any server.
+        <code>~/.claude-view/</code>. Your session content is never transmitted to any server.
       </p>
       <p>
-        We have no access to your conversations, code, prompts, or session content.
+        We have no access to your conversations, code, prompts, or session content. Official
+        builds additionally send anonymous, content-free feature-usage analytics — covered in
+        <a href="#analytics-app">section 7</a>, and opt-out in one command.
       </p>
 
       <h2>2. Data we do collect</h2>
@@ -110,6 +113,13 @@ const LAST_UPDATED = 'April 17, 2026';
               <td class="px-3 py-2 border border-[var(--color-border)]">No</td>
               <td class="px-3 py-2 border border-[var(--color-border)]">Cloudflare Web Analytics</td>
             </tr>
+            <tr>
+              <td class="px-3 py-2 border border-[var(--color-border)]">Anonymous app usage analytics — feature/screen counts, app version, OS, install source, random install UUID (official builds only; never code, prompts, paths or session content)</td>
+              <td class="px-3 py-2 border border-[var(--color-border)]">See which features are used so development is guided by real usage</td>
+              <td class="px-3 py-2 border border-[var(--color-border)]">Aggregate event counts; opt out anytime with <code>CLAUDE_VIEW_TELEMETRY=0</code></td>
+              <td class="px-3 py-2 border border-[var(--color-border)]">No (random per-install UUID, not tied to any account)</td>
+              <td class="px-3 py-2 border border-[var(--color-border)]">PostHog</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -121,7 +131,8 @@ const LAST_UPDATED = 'April 17, 2026';
         <li><strong>Identifiers — User ID:</strong> Supabase auth UID used to tie devices to an account. Linked to identity.</li>
         <li><strong>Identifiers — Device ID:</strong> pairing record stores device name and platform. Linked to identity.</li>
         <li><strong>Other Data — Push tokens:</strong> OneSignal external user ID, not a raw device token. Linked to identity.</li>
-        <li>No usage data, diagnostics, browsing history, location, financial info, health, sensitive info, contacts, messages, or photos are collected.</li>
+        <li><strong>Usage Data — Product Interaction:</strong> anonymous feature/screen counts from official desktop builds (PostHog), keyed to a random per-install UUID. <strong>Not linked to identity</strong>, not used for tracking, opt-out via <code>CLAUDE_VIEW_TELEMETRY=0</code>.</li>
+        <li>No browsing history, location, financial info, health, sensitive info, contacts, messages, or photos are collected. No diagnostics/crash data is collected.</li>
         <li>None of the data above is used for tracking or advertising.</li>
       </ul>
 
@@ -149,6 +160,13 @@ const LAST_UPDATED = 'April 17, 2026';
         <li>
           <strong>Google</strong> — OAuth provider for sign-in. Governs Google account data per
           <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google's privacy policy</a>.
+        </li>
+        <li>
+          <strong>PostHog</strong> (posthog.com, US Cloud) — anonymous product analytics for official
+          desktop builds. Receives content-free feature/screen counts keyed to a random per-install
+          UUID; no IP/geo, no session recording, no autocapture. Disabled entirely with
+          <code>CLAUDE_VIEW_TELEMETRY=0</code> and absent from source builds.
+          <a href="https://posthog.com/privacy" target="_blank" rel="noopener noreferrer">Privacy policy</a>.
         </li>
       </ul>
       <p>We do not sell data to any of these parties or anyone else. They process data only as needed to provide their services to us.</p>
@@ -189,8 +207,22 @@ const LAST_UPDATED = 'April 17, 2026';
         no JavaScript tracking beacon, and does not identify individual visitors or build cross-site
         profiles. We receive aggregate page view counts and referrer summaries only.
       </p>
+      <p id="analytics-app">
+        <strong>Desktop app (official builds only).</strong> The prebuilt binary distributed via
+        <code>npx claude-view</code> and the install script sends <strong>anonymous usage
+        analytics</strong> to PostHog so development is guided by which features people actually
+        use. We collect: which feature/screen was opened, high-intent action counts, app version,
+        OS/platform, install source, and a random per-install UUID. We <strong>never</strong>
+        collect code, prompts, file paths, project names, session content, or any identifier tied
+        to you — this is enforced by a closed event schema, not just policy. IP/geo, session
+        recording and autocapture are all disabled.
+      </p>
       <p>
-        The desktop app, mobile app, and share viewer have no analytics instrumentation.
+        This is <strong>on by default in official builds</strong> (a one-time notice is printed on
+        first run). Turn it off permanently with the <code>CLAUDE_VIEW_TELEMETRY=0</code>
+        environment variable or the toggle in Settings. <strong>Builds from source contain no
+        analytics key and send nothing</strong> — there is no code path that can. The mobile app
+        and share viewer have no analytics instrumentation.
       </p>
 
       <h2>8. Children's privacy</h2>
