@@ -60,6 +60,6 @@ pub use state::{
 // Re-export all app factory functions at crate root to preserve public API.
 pub use app_factory::{
     create_app, create_app_full, create_app_with_git_sync, create_app_with_indexing,
-    create_app_with_indexing_and_static, create_app_with_static, create_app_with_telemetry_path,
-    register_hooks,
+    create_app_with_indexing_and_static, create_app_with_static, create_app_with_telemetry_client,
+    create_app_with_telemetry_path, register_hooks,
 };

@@ -19,6 +19,11 @@ pub struct TelemetryConfig {
     pub last_milestone: Option<u64>,
     #[serde(default)]
     pub first_index_completed: bool,
+    /// Set true once the one-time `installed` ("acquired") event has been
+    /// emitted for this persistent `anonymous_id`. Guards against re-firing
+    /// when consent is toggled off then on again.
+    #[serde(default)]
+    pub install_reported: bool,
 }
 
 impl TelemetryConfig {
@@ -29,6 +34,7 @@ impl TelemetryConfig {
             consent_given_at: None,
             last_milestone: None,
             first_index_completed: false,
+            install_reported: false,
         }
     }
 }

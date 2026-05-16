@@ -69,6 +69,25 @@ pub fn create_app(db: Database) -> Router {
 /// Allows integration tests to redirect telemetry config reads/writes to a
 /// temporary directory instead of `~/.claude-view/telemetry.json`.
 pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathBuf) -> Router {
+    create_app_with_telemetry(db, telemetry_config_path, None)
+}
+
+/// Test-only: like [`create_app_with_telemetry_path`] but injects a telemetry
+/// client, so integration tests can assert PostHog emission over the wire
+/// (point the client at a mock endpoint via [`telemetry::TelemetryClient::with_capture_url`]).
+pub fn create_app_with_telemetry_client(
+    db: Database,
+    telemetry_config_path: PathBuf,
+    telemetry: telemetry::TelemetryClient,
+) -> Router {
+    create_app_with_telemetry(db, telemetry_config_path, Some(telemetry))
+}
+
+fn create_app_with_telemetry(
+    db: Database,
+    telemetry_config_path: PathBuf,
+    telemetry: Option<telemetry::TelemetryClient>,
+) -> Router {
     use std::collections::HashMap;
     // Phase 3 PR 3.a: build the catalog + adapter together so both
     // `AppState.session_catalog` and `AppState.session_catalog_adapter`
@@ -128,7 +147,7 @@ pub fn create_app_with_telemetry_path(db: Database, telemetry_config_path: PathB
             std::time::Duration::from_secs(120),
         )),
         coordinator: Arc::new(live::coordinator::SessionCoordinator::new()),
-        telemetry: None,
+        telemetry,
         telemetry_config_path,
         debug_statusline_log: if cfg!(debug_assertions) {
             Some(live::debug_log::DebugEventLog::new(

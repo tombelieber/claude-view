@@ -49,6 +49,28 @@ pub async fn set_consent(
         }
     }
 
+    // One-time `installed` ("acquired") event. Under an opt-in model the
+    // first server start is `Undecided`, so `track()` is dropped there
+    // (telemetry.rs) — consent is the first moment this machine becomes
+    // countable, so it doubles as the install signal. Keyed on the
+    // persistent `anonymous_id` (PostHog distinct_id) and deduped by the
+    // persisted `install_reported` flag so toggling consent off/on never
+    // re-fires it.
+    if req.enabled && !config.install_reported {
+        config.install_reported = true;
+        if let Some(ref client) = state.telemetry {
+            client.track(
+                "installed",
+                serde_json::json!({
+                    "install_source": crate::startup::install::detect_install_source(),
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "platform": std::env::consts::OS,
+                    "$set_once": { "installed_at": chrono::Utc::now().to_rfc3339() },
+                }),
+            );
+        }
+    }
+
     write_telemetry_config(config_path, &config).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let status = if req.enabled {

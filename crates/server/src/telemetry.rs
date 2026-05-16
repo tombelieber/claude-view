@@ -9,6 +9,11 @@ use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+/// Production PostHog capture endpoint. Injectable for tests only via
+/// [`TelemetryClient::with_capture_url`]; [`TelemetryClient::new`] always
+/// targets this, so production emission is byte-identical.
+const POSTHOG_CAPTURE_URL: &str = "https://us.i.posthog.com/capture/";
+
 /// PostHog telemetry client.
 ///
 /// Cheaply cloneable: all fields are reference-counted or `Clone`.
@@ -19,15 +24,24 @@ pub struct TelemetryClient {
     http: reqwest::Client,
     pub(crate) api_key: String,
     pub(crate) anonymous_id: String,
+    capture_url: Arc<str>,
     enabled: Arc<AtomicBool>,
 }
 
 impl TelemetryClient {
     pub fn new(api_key: &str, anonymous_id: &str) -> Self {
+        Self::with_capture_url(api_key, anonymous_id, POSTHOG_CAPTURE_URL)
+    }
+
+    /// Test seam: redirect captures to a mock endpoint so emission can be
+    /// asserted hermetically. Production code uses [`TelemetryClient::new`],
+    /// which always targets PostHog.
+    pub fn with_capture_url(api_key: &str, anonymous_id: &str, capture_url: &str) -> Self {
         Self {
             http: reqwest::Client::new(),
             api_key: api_key.to_string(),
             anonymous_id: anonymous_id.to_string(),
+            capture_url: Arc::from(capture_url),
             enabled: Arc::new(AtomicBool::new(false)),
         }
     }
@@ -39,6 +53,7 @@ impl TelemetryClient {
         let http = self.http.clone();
         let api_key = self.api_key.clone();
         let anonymous_id = self.anonymous_id.clone();
+        let capture_url = self.capture_url.clone();
         let event = event.to_string();
         tokio::spawn(async move {
             let mut props = properties;
@@ -51,11 +66,7 @@ impl TelemetryClient {
                 "distinct_id": anonymous_id,
                 "properties": props,
             });
-            let _ = http
-                .post("https://us.i.posthog.com/capture/")
-                .json(&payload)
-                .send()
-                .await;
+            let _ = http.post(capture_url.as_ref()).json(&payload).send().await;
         });
     }
 
