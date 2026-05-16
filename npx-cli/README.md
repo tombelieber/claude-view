@@ -99,7 +99,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 On first run, `npx claude-view` downloads a platform-specific Rust binary (~10 MB) from GitHub Releases. The binary is cached at `~/.claude-view/` so subsequent runs start instantly.
 
-Everything stays on your machine. Zero telemetry, zero cloud, zero network requests.
+Your sessions, code, and prompts stay on your machine — claude-view reads and indexes them entirely locally. To guide development, official builds (this npm package and the install script) send **anonymous, content-free usage analytics** by default (which features are used, app version, OS — never code, prompts, paths, or session content). A one-time notice prints on first run; opt out anytime with `CLAUDE_VIEW_TELEMETRY=0`. Builds from source send nothing. See the [Privacy Policy](https://claudeview.ai/privacy).
 
 ---
 

@@ -98,8 +98,8 @@ export function TelemetrySection({
             </p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {isEnabled
-                ? 'Helping improve Claude View with anonymous usage patterns.'
-                : 'Help improve Claude View by sharing anonymous usage data.'}
+                ? 'On by default in official builds — anonymous, content-free, guides what gets built. Toggle off anytime.'
+                : "Off — you've opted out. No usage data is sent."}
             </p>
           </div>
         </div>
@@ -113,11 +113,12 @@ export function TelemetrySection({
             {isEnabled ? 'What we collect:' : 'What would be collected:'}
           </p>
           <ul className="list-disc list-inside space-y-0.5">
-            <li>Feature usage (which pages and actions are used)</li>
-            <li>Performance metrics (load times, error rates)</li>
+            <li>Which features &amp; screens you open (counts only)</li>
+            <li>App version, OS, install source</li>
+            <li>A random per-install ID — not linked to you</li>
           </ul>
           <p className="mt-1.5 text-gray-400 dark:text-gray-500">
-            No session content, code, or personal data is ever sent.
+            Never your code, prompts, file paths, project names, or session content.
           </p>
         </div>
       )}
