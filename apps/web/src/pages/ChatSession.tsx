@@ -78,6 +78,9 @@ export function ChatSession({
 }: ChatSessionProps) {
   const trackEvent = useTrackEvent()
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: fire once per
+  // sessionId only — trackEvent is intentionally excluded (deliberate, same
+  // as the eslint-disable below).
   useEffect(() => {
     if (sessionId) {
       trackEvent('session_opened')
