@@ -43,6 +43,7 @@ fn test_session(id: &str, closed: bool) -> LiveSession {
             last_error: None,
             last_error_details: None,
             hook_events: Vec::new(),
+            permission_mode: None,
         },
         jsonl: JsonlFields {
             project: String::new(),

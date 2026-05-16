@@ -81,6 +81,7 @@ pub async fn handle_statusline(
             None,
             None, // statusline has its own session creation path
             None,
+            None,
         )
         .await;
 

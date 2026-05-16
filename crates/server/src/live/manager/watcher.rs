@@ -199,6 +199,7 @@ impl LiveSessionManager {
                     None,
                     None,
                     None,
+                    None,
                 )
                 .await;
         }

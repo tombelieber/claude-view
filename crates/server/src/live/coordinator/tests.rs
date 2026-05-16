@@ -261,6 +261,7 @@ mod tests {
                 None,
                 None, // no cwd -> buffer
                 None,
+                None,
             )
             .await;
 
@@ -288,6 +289,7 @@ mod tests {
                 1700000001,
                 None,
                 Some("/tmp"),
+                None,
                 None,
             )
             .await;
@@ -378,6 +380,7 @@ mod tests {
                 None,
                 Some("/tmp/my-project"),
                 Some("/home/user/.claude/projects/my-project/upsert-session.jsonl"),
+                None,
             )
             .await;
 
@@ -414,6 +417,7 @@ mod tests {
                 1700000000,
                 None,
                 Some("/tmp/project"),
+                None,
                 None,
             )
             .await;
@@ -457,6 +461,7 @@ mod tests {
                 None,
                 None, // no cwd
                 None,
+                None,
             )
             .await;
 
@@ -494,6 +499,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
         assert!(ctx.sessions.read().await.get("drain-test").is_none());
@@ -518,6 +524,7 @@ mod tests {
                 None,
                 Some("/tmp/proj"),
                 None,
+                None,
             )
             .await;
 
@@ -529,6 +536,138 @@ mod tests {
             "Buffered Prompt must be drained on Birth"
         );
         assert_eq!(session.hook.last_user_message, "Hello world");
+    }
+
+    // Issue #61: a PlanMode badge needs the hook-reported permission mode to
+    // reach the session record. Contract: hook value is stored; a later hook
+    // WITHOUT one preserves the prior value (Latest-wins — the badge must
+    // never flicker off on an event that simply omitted the field); a hook
+    // reporting a different mode overwrites it.
+    #[tokio::test]
+    async fn hook_permission_mode_is_latest_wins_on_session() {
+        let (coordinator, sessions, live_tx, db, tmap, hec, idata) = make_upsert_ctx().await;
+        let ctx = MutationContext {
+            sessions: &sessions,
+            live_tx: &live_tx,
+            live_manager: None,
+            db: &db,
+            transcript_to_session: &tmap,
+            hook_event_channels: &hec,
+            interaction_data: &idata,
+        };
+
+        let active = claude_view_core::session_files::ActiveSession {
+            pid: 200,
+            session_id: "pm-test".to_string(),
+            cwd: "/tmp/pm".to_string(),
+            started_at: 1700000000000,
+            kind: "interactive".to_string(),
+            entrypoint: "cli".to_string(),
+            name: None,
+        };
+        coordinator
+            .handle(
+                &ctx,
+                "pm-test",
+                SessionMutation::Birth(active),
+                Some(200),
+                1700000000,
+                None,
+                Some("/tmp/pm"),
+                None,
+                None,
+            )
+            .await;
+
+        // 1) Hook reports plan mode -> stored on the session.
+        coordinator
+            .handle(
+                &ctx,
+                "pm-test",
+                SessionMutation::Lifecycle(LifecycleEvent::Prompt {
+                    text: "do a thing".into(),
+                    pid: None,
+                }),
+                None,
+                1700000001,
+                None,
+                None,
+                None,
+                Some("plan".to_string()),
+            )
+            .await;
+        assert_eq!(
+            ctx.sessions
+                .read()
+                .await
+                .get("pm-test")
+                .unwrap()
+                .hook
+                .permission_mode
+                .as_deref(),
+            Some("plan"),
+            "hook-reported permission_mode must be stored on the session"
+        );
+
+        // 2) Later hook WITHOUT permission_mode must PRESERVE the prior value.
+        coordinator
+            .handle(
+                &ctx,
+                "pm-test",
+                SessionMutation::Lifecycle(LifecycleEvent::Prompt {
+                    text: "another".into(),
+                    pid: None,
+                }),
+                None,
+                1700000002,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await;
+        assert_eq!(
+            ctx.sessions
+                .read()
+                .await
+                .get("pm-test")
+                .unwrap()
+                .hook
+                .permission_mode
+                .as_deref(),
+            Some("plan"),
+            "absent permission_mode must preserve prior value (no badge flicker)"
+        );
+
+        // 3) A hook reporting a different mode overwrites it.
+        coordinator
+            .handle(
+                &ctx,
+                "pm-test",
+                SessionMutation::Lifecycle(LifecycleEvent::Prompt {
+                    text: "exit plan".into(),
+                    pid: None,
+                }),
+                None,
+                1700000003,
+                None,
+                None,
+                None,
+                Some("default".to_string()),
+            )
+            .await;
+        assert_eq!(
+            ctx.sessions
+                .read()
+                .await
+                .get("pm-test")
+                .unwrap()
+                .hook
+                .permission_mode
+                .as_deref(),
+            Some("default"),
+            "newer permission_mode must overwrite the prior value"
+        );
     }
 
     #[tokio::test]
@@ -564,6 +703,7 @@ mod tests {
                 None,
                 Some("/tmp/proj"),
                 None,
+                None,
             )
             .await;
 
@@ -584,6 +724,7 @@ mod tests {
                 }),
                 None,
                 1700000001,
+                None,
                 None,
                 None,
                 None,
@@ -688,6 +829,7 @@ mod tests {
                 None,
                 Some("/Users/test/project"),
                 None,
+                None,
             )
             .await;
 
@@ -735,6 +877,7 @@ mod tests {
                 1700000000,
                 None,
                 Some("/tmp"),
+                None,
                 None,
             )
             .await;
@@ -1028,6 +1171,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
 
@@ -1084,6 +1228,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
         let _ = rx.recv().await; // drain Updated from Set
@@ -1098,6 +1243,7 @@ mod tests {
                 }),
                 None,
                 1700000002,
+                None,
                 None,
                 None,
                 None,
@@ -1151,6 +1297,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
 
@@ -1194,6 +1341,7 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
             )
             .await;
 
@@ -1210,6 +1358,7 @@ mod tests {
                 }),
                 None,
                 1700000002,
+                None,
                 None,
                 None,
                 None,

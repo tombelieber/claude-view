@@ -299,6 +299,7 @@ async fn clear_pending_interaction(state: &AppState, session_id: &str, request_i
             None, // no hook event
             None, // no cwd
             None, // no transcript_path
+            None,
         )
         .await;
 

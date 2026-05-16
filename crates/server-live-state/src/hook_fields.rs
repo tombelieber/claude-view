@@ -14,7 +14,10 @@ use super::event::HookEvent;
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct HookFields {
@@ -65,6 +68,14 @@ pub struct HookFields {
     /// Last API error details. From StopFailure.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error_details: Option<String>,
+    /// Claude Code permission mode reported by the most recent hook payload
+    /// ("default" | "plan" | "acceptEdits" | "bypassPermissions" | "dontAsk").
+    /// `None` until a hook reports it. Latest-wins: a hook that omits the field
+    /// preserves the prior value (never cleared mid-session). The UI shows a
+    /// Plan badge ONLY when this is exactly "plan" — confidence-gated, never
+    /// guessed (寧願唔顯示，都唔顯示錯嘅嘢).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission_mode: Option<String>,
 }
 
 impl Default for HookFields {
@@ -91,6 +102,7 @@ impl Default for HookFields {
             last_assistant_preview: None,
             last_error: None,
             last_error_details: None,
+            permission_mode: None,
         }
     }
 }

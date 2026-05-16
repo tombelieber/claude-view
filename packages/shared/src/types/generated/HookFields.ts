@@ -13,7 +13,7 @@ import type { SubAgentInfo } from './SubAgentInfo'
  */
 export type HookFields = {
   /**
-   * Universal agent state — replaces pause_classification.
+   * Universal agent state -- replaces pause_classification.
    * Always present (never null), with group/state/label/confidence.
    */
   agentState: AgentState
@@ -77,4 +77,13 @@ export type HookFields = {
    * Last API error details. From StopFailure.
    */
   lastErrorDetails?: string | null
+  /**
+   * Claude Code permission mode reported by the most recent hook payload
+   * ("default" | "plan" | "acceptEdits" | "bypassPermissions" | "dontAsk").
+   * `None` until a hook reports it. Latest-wins: a hook that omits the field
+   * preserves the prior value (never cleared mid-session). The UI shows a
+   * Plan badge ONLY when this is exactly "plan" — confidence-gated, never
+   * guessed (寧願唔顯示，都唔顯示錯嘅嘢).
+   */
+  permissionMode?: string | null
 }

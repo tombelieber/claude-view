@@ -24,7 +24,10 @@ pub enum SessionEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct HookEvent {

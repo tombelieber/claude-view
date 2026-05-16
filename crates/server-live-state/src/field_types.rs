@@ -7,7 +7,10 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ToolUsed {
@@ -21,7 +24,10 @@ pub struct ToolUsed {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct VerifiedFile {
@@ -37,7 +43,10 @@ pub struct VerifiedFile {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "snake_case")]
 pub enum FileSourceKind {

@@ -99,6 +99,7 @@ fn make_autonomous_session(id: &str) -> crate::live::state::LiveSession {
             last_error: None,
             last_error_details: None,
             hook_events: Vec::new(),
+            permission_mode: None,
         },
         jsonl: crate::live::state::JsonlFields {
             project: String::new(),

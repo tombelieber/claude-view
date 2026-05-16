@@ -429,6 +429,7 @@ impl LiveSessionManager {
                 None,              // no hook event
                 Some(&cwd),        // cwd for fallback project resolution
                 tp_str.as_deref(), // eagerly resolved JSONL path
+                None,
             )
             .await;
 

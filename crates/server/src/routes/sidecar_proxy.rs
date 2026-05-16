@@ -318,6 +318,7 @@ async fn tap_interaction_events(
                 None, // no hook event
                 None, // no cwd
                 None, // no transcript_path
+                None,
             )
             .await;
         return;
@@ -340,6 +341,7 @@ async fn tap_interaction_events(
                     SessionMutation::Interaction(InteractionAction::Clear { request_id: req_id }),
                     None,
                     now,
+                    None,
                     None,
                     None,
                     None,

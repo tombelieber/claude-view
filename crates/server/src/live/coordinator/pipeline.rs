@@ -75,6 +75,10 @@ impl SessionCoordinator {
         hook_event: Option<HookEvent>,
         cwd: Option<&str>,
         transcript_path: Option<&str>,
+        // Hook-reported Claude Code permission mode. Hook source only;
+        // every other mutation source passes `None`. Latest-wins: `None`
+        // preserves the session's prior mode (see HookFields::permission_mode).
+        permission_mode: Option<String>,
     ) -> MutationResult {
         // -- Phase 1: Buffer or upsert --
         let session_exists = {
@@ -231,6 +235,12 @@ impl SessionCoordinator {
             }
             if let Some(activity_at) = post.update_activity_at {
                 session.hook.last_activity_at = activity_at;
+            }
+            // Latest-wins: only a hook that actually reported a mode updates it.
+            // Absence preserves the prior value so the Plan badge never
+            // flickers off on an unrelated hook that omitted the field.
+            if let Some(mode) = permission_mode {
+                session.hook.permission_mode = Some(mode);
             }
 
             // Append hook event inside lock.

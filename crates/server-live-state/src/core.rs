@@ -20,7 +20,10 @@ use super::statusline_fields::StatuslineFields;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
@@ -40,7 +43,10 @@ pub enum SessionStatus {
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct ControlBinding {
@@ -67,7 +73,10 @@ pub struct ControlBinding {
 #[derive(Debug, Clone, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct LiveSession {
@@ -204,6 +213,7 @@ pub fn test_live_session(id: &str) -> LiveSession {
             last_assistant_preview: None,
             last_error: None,
             last_error_details: None,
+            permission_mode: None,
             hook_events: Vec::new(),
         },
         jsonl: JsonlFields {

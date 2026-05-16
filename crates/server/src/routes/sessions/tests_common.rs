@@ -315,6 +315,7 @@ pub(super) fn make_live_session(id: &str, file_path: &str) -> crate::live::state
             last_error: None,
             last_error_details: None,
             hook_events: Vec::new(),
+            permission_mode: None,
         },
         jsonl: JsonlFields {
             file_path: file_path.to_string(),

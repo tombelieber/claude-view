@@ -12,7 +12,10 @@ use ts_rs::TS;
 #[derive(Debug, Clone, Default, Serialize, TS)]
 #[cfg_attr(
     feature = "codegen",
-    ts(export, export_to = "../../../packages/shared/src/types/generated/")
+    ts(
+        export,
+        export_to = "../../../../../packages/shared/src/types/generated/"
+    )
 )]
 #[serde(rename_all = "camelCase")]
 pub struct StatuslineFields {

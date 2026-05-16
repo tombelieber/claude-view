@@ -360,6 +360,7 @@ pub async fn handle_hook(
             hook_event,
             payload.cwd.as_deref(),
             payload.transcript_path.as_deref(),
+            payload.permission_mode.clone(),
         )
         .await;
 

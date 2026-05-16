@@ -26,6 +26,11 @@ echo "Generating TypeScript types from Rust structs..."
 "$ROOT_DIR/scripts/cq" test -p claude-view-core --features codegen export_bindings -- --nocapture
 "$ROOT_DIR/scripts/cq" test -p claude-view-search --features codegen export_bindings -- --nocapture
 "$ROOT_DIR/scripts/cq" test -p claude-view-db --features codegen export_bindings -- --nocapture
+# claude-view-server-live-state owns HookFields/JsonlFields/LiveSession/AgentState
+# etc. (extracted in 37dba7ad). Its ts-rs export_bindings tests live in its own
+# test target, so they must be run explicitly — omitting this froze
+# HookFields.ts / JsonlFields.ts at their pre-extraction state.
+"$ROOT_DIR/scripts/cq" test -p claude-view-server-live-state --features codegen export_bindings -- --nocapture
 "$ROOT_DIR/scripts/cq" test -p claude-view-server --features codegen export_bindings -- --nocapture
 
 # Post-process: fix cross-package JsonValue import that ts-rs generates
@@ -37,14 +42,26 @@ if [ -f "$AGENT_STATE" ]; then
   mv "$tmp_file" "$AGENT_STATE"
 fi
 
-# Post-process: fix cross-package imports in shared/LiveSession.ts
-# ts-rs may generate imports that escape shared's rootDir (pointing to apps/web/).
-# PhaseHistory, PhaseLabel, SessionPhase, and TeamMember all live in shared now.
-LIVE_SESSION="packages/shared/src/types/generated/LiveSession.ts"
-if [ -f "$LIVE_SESSION" ]; then
-  tmp_file="$(mktemp)"
-  sed -E "s|import type \{ (PhaseHistory\|TeamMember) \} from '.*/apps/web/[^']*'|import type { \1 } from './\1'|" "$LIVE_SESSION" >"$tmp_file"
-  mv "$tmp_file" "$LIVE_SESSION"
+# Post-process: localize cross-package imports that escape shared's rootDir.
+# ts-rs emits absolute-ish `../../../../../apps/web/src/types/generated/X`
+# imports for types that are ALSO generated into shared (X exists in both
+# trees). Those escape `packages/shared`'s tsconfig rootDir (TS6059).
+#
+# Root-cause fix (replaces a brittle hand-maintained type-name allowlist that
+# silently drifted — it missed PendingInteractionMeta/SessionOwnership):
+# for every shared generated file, rewrite any apps/web escape to a local
+# `./X` import IFF `packages/shared/src/types/generated/X.ts` exists. Types
+# that genuinely live only in apps/web are left untouched.
+SHARED_GEN="packages/shared/src/types/generated"
+if [ -d "$SHARED_GEN" ]; then
+  for f in "$SHARED_GEN"/*.ts; do
+    [ -f "$f" ] || continue
+    perl -i -pe '
+      s{from '\''[^'\'']*?/apps/web/src/types/generated/(\w+)'\''}{
+        -f "'"$SHARED_GEN"'/$1.ts" ? "from '\''./$1'\''" : $&
+      }ge;
+    ' "$f"
+  done
 fi
 
 # Format + organize imports with Biome so output matches project style and pre-commit hook

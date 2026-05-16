@@ -135,6 +135,7 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
                 last_assistant_preview: None,
                 last_error: None,
                 last_error_details: None,
+                permission_mode: None,
             },
             jsonl: crate::live::state::JsonlFields {
                 project: "test-project".to_string(),

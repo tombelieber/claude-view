@@ -243,6 +243,7 @@ mod tests {
                 last_error: None,
                 last_error_details: None,
                 hook_events: Vec::new(),
+                permission_mode: None,
             },
             jsonl: JsonlFields {
                 file_path: transcript_path.to_string(),

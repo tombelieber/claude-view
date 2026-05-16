@@ -3,7 +3,7 @@ import type { AgentStateGroup } from './AgentStateGroup'
 import type { JsonValue } from './JsonValue'
 
 /**
- * The universal agent state — driven by hooks.
+ * The universal agent state -- driven by hooks.
  */
 export type AgentState = {
   /**
@@ -11,7 +11,7 @@ export type AgentState = {
    */
   group: AgentStateGroup
   /**
-   * Sub-state within group (open string — new states added freely)
+   * Sub-state within group (open string -- new states added freely)
    */
   state: string
   /**

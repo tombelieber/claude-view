@@ -1066,6 +1066,7 @@ fn minimal_live_session_for_branch_tests(id: &str) -> LiveSession {
             last_error: None,
             last_error_details: None,
             hook_events: Vec::new(),
+            permission_mode: None,
         },
         jsonl: JsonlFields {
             project: String::new(),

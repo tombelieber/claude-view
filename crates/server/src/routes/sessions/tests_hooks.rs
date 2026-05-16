@@ -125,6 +125,7 @@ async fn test_get_hook_events_from_live_session() {
             last_error: None,
             last_error_details: None,
             hook_events: Vec::new(),
+            permission_mode: None,
         },
         jsonl: JsonlFields {
             project: "test-project".to_string(),
