@@ -49,6 +49,7 @@ pub mod subagent;
 pub mod tail;
 pub mod task_files;
 pub mod telemetry_config;
+pub mod telemetry_events;
 pub mod time_range_contract;
 pub mod todo_files;
 pub mod transcript;
