@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { trackFeatureAction } from '../lib/telemetry-track'
 import type { SearchResponse } from '../types/generated'
 
 interface UseSearchOptions {
@@ -29,6 +30,9 @@ export function useSearch(query: string, options: UseSearchOptions = {}) {
       if (!res.ok) {
         throw new Error(`Search failed: ${res.statusText}`)
       }
+      // A distinct query actually executed (react-query dedupes identical
+      // keys within staleTime, so this is ~one event per real search).
+      trackFeatureAction('search_run')
       return res.json()
     },
     enabled: enabled && debouncedQuery.trim().length > 0,
