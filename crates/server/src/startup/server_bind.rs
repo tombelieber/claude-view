@@ -11,9 +11,14 @@ use std::time::Duration;
 use anyhow::Result;
 use tokio::net::TcpListener;
 
+use std::path::Path;
+
 use crate::startup::install::{detect_install_source, ping_install_beacon};
 use crate::startup::port::{get_port, try_reclaim_port};
+use crate::startup::startup_telemetry::{plan_startup_telemetry, print_privacy_notice};
 use crate::telemetry::TelemetryClient;
+use claude_view_core::telemetry_config::{read_telemetry_config, write_telemetry_config};
+use claude_view_core::telemetry_events::{EVENT_APP_ACTIVE, EVENT_SERVER_STARTED};
 
 /// Bind the HTTP listener using the smart port-resolution strategy and
 /// return the bound listener together with the port actually used.
@@ -93,19 +98,85 @@ pub fn register_hooks_and_port_file(port: u16) {
     }
 }
 
-/// Fire `server_started` PostHog event and the install-beacon ping.
-/// Both are best-effort, fire-and-forget, non-blocking.
-pub fn fire_startup_events(telemetry: Option<&TelemetryClient>) {
+/// Fire startup telemetry (`server_started`, one-shot `installed`, the
+/// daily `app_active` heartbeat), show the one-time privacy notice, and
+/// ping the install beacon. All event emission is best-effort,
+/// fire-and-forget, non-blocking; the dedup state is persisted once.
+///
+/// The pure decision lives in [`plan_startup_telemetry`]; this function is
+/// just the I/O shell (read config → plan → emit → persist).
+pub fn fire_startup_events(telemetry: Option<&TelemetryClient>, telemetry_config_path: &Path) {
     let install_source = detect_install_source();
+    let version = env!("CARGO_PKG_VERSION");
+    let platform = std::env::consts::OS;
+
+    // Enabled iff the client exists AND consent resolved on (source/CI/
+    // opted-out builds have no client or a disabled one).
+    let enabled = telemetry.map(|c| c.is_enabled()).unwrap_or(false);
+    let mut config = read_telemetry_config(telemetry_config_path);
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let plan = plan_startup_telemetry(
+        enabled,
+        config.enabled,
+        config.install_reported,
+        config.last_active_date.as_deref(),
+        config.notice_shown_at.as_deref(),
+        &today,
+    );
+
     if let Some(client) = telemetry {
         client.track(
-            "server_started",
+            EVENT_SERVER_STARTED,
             serde_json::json!({
-                "version": env!("CARGO_PKG_VERSION"),
-                "platform": std::env::consts::OS,
+                "version": version,
+                "platform": platform,
                 "install_source": install_source,
+                "is_first_run": plan.fire_installed,
             }),
         );
+        if plan.fire_installed {
+            // One-shot acquisition signal. Under default-on the first
+            // server start is the moment this install becomes countable
+            // (pre-default-on this fired on consent instead).
+            client.track(
+                "installed",
+                serde_json::json!({
+                    "install_source": install_source,
+                    "version": version,
+                    "platform": platform,
+                    "$set_once": { "installed_at": chrono::Utc::now().to_rfc3339() },
+                }),
+            );
+        }
+        if plan.fire_app_active {
+            client.track(
+                EVENT_APP_ACTIVE,
+                serde_json::json!({ "version": version, "platform": platform }),
+            );
+        }
+    }
+
+    // Persist dedup state + render the one-time disclosure. The notice is
+    // printed even though `track` is async fire-and-forget — it is the
+    // disclosure itself, not an analytics event.
+    let mut dirty = false;
+    if plan.fire_installed && !config.install_reported {
+        config.install_reported = true;
+        dirty = true;
+    }
+    if plan.fire_app_active {
+        config.last_active_date = Some(today);
+        dirty = true;
+    }
+    if plan.show_notice {
+        print_privacy_notice();
+        config.notice_shown_at = Some(chrono::Utc::now().to_rfc3339());
+        dirty = true;
+    }
+    if dirty {
+        if let Err(e) = write_telemetry_config(telemetry_config_path, &config) {
+            tracing::warn!("failed to persist telemetry startup state: {e}");
+        }
     }
 
     // Ping CF Worker for unified install tracking (fire-and-forget).

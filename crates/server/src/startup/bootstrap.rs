@@ -83,7 +83,10 @@ pub async fn bootstrap(app_config: AppConfig, startup_start: Instant) -> Result<
 
     let (listener, port) = server_bind::bind_listener().await?;
     server_bind::register_hooks_and_port_file(port);
-    server_bind::fire_startup_events(telemetry.as_ref());
+    server_bind::fire_startup_events(
+        telemetry.as_ref(),
+        &claude_view_core::telemetry_config::telemetry_config_path(),
+    );
 
     let claude_dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Could not determine home directory"))?

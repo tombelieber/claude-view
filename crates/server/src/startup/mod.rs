@@ -21,6 +21,7 @@ pub mod port;
 pub mod search;
 pub mod serve;
 pub mod server_bind;
+pub mod startup_telemetry;
 pub mod tasks;
 pub mod tui;
 
