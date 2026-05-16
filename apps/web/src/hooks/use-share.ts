@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { trackFeatureAction } from '../lib/telemetry-track'
 import { getAccessToken } from '../lib/supabase'
 
 interface ShareResponse {
@@ -59,6 +60,7 @@ export function useCreateShare() {
     mutationFn: createShare,
     onSuccess: (data) => {
       if (data.url) localStorage.setItem(`share_url:${data.token}`, data.url)
+      trackFeatureAction('share_link_created')
       queryClient.invalidateQueries({ queryKey: ['shares'] })
     },
   })

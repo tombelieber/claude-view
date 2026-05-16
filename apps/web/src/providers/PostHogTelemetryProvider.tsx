@@ -15,8 +15,16 @@ function PostHogInitializer({ children }: { children: ReactNode }) {
       api_host: 'https://us.i.posthog.com',
       person_profiles: 'identified_only',
       persistence: 'localStorage',
+      // Privacy hardening — the public promise is "no code, prompts, file
+      // paths or session content, ever". autocapture, session recording,
+      // and pageview/pageleave all carry DOM text or URLs (which embed
+      // session ids and project paths), so they are hard-off. Only
+      // explicit, closed-enum events are ever sent.
       capture_pageview: false,
-      capture_pageleave: true,
+      capture_pageleave: false,
+      autocapture: false,
+      disable_session_recording: true,
+      disable_surveys: true,
       opt_out_capturing_by_default: true,
       bootstrap: {
         distinctID: config.anonymousId ?? undefined,

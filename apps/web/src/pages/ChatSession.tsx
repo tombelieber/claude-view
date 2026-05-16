@@ -20,7 +20,6 @@ import { resolveSessionModel, useAvailableModels } from '../hooks/use-models'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 
 import { useSessionDetail } from '../hooks/use-session-detail'
-import { useTelemetryPrompt } from '../hooks/use-telemetry-prompt'
 import { useTrackEvent } from '../hooks/use-track-event'
 import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import type { PermissionMode } from '../types/control'
@@ -78,12 +77,10 @@ export function ChatSession({
   scrollToBottomSignal,
 }: ChatSessionProps) {
   const trackEvent = useTrackEvent()
-  const { recordSessionView } = useTelemetryPrompt()
 
   useEffect(() => {
     if (sessionId) {
       trackEvent('session_opened')
-      recordSessionView()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])

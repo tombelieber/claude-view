@@ -10,16 +10,14 @@ import { Header } from './components/Header'
 import { ErrorState, LiveMonitorSkeleton } from './components/LoadingStates'
 import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
-import { TelemetryBanner } from './components/TelemetryBanner'
-import { useTelemetryPrompt } from './hooks/use-telemetry-prompt'
 import { CompactCodeBlock } from './components/live/CompactCodeBlock'
 import { useLiveSSE } from './components/live/use-live-sessions'
 import { useActiveSessions } from './store/live-session-store'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { useNotificationSound } from './hooks/use-notification-sound'
 import { usePatternAlert } from './hooks/use-pattern-alert'
+import { useJourneyTelemetry } from './hooks/use-journey-telemetry'
 import { useProjectSummaries } from './hooks/use-projects'
-import { useTelemetry } from './hooks/use-telemetry'
 import { useTheme } from './hooks/use-theme'
 import { useAppStore } from './store/app-store'
 import { useLiveCommandStore } from './store/live-command-context'
@@ -34,8 +32,7 @@ export default function App() {
     toggleSidebar,
   } = useAppStore()
   useTheme() // Apply dark class to <html>
-  const { enableTelemetry, disableTelemetry, isPending: isTelemetryPending } = useTelemetry()
-  const { shouldPrompt } = useTelemetryPrompt()
+  useJourneyTelemetry() // anonymous feature_opened + journey (server-gated)
   const indexingProgress = useIndexingProgress()
   useLiveSSE() // SSE transport — pushes events into zustand store
   const activeSessions = useActiveSessions()
@@ -106,13 +103,6 @@ export default function App() {
           onSoundPreview={previewSound}
           audioUnlocked={audioUnlocked}
         />
-        {shouldPrompt && (
-          <TelemetryBanner
-            onEnable={enableTelemetry}
-            onDisable={disableTelemetry}
-            isPending={isTelemetryPending}
-          />
-        )}
         <AuthBanner />
         <Banner variant="experimental" layout="bar" dismissKey="cli-beta-dismissed">
           <strong>CLI Interaction</strong> is in public beta. You can spawn and control Claude Code

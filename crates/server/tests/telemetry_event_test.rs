@@ -39,7 +39,7 @@ fn post_event(body: &str) -> Request<Body> {
 }
 
 #[tokio::test]
-async fn page_viewed_is_forwarded_to_posthog() {
+async fn feature_opened_is_forwarded_to_posthog() {
     let mock = MockServer::start().await;
     Mock::given(method("POST"))
         .and(wpath("/capture/"))
@@ -58,15 +58,17 @@ async fn page_viewed_is_forwarded_to_posthog() {
 
     let res = app
         .clone()
-        .oneshot(post_event(r#"{"event":"page_viewed","route":"search"}"#))
+        .oneshot(post_event(
+            r#"{"event":"feature_opened","surface":"search"}"#,
+        ))
         .await
         .unwrap();
     assert_eq!(res.status(), StatusCode::NO_CONTENT);
-    assert_eq!(count_events(&mock, "page_viewed").await, 1);
+    assert_eq!(count_events(&mock, "feature_opened").await, 1);
 }
 
 #[tokio::test]
-async fn unknown_route_is_rejected_not_coerced() {
+async fn unknown_surface_is_rejected_not_coerced() {
     let dir = tempfile::TempDir::new().unwrap();
     let config_path = dir.path().join("telemetry.json");
     let client = claude_view_server::telemetry::TelemetryClient::with_capture_url(
@@ -78,10 +80,10 @@ async fn unknown_route_is_rejected_not_coerced() {
     let db = Database::new_in_memory().await.unwrap();
     let app = claude_view_server::create_app_with_telemetry_client(db, config_path, client);
 
-    // A path masquerading as a route MUST be rejected by the type system.
+    // A path masquerading as a surface MUST be rejected by the type system.
     let res = app
         .oneshot(post_event(
-            r#"{"event":"page_viewed","route":"/Users/secret/project"}"#,
+            r#"{"event":"feature_opened","surface":"/Users/secret/project"}"#,
         ))
         .await
         .unwrap();
@@ -143,11 +145,11 @@ async fn first_feature_opened_also_emits_activation_once() {
     let db = Database::new_in_memory().await.unwrap();
     let app = claude_view_server::create_app_with_telemetry_client(db, config_path.clone(), client);
 
-    // First feature ever opened → feature_opened + first_feature_used.
+    // First surface ever opened → feature_opened + first_feature_used.
     let res = app
         .clone()
         .oneshot(post_event(
-            r#"{"event":"feature_opened","feature":"live_monitor"}"#,
+            r#"{"event":"feature_opened","surface":"live_monitor"}"#,
         ))
         .await
         .unwrap();

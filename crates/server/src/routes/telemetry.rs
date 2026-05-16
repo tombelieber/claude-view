@@ -7,8 +7,7 @@ use claude_view_core::telemetry_config::{
     read_telemetry_config, write_telemetry_config, TelemetryStatus,
 };
 use claude_view_core::telemetry_events::{
-    ActionId, FeatureId, RouteId, EVENT_FEATURE_ACTION, EVENT_FEATURE_OPENED,
-    EVENT_FIRST_FEATURE_USED, EVENT_PAGE_VIEWED,
+    ActionId, Surface, EVENT_FEATURE_ACTION, EVENT_FEATURE_OPENED, EVENT_FIRST_FEATURE_USED,
 };
 
 #[derive(Deserialize, utoipa::ToSchema)]
@@ -85,16 +84,18 @@ pub async fn set_consent(
     Ok(Json(ConsentResponse { status }))
 }
 
-/// Web journey event. The closed enums (`RouteId`/`ActionId`/`FeatureId`)
-/// ARE the privacy boundary: any free-form string (a path, a prompt, a
-/// project name) fails to deserialize, so axum rejects the request with
-/// 422 instead of forwarding invented data.
+/// Web journey event. The closed enums (`Surface`/`ActionId`) ARE the
+/// privacy boundary: any free-form string (a path, a prompt, a project
+/// name) fails to deserialize, so axum rejects the request with 422
+/// instead of forwarding invented data.
 #[derive(Deserialize, utoipa::ToSchema)]
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum TelemetryEventRequest {
-    PageViewed { route: RouteId },
+    /// Navigation to a product surface — drives "which features used" and
+    /// (via PostHog Paths) the user journey.
+    FeatureOpened { surface: Surface },
+    /// A high-intent action — the depth / monetization signal.
     FeatureAction { action: ActionId },
-    FeatureOpened { feature: FeatureId },
 }
 
 /// POST /api/telemetry/event — ingress for web journey events.
@@ -120,26 +121,23 @@ pub async fn ingest_event(
         return StatusCode::NO_CONTENT; // opted out / CI — accept, drop
     }
     match req {
-        TelemetryEventRequest::PageViewed { route } => {
-            client.track(EVENT_PAGE_VIEWED, serde_json::json!({ "route": route }));
-        }
         TelemetryEventRequest::FeatureAction { action } => {
             client.track(
                 EVENT_FEATURE_ACTION,
                 serde_json::json!({ "action": action }),
             );
         }
-        TelemetryEventRequest::FeatureOpened { feature } => {
+        TelemetryEventRequest::FeatureOpened { surface } => {
             client.track(
                 EVENT_FEATURE_OPENED,
-                serde_json::json!({ "feature": feature }),
+                serde_json::json!({ "surface": surface }),
             );
-            // Activation: the first feature EVER opened on this install —
+            // Activation: the first surface EVER opened on this install —
             // emitted exactly once, guarded by the persisted field.
             let path = &state.telemetry_config_path;
             let mut cfg = read_telemetry_config(path);
             if cfg.first_feature_used.is_none() {
-                if let Some(name) = serde_json::to_value(feature)
+                if let Some(name) = serde_json::to_value(surface)
                     .ok()
                     .and_then(|v| v.as_str().map(str::to_string))
                 {
@@ -147,7 +145,7 @@ pub async fn ingest_event(
                     let _ = write_telemetry_config(path, &cfg);
                     client.track(
                         EVENT_FIRST_FEATURE_USED,
-                        serde_json::json!({ "feature": name }),
+                        serde_json::json!({ "surface": name }),
                     );
                 }
             }
