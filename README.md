@@ -515,7 +515,7 @@ git push origin main --tags    # triggers CI → builds → auto-publishes to np
 ## Related
 
 - **[claudeview.ai](https://claudeview.ai)** — Official website, docs, and changelog
-- **[Privacy Policy](https://claudeview.ai/privacy)** — How we handle your data (spoiler: local-first, nothing uploaded by default)
+- **[Privacy Policy](https://claudeview.ai/privacy)** — How we handle your data (your session content stays local; anonymous usage analytics in official builds — opt-out anytime)
 - **[@claude-view/plugin](https://www.npmjs.com/package/@claude-view/plugin)** — Claude Code plugin with 85 MCP tools and 9 skills. `claude plugin marketplace add tombelieber/claude-view && claude plugin install claude-view`
 - **[claude-backup](https://github.com/tombelieber/claude-backup)** — Claude Code deletes your sessions after 30 days. This saves them. `npx claude-backup`
 

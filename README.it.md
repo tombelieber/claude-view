@@ -40,9 +40,12 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 ---
 
+> ⚠️ **Questa traduzione potrebbe essere obsoleta (Privacy / Telemetria)** — le build ufficiali ora inviano analisi di utilizzo anonime per impostazione predefinita. Per i dettagli canonici aggiornati, vedi [Privacy & Telemetry (English README)](./README.md#privacy--telemetry). Disattiva con `CLAUDE_VIEW_TELEMETRY=0`.
+
+
 ## Cos'e claude-view?
 
-claude-view e una dashboard open-source che monitora ogni sessione di Claude Code sulla tua macchina -- agenti attivi, conversazioni passate, costi, sotto-agenti, hook, chiamate agli strumenti -- tutto in un unico posto. Backend in Rust, frontend in React, binario di ~10 MB. Zero configurazione, zero account, 100% locale.
+claude-view e una dashboard open-source che monitora ogni sessione di Claude Code sulla tua macchina -- agenti attivi, conversazioni passate, costi, sotto-agenti, hook, chiamate agli strumenti -- tutto in un unico posto. Backend in Rust, frontend in React, binario di ~10 MB. Zero configurazione, zero account, local-first — il contenuto delle tue sessioni non lascia mai la tua macchina (le build ufficiali inviano analisi anonime; opt-out con `CLAUDE_VIEW_TELEMETRY=0`; le build da sorgente non inviano nulla).
 
 **50+ release. 85 strumenti MCP. 9 skill. Un solo `npx claude-view`.**
 
@@ -277,7 +280,7 @@ Piu **78 strumenti auto-generati** dalla specifica OpenAPI in 26 categorie (cont
 | **Veloce** | Backend in Rust con parsing JSONL accelerato da SIMD, I/O memory-mapped -- indicizza migliaia di sessioni in secondi |
 | **Tempo reale** | File watcher + SSE + WebSocket multiplexato con heartbeat, replay degli eventi e recupero dai crash |
 | **Leggero** | ~10 MB di download, ~27 MB su disco. Nessuna dipendenza runtime, nessun demone in background |
-| **100% locale** | Tutti i dati restano sulla tua macchina. Zero telemetria di default, zero account richiesti |
+| **Local-first** | Your session content stays on your machine. Official builds send anonymous feature-usage analytics (no content, ever) — opt out with `CLAUDE_VIEW_TELEMETRY=0`. Source builds send nothing. Dettagli canonici: [Privacy & Telemetry (EN)](./README.md#privacy--telemetry) |
 | **Zero configurazione** | `npx claude-view` e hai finito. Nessuna chiave API, nessun setup, nessun account |
 | **Guidato da FSM** | Le sessioni di chat funzionano su una macchina a stati finiti con fasi esplicite ed eventi tipizzati -- deterministico, senza race condition |
 
@@ -395,7 +398,7 @@ Se tutti i controlli passano e il banner persiste, segnalalo su [Discord](https:
 <summary><strong>A quali dati accede claude-view?</strong></summary>
 <br>
 
-claude-view legge i file di sessione JSONL che Claude Code scrive in `~/.claude/projects/`. Li indicizza localmente usando SQLite e Tantivy. **Nessun dato lascia la tua macchina** a meno che tu non utilizzi esplicitamente la funzionalita di condivisione crittografata. La telemetria e opt-in e disattivata di default.
+claude-view legge i file di sessione JSONL che Claude Code scrive in `~/.claude/projects/`. Li indicizza localmente usando SQLite e Tantivy. **Your session content never leaves your machine** unless you explicitly use the encrypted Share feature. Official builds send anonymous usage analytics (feature counts only, never content) — opt out with `CLAUDE_VIEW_TELEMETRY=0`. Source builds send nothing. Dettagli canonici: [Privacy & Telemetry (EN)](./README.md#privacy--telemetry).
 
 </details>
 

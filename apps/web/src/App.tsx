@@ -70,6 +70,9 @@ export default function App() {
   // Loading state - show live monitor skeleton (home page is mission control)
   if (isLoading) {
     return (
+      // biome-ignore lint/a11y/useSemanticElements: role="status" is the right
+      // ARIA pattern for a full-page loading live-region announcement. <output>
+      // is for form computation results and would be semantically wrong here.
       <div
         className="min-h-screen bg-gray-50 dark:bg-gray-950"
         role="status"
