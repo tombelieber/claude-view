@@ -25,9 +25,13 @@ fn settings_path() -> Option<PathBuf> {
 }
 
 fn wrapper_script_path() -> Option<PathBuf> {
+    // MANDATORY: all app data under ~/.claude-view/ (never the OS cache dir).
+    // Home-based (not the core paths helper) so it stays consistent with
+    // settings_path() above — the wrapper must live beside a path the
+    // non-overridable ~/.claude/settings.json can point at.
     Some(
-        dirs::cache_dir()?
-            .join("claude-view")
+        dirs::home_dir()?
+            .join(".claude-view")
             .join(WRAPPER_SCRIPT_NAME),
     )
 }
@@ -83,7 +87,7 @@ pub fn register(port: u16) {
         return;
     };
     let Some(wrapper_path) = wrapper_script_path() else {
-        tracing::warn!("statusline_injector: could not determine cache directory");
+        tracing::warn!("statusline_injector: could not determine home directory");
         return;
     };
 

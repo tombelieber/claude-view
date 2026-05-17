@@ -154,7 +154,10 @@ echo "  Wrote $(echo "$HOOK_EVENTS" | wc -w | tr -d ' ') hooks to $SETTINGS_FILE
 # ── Step 4: Create statusline wrapper ──
 echo "[4/4] Creating statusline wrapper..."
 
-WRAPPER_DIR="$HOME/.cache/claude-view"
+# Must match wrapper_script_path() in statusline_injector.rs (MANDATORY
+# app-dir rule: ~/.claude-view, never ~/.cache). Server's register()
+# rewrites settings.json to this path on startup — keep them identical.
+WRAPPER_DIR="$HOME/.claude-view"
 mkdir -p "$WRAPPER_DIR"
 WRAPPER_PATH="$WRAPPER_DIR/statusline-wrapper.sh"
 

@@ -35,7 +35,7 @@ cd /your-dacs-mount/install-claude-view
 
 1. Builds the Rust binary, frontend, and sidecar
 2. Writes 14 Claude Code hooks to `~/.claude/settings.json`
-3. Creates a statusline wrapper at `~/.cache/claude-view/statusline-wrapper.sh`
+3. Creates a statusline wrapper at `~/.claude-view/statusline-wrapper.sh`
 4. Packages everything into `install-claude-view/` with a generated `start.sh`
 
 ## What `start.sh` does (inside sandbox)
