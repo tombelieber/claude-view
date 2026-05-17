@@ -97,7 +97,7 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 
 ## How It Works
 
-On first run, `npx claude-view` downloads a platform-specific Rust binary (~10 MB) from GitHub Releases. The binary is cached at `~/.cache/claude-view/` so subsequent runs start instantly.
+On first run, `npx claude-view` downloads a platform-specific Rust binary (~10 MB) from GitHub Releases. The binary is cached at `~/.claude-view/` so subsequent runs start instantly.
 
 Everything stays on your machine. Zero telemetry, zero cloud, zero network requests.
 

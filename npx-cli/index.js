@@ -199,7 +199,7 @@ async function main() {
   // Verify binary exists
   if (!fs.existsSync(binaryPath)) {
     console.error(`Error: Binary not found at ${binaryPath}`)
-    console.error('Try deleting ~/.cache/claude-view/ and running again.')
+    console.error('Try deleting ~/.claude-view/ and running again.')
     process.exit(1)
   }
 
