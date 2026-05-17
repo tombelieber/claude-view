@@ -138,7 +138,6 @@
       "cwd",
       "gitBranch",
       "slug",
-      "teamName",
       "isMeta",
       "requestId",
       "subtype",
