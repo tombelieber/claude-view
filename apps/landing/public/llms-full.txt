@@ -2147,6 +2147,72 @@ npx claude-view@latest
 If you've been ignoring the pill in the corner, re-open the dashboard and click it. The tooltip is the difference.
 
 
+--- blog/v0-41-0-truthful-telemetry.mdx ---
+
+---
+title: "Default-on telemetry that doesn't lie to you"
+description: "v0.41.0 adds anonymous usage analytics — content-free, opt-out anytime, App Store privacy nutrition labels included. Plus: the install_source detection bug we accidentally shipped for months, and how we caught it."
+date: 2026-05-18
+author: claude-view team
+---
+
+If you ship a developer tool, you have a problem: most of your users never tell you what they actually use. You can guess from GitHub stars, npm downloads, the occasional issue. None of those are honest signals. They're vanity metrics with no causal link to whether the feature you spent two weeks on is helping anyone.
+
+So this release adds something we resisted for a long time: **anonymous usage analytics, on by default**. We want to be straight about what we're doing and why.
+
+## What we collect (and what we don't)
+
+We count which screens you open, which features you click, app version, OS, install source, and a random per-install UUID. That's it.
+
+We never collect: your code. Your prompts. Your file paths. Your conversation content. Your project names. Your Claude session IDs. There is no event in the schema that carries any of that. This isn't policy — it's enforced by a closed event taxonomy in the source. The compiler rejects new events that try to carry content fields.
+
+Turn it off permanently with one command:
+
+```bash
+export CLAUDE_VIEW_TELEMETRY=0
+```
+
+A one-time notice prints on first run telling you exactly this. Builds from source send nothing — the API key is baked in at build time only for the official npm package and install script.
+
+## App Store privacy nutrition labels
+
+The full [privacy policy](https://claudeview.ai/privacy/) is now live with Apple App Store privacy nutrition labels (we're working toward an iOS app). Third-party processors are listed by name. Retention is stated explicitly. Your rights are spelled out — including: ask us to delete everything we have on you, at any time.
+
+If your company needs to clear a vendor review before installing claude-view, the privacy page is structured so legal can do it in fifteen minutes. We wrote it as plain English first and lawyer English second.
+
+## The bug we accidentally shipped for months
+
+This release also fixes something embarrassing. The old code that figured out *how* you installed claude-view (shell script, npx, or Claude Code plugin) checked whether the binary's path contained `.cache/claude-view`. Earlier in the year we moved all app data from `~/.cache/claude-view/` to `~/.claude-view/` — and that detection silently broke. Every install via the shell script for the last few months was being labelled `npx` in our (then-internal) analytics.
+
+The fix is structural: install.sh now writes an explicit marker file at `~/.claude-view/install-source`, and the server resolves it relative to the running binary. It survives `CLAUDE_VIEW_INSTALL_DIR` overrides. It's testable without a real install (pure path arithmetic + injected exe path). And it can't drift from the install script again because the install script writes the marker the server reads, in the same commit.
+
+We caught this only because we instrumented the data pipeline end-to-end before shipping the analytics — and found the breakdown of install sources looked impossible. If we'd shipped the metric without that verification, the install-source numbers would have been useless for the first month, and we wouldn't have known.
+
+There's a lesson here that's bigger than telemetry. Path contracts spanning multiple components (a shell script writes a file, a binary reads it) drift silently if you only fix one side. The new structure puts both sides under the same MANDATORY rule in the project's path-contract drift sweep: find one site, grep the cluster, fix all of them, prove zero.
+
+## Plan-mode badge — confidence-gated by design
+
+A session card now shows a small `Plan` badge when the session is in Claude Code plan mode. The implementation is uninteresting; the design constraint is.
+
+We could have shown the *current* permission mode for every session, all the time. We didn't. Instead the badge appears **only when the most recent hook explicitly reported `plan`**. Every other mode — and the absence of any reported mode — renders nothing. No "Unknown" pill. No "Default" badge. Just silence, until we have a strong signal.
+
+This follows a principle the project tries to apply everywhere: **better to show nothing than show something wrong**. Wrong information destroys trust permanently. Once you've seen a tool tell you the wrong thing, you'll never fully believe its next claim. Silence costs less.
+
+The sub-agent reordering on cards (#62) follows the same idea from a different angle: don't sort agents arbitrarily and let the user wonder; sort them by what's most useful (running + newest first) and let the "+N more" overflow hide the oldest, not the working ones.
+
+## What's next
+
+Now that this release ships, we can finally measure whether the features people *think* are useful are the ones they actually use. The next few weeks will be guided by that data — not vibes, not loud GitHub issues, not what we feel like building.
+
+If you don't want to be part of that, the opt-out is one command. If you do, you don't have to do anything — just upgrade.
+
+```bash
+npx claude-view@latest
+# or
+curl -fsSL https://get.claudeview.ai/install.sh | sh
+```
+
+
 --- blog/v0-5-0-mission-control.mdx ---
 
 ---
@@ -4044,6 +4110,51 @@ version: v0.40.0
 ## Getting started
 
 ```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.41.0.md ---
+
+---
+title: v0.41.0 — Truthful Telemetry, App Store Privacy, Plan Badge
+date: 2026-05-18
+version: v0.41.0
+---
+
+## New features
+
+**Default-on anonymous usage analytics with one-command opt-out.** Official builds now report which features and screens are used so development is guided by real usage — never code, prompts, paths, or session content. A one-time notice prints on first run. Turn it off permanently with `CLAUDE_VIEW_TELEMETRY=0`. Builds from source send nothing. A closed event taxonomy enforces this in the schema, not just in policy.
+
+**`installed` acquisition event** fires exactly once per machine, deduplicated by a persistent anonymous ID, so adoption is measurable without double-counting on every server restart.
+
+**Plan-mode badge on session cards (#61).** When a session is in plan mode, a `Plan` badge appears on the card — but only when the session is *actually* in plan mode, never guessed. Following the project's "trust over accuracy" principle: better to show nothing than show something wrong.
+
+**Sub-agent ordering on cards (#62).** Sub-agents now sort running + newest first. The visible slice surfaces the most relevant agents, and the "+N more" overflow hides the oldest instead of the working ones.
+
+**Full privacy policy at [claudeview.ai/privacy](https://claudeview.ai/privacy/)** with Apple App Store privacy nutrition labels, third-party processor list, retention, and your rights. Privacy copy is now consistent across all 10 README translations.
+
+## Fixes
+
+- **`install_source` detection rewritten.** The old detection matched `.cache/claude-view` in the binary's exe path — broken by the `~/.cache → ~/.claude-view` migration earlier in the year, silently misclassifying every `install.sh` install as `npx`. Now uses an explicit marker file beside the binary; install.sh / npx / plugin installs are correctly distinguished and survive `CLAUDE_VIEW_INSTALL_DIR` overrides.
+- **Statusline wrapper** moved to `~/.claude-view/statusline-wrapper.sh`, matching the app-data-dir rule. Sandbox-setup script updated to match.
+- **AudioContext unlock** for notification sounds. `audioUnlocked` state now mirrors the real browser context state instead of being set optimistically. The "click the page to enable sound" hint only shows when the browser genuinely blocks audio.
+- **Notification sound** guarded against concurrent re-entrancy.
+- **Cloudflare landing-page cache rule.** Removed a `/*` catch-all that was concatenating `max-age=0, must-revalidate` onto every fingerprinted asset, forcing edge revalidation on every request (the cause of the ~0% cache hit rate on `_astro/*`).
+- **`~/.cache → ~/.claude-view` cleanup swept** — the last four shipped references (npx-cli error message, npx-cli README, package.json dev scripts, classifier test fixtures) now point at the real location. Users following the old `rm -rf ~/.cache/claude-view/` error hint no longer hit a dead path.
+
+## Improvements
+
+- **`permission_mode` threaded end-to-end** from Claude Code hooks through the mutation pipeline to the UI, with full type-safety and Latest-wins semantics.
+- **Indexer `stop_hook_summary` parser** simplified via Rust match guards (no behaviour change).
+- **CI**: `scripts/cq` now pins clippy to `rust-toolchain.toml` so Homebrew's newer clippy can no longer shadow the pinned channel and false-fail the gate with style lints the project doesn't target.
+- **`/api/telemetry/event`** + `Surface` / `ActionId` schemas registered in OpenAPI; the `telemetry_ingest_event` plugin tool is now exposed for explicit ingress.
+
+## Getting started
+
+```bash
+curl -fsSL https://get.claudeview.ai/install.sh | sh
+# or
 npx claude-view@latest
 ```
 
