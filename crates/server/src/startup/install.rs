@@ -2,86 +2,98 @@
 //!
 //! Extracted from `main.rs` in CQRS Phase 7.c. The beacon is
 //! fire-and-forget (3 s timeout, never blocks startup); the detection
-//! is a zero-I/O best-effort classification of how the binary was
-//! launched.
+//! is a best-effort classification (one `stat`, once at startup) of how
+//! the binary was launched.
 
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Pure install-source classifier — no env, no I/O. The complete mapping;
-/// [`detect_install_source`] is the impure shell that supplies the real
-/// exe path + `CLAUDE_PLUGIN_ROOT`.
+/// Filename of the install-source marker written by `install.sh` next to
+/// the binary tree (see `install.sh`: `${INSTALL_DIR}/install-source`).
+const INSTALL_SOURCE_MARKER: &str = "install-source";
+
+/// Detect how the server was installed/launched.
 ///
 /// Returns one of: "plugin", "install_sh", "npx".
 ///
-/// Root-cause fix (was swapped): **npx** caches the binary under
-/// `~/.cache/claude-view/`, while **install.sh** installs it under
-/// `~/.claude-view/bin/`. The npx `.cache` path is checked first so it
-/// can never be misread as install.sh.
-fn classify_install_source(exe_path: &str, has_plugin_root: bool) -> &'static str {
-    if has_plugin_root {
+/// Precedence is by *current launch*, then *install origin*:
+/// 1. `plugin`     — Claude Code sets `CLAUDE_PLUGIN_ROOT` when it spawns us.
+/// 2. `install_sh` — `install.sh` left its marker beside the binary.
+/// 3. `npx`        — neither signal: ran from npm's transient cache.
+pub fn detect_install_source() -> &'static str {
+    if std::env::var("CLAUDE_PLUGIN_ROOT").is_ok() {
         return "plugin";
     }
-    if exe_path.contains("/.cache/claude-view") {
-        return "npx";
-    }
-    if exe_path.contains("/.claude-view/bin") {
+    if install_sh_marker_present() {
         return "install_sh";
     }
     "npx"
 }
 
-/// Detect how the server was installed/launched.
+/// True when the `install.sh` marker sits beside the running binary.
 ///
-/// Returns one of: "plugin", "install_sh", "npx".
-pub fn detect_install_source() -> &'static str {
-    let has_plugin_root = std::env::var("CLAUDE_PLUGIN_ROOT").is_ok();
-    let exe = std::env::current_exe()
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    classify_install_source(&exe, has_plugin_root)
+/// The binary lives at `${INSTALL_DIR}/bin/claude-view`; the marker at
+/// `${INSTALL_DIR}/install-source`. Resolving the marker *relative to the
+/// executable* makes the install.sh↔server contract explicit and
+/// drift-proof — it holds regardless of `CLAUDE_VIEW_INSTALL_DIR`, unlike
+/// the previous brittle substring match on the install path.
+fn install_sh_marker_present() -> bool {
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| marker_path_for_exe(&exe))
+        .map(|m| m.is_file())
+        .unwrap_or(false)
+}
+
+/// Pure path arithmetic: `${INSTALL_DIR}/bin/claude-view` →
+/// `${INSTALL_DIR}/install-source`. Split out (no I/O, exe injected) so
+/// the location contract is unit-testable without a real install — the
+/// exact logic the `~/.cache → ~/.claude-view` migration broke unguarded.
+fn marker_path_for_exe(exe: &Path) -> Option<PathBuf> {
+    exe.parent() // …/bin
+        .and_then(Path::parent) // …/ (INSTALL_DIR)
+        .map(|root| root.join(INSTALL_SOURCE_MARKER))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::classify_install_source;
+    use super::*;
 
     #[test]
-    fn npx_cache_path_is_npx_not_install_sh() {
-        // The original bug: npx caches under ~/.cache/claude-view and was
-        // mislabeled "install_sh".
+    fn marker_resolves_beside_install_dir_not_cache() {
+        // install.sh: BIN_DIR=${INSTALL_DIR}/bin, binary at bin/claude-view.
+        let exe = Path::new("/home/u/.claude-view/bin/claude-view");
         assert_eq!(
-            classify_install_source("/Users/u/.cache/claude-view/bin/claude-view", false),
-            "npx"
+            marker_path_for_exe(exe),
+            Some(PathBuf::from("/home/u/.claude-view/install-source")),
+            "marker must resolve to the INSTALL_DIR root, beside `version`"
         );
     }
 
     #[test]
-    fn install_sh_bin_path_is_install_sh() {
-        // install.sh installs under ~/.claude-view/bin — was mislabeled "npx".
+    fn marker_path_honors_custom_install_dir() {
+        // CLAUDE_VIEW_INSTALL_DIR override: contract still holds because
+        // the marker is resolved relative to the binary, not a fixed path.
+        let exe = Path::new("/opt/cv/bin/claude-view");
         assert_eq!(
-            classify_install_source("/Users/u/.claude-view/bin/claude-view", false),
-            "install_sh"
+            marker_path_for_exe(exe),
+            Some(PathBuf::from("/opt/cv/install-source"))
         );
     }
 
     #[test]
-    fn plugin_root_wins_over_any_path() {
-        assert_eq!(
-            classify_install_source("/Users/u/.cache/claude-view/bin/claude-view", true),
-            "plugin"
-        );
-        assert_eq!(
-            classify_install_source("/anywhere/claude-view", true),
-            "plugin"
-        );
-    }
+    fn detect_reads_real_marker_via_injected_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let bin = dir.path().join("bin");
+        std::fs::create_dir_all(&bin).expect("mkdir bin");
+        let exe = bin.join("claude-view");
 
-    #[test]
-    fn unknown_path_defaults_to_npx() {
-        assert_eq!(
-            classify_install_source("/Users/u/dev/claude-view/target/debug/claude-view", false),
-            "npx"
-        );
+        // No marker yet → not install_sh.
+        assert!(!marker_path_for_exe(&exe).unwrap().is_file());
+
+        // install.sh writes the marker → detected.
+        std::fs::write(dir.path().join(INSTALL_SOURCE_MARKER), "install_sh").expect("write marker");
+        assert!(marker_path_for_exe(&exe).unwrap().is_file());
     }
 }
 
