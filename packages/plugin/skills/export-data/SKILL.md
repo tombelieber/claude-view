@@ -204,6 +204,7 @@ Export the user's Claude Code session data for external analysis or backup.
 | `teams_get_team_sidechains` | Get team member sidechains. |
 | **Telemetry Tools** | |
 | `telemetry_set_consent` | Set telemetry consent preference. |
+| `telemetry_ingest_event` | ingress for web journey events. |
 | **Turns Tools** | |
 | `turns_get_session_turns` | - Per-turn breakdown for a historical session. |
 | **Webhooks Tools** | |
