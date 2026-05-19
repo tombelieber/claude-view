@@ -128,6 +128,64 @@ async fn disabled_telemetry_accepts_but_does_not_forward() {
 }
 
 #[tokio::test]
+async fn captured_event_includes_app_version_and_source_properties() {
+    let mock = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(wpath("/capture/"))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&mock)
+        .await;
+    let dir = tempfile::TempDir::new().unwrap();
+    let config_path = dir.path().join("telemetry.json");
+    let capture = format!("{}/capture/", mock.uri());
+    let client = claude_view_server::telemetry::TelemetryClient::with_capture_url(
+        "phc_test",
+        "anon-version-check",
+        &capture,
+    );
+    client.set_enabled(true);
+    let db = Database::new_in_memory().await.unwrap();
+    let app = claude_view_server::create_app_with_telemetry_client(db, config_path, client);
+
+    let res = app
+        .oneshot(post_event(
+            r#"{"event":"feature_opened","surface":"search"}"#,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(res.status(), StatusCode::NO_CONTENT);
+
+    // Wait for the async tokio::spawn capture to land at the mock.
+    assert_eq!(count_events(&mock, "feature_opened").await, 1);
+
+    let reqs = mock.received_requests().await.unwrap_or_default();
+    let captured: Vec<serde_json::Value> = reqs
+        .iter()
+        .filter_map(|r| serde_json::from_slice(&r.body).ok())
+        .filter(|b: &serde_json::Value| b["event"] == "feature_opened")
+        .collect();
+    assert!(!captured.is_empty(), "feature_opened payload not captured");
+
+    let props = &captured[0]["properties"];
+    assert_eq!(
+        props["source"], "server",
+        "server-emitted events must stamp source=server"
+    );
+    let app_version = props["app_version"]
+        .as_str()
+        .expect("app_version must be a string on every captured payload");
+    assert!(
+        !app_version.is_empty(),
+        "app_version must not be empty — blocks dashboard breakdown by version"
+    );
+    assert_eq!(
+        app_version,
+        env!("CARGO_PKG_VERSION"),
+        "app_version must equal the server crate's CARGO_PKG_VERSION"
+    );
+}
+
+#[tokio::test]
 async fn first_feature_opened_also_emits_activation_once() {
     let mock = MockServer::start().await;
     Mock::given(method("POST"))

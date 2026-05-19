@@ -14,6 +14,26 @@ use std::sync::Arc;
 /// targets this, so production emission is byte-identical.
 const POSTHOG_CAPTURE_URL: &str = "https://us.i.posthog.com/capture/";
 
+/// Server binary version, baked in at compile time. Stamped on every
+/// captured event as `app_version` so PostHog dashboards can break down
+/// rollout / adoption by release without depending on a runtime config.
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Inject the two server-side super-properties — `source: "server"` and
+/// `app_version: <CARGO_PKG_VERSION>` — onto every captured payload.
+/// Non-object inputs pass through unchanged (matches existing track()
+/// behavior for malformed callers).
+fn enrich_properties(mut properties: Value) -> Value {
+    if let Some(obj) = properties.as_object_mut() {
+        obj.insert("source".to_string(), Value::String("server".to_string()));
+        obj.insert(
+            "app_version".to_string(),
+            Value::String(APP_VERSION.to_string()),
+        );
+    }
+    properties
+}
+
 /// PostHog telemetry client.
 ///
 /// Cheaply cloneable: all fields are reference-counted or `Clone`.
@@ -56,10 +76,7 @@ impl TelemetryClient {
         let capture_url = self.capture_url.clone();
         let event = event.to_string();
         tokio::spawn(async move {
-            let mut props = properties;
-            if let Some(obj) = props.as_object_mut() {
-                obj.insert("source".to_string(), Value::String("server".to_string()));
-            }
+            let props = enrich_properties(properties);
             let payload = serde_json::json!({
                 "api_key": api_key,
                 "event": event,
@@ -116,5 +133,37 @@ mod tests {
         client.track("test_event", serde_json::json!(42));
         client.track("test_event", serde_json::json!(null));
         client.track("test_event", serde_json::json!([1, 2, 3]));
+    }
+
+    #[test]
+    fn enrich_properties_adds_source_and_app_version() {
+        let enriched = enrich_properties(serde_json::json!({"feature": "search"}));
+        assert_eq!(enriched["source"], "server");
+        assert_eq!(enriched["app_version"], APP_VERSION);
+        assert_eq!(enriched["feature"], "search");
+    }
+
+    #[test]
+    fn enrich_properties_overrides_caller_supplied_source_and_version() {
+        let enriched = enrich_properties(
+            serde_json::json!({"source": "spoofed", "app_version": "0.0.0", "kept": 1}),
+        );
+        assert_eq!(enriched["source"], "server");
+        assert_eq!(enriched["app_version"], APP_VERSION);
+        assert_eq!(enriched["kept"], 1);
+    }
+
+    #[test]
+    fn enrich_properties_passes_non_object_through_unchanged() {
+        assert!(enrich_properties(serde_json::json!("str")).is_string());
+        assert!(enrich_properties(serde_json::json!(42)).is_number());
+        assert!(enrich_properties(serde_json::json!(null)).is_null());
+        assert!(enrich_properties(serde_json::json!([1, 2])).is_array());
+    }
+
+    #[test]
+    fn app_version_constant_matches_cargo_pkg_version() {
+        assert_eq!(APP_VERSION, env!("CARGO_PKG_VERSION"));
+        assert!(!APP_VERSION.is_empty());
     }
 }
