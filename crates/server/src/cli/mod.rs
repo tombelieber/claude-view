@@ -126,30 +126,42 @@ pub async fn run(cmd: Cmd) -> Result<()> {
     }
 }
 
+/// Render `data` either as pretty JSON (when `json` is true) or via the
+/// typed printer. Centralises the deserialize-once, render-twice pattern so
+/// each subcommand only describes its endpoint and printer.
+fn render<T>(data: serde_json::Value, json: bool, print: impl FnOnce(&T)) -> Result<()>
+where
+    T: serde::de::DeserializeOwned,
+{
+    if json {
+        println!("{}", serde_json::to_string_pretty(&data)?);
+    } else {
+        let view: T = serde_json::from_value(data).map_err(|e| {
+            anyhow::anyhow!(
+                "server returned unexpected shape: {e}\n\
+                 (this usually means the CLI is older than the server — \
+                 try `claude-view --json` to inspect the raw response)"
+            )
+        })?;
+        print(&view);
+    }
+    Ok(())
+}
+
 /// Execute the command against a specific port (no retry logic).
 async fn try_run(cmd: &Cmd, port: u16) -> Result<()> {
     match cmd {
         Cmd::Monitor { json, watch } => {
             run_with_watch(*watch, || async {
                 let data = fetch_json(port, "/monitor/snapshot").await?;
-                if *json {
-                    println!("{}", serde_json::to_string_pretty(&data)?);
-                } else {
-                    format::print_monitor(&data);
-                }
-                Ok(())
+                render::<format::MonitorView>(data, *json, format::print_monitor)
             })
             .await
         }
         Cmd::Live { json, watch } => {
             run_with_watch(*watch, || async {
                 let data = fetch_json(port, "/live/sessions").await?;
-                if *json {
-                    println!("{}", serde_json::to_string_pretty(&data)?);
-                } else {
-                    format::print_live(&data);
-                }
-                Ok(())
+                render::<format::LiveListView>(data, *json, format::print_live)
             })
             .await
         }
@@ -172,12 +184,7 @@ async fn try_run(cmd: &Cmd, port: u16) -> Result<()> {
             }
 
             let data = fetch_json(port, &path).await?;
-            if *json {
-                println!("{}", serde_json::to_string_pretty(&data)?);
-            } else {
-                format::print_stats(&data);
-            }
-            Ok(())
+            render::<format::StatsView>(data, *json, format::print_stats)
         }
         Cmd::Cleanup => {
             // Cleanup is handled before run() is called in main.rs
