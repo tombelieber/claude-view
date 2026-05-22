@@ -716,7 +716,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-view-core"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "async-trait",
  "chrono",
@@ -746,7 +746,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -779,7 +779,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-observability"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -811,7 +811,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -843,7 +843,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -864,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -950,7 +950,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-insights"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "serde",
  "ts-rs",
@@ -960,7 +960,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-jobs"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "chrono",
  "serde",
@@ -973,7 +973,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-live-state"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "claude-view-core",
  "claude-view-db",
@@ -989,7 +989,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-local-llm"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "claude-view-core",
  "claude-view-types",
@@ -1007,7 +1007,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-process-tree"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "chrono",
  "libc",
@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-sidecar"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "libc",
  "reqwest",
@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-teams"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -1050,7 +1050,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-types"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "axum 0.8.9",
  "claude-view-core",
@@ -1071,7 +1071,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-session-parser"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "arbitrary",
  "blake3",
@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-stats-rollup"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -1101,7 +1101,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-stats-rollup-derive"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1113,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-types"
-version = "0.41.1"
+version = "0.41.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -1648,9 +1648,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.15.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 dependencies = [
  "serde",
 ]
@@ -3061,9 +3061,9 @@ dependencies = [
 
 [[package]]
 name = "nix"
-version = "0.30.1"
+version = "0.31.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
 dependencies = [
  "bitflags 2.11.1",
  "cfg-if",
@@ -3540,13 +3540,13 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "os_info"
-version = "3.14.0"
+version = "3.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4022a17595a00d6a369236fdae483f0de7f0a339960a53118b818238e132224"
+checksum = "9cf20a545b305cf1da722b236b5155c9bb35f1d5ceb28c048bd96ca842f41b5b"
 dependencies = [
  "android_system_properties",
  "log",
- "nix 0.30.1",
+ "nix 0.31.3",
  "objc2",
  "objc2-foundation",
  "objc2-ui-kit",
@@ -4650,9 +4650,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
