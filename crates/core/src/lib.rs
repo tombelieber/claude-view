@@ -55,6 +55,7 @@ pub mod todo_files;
 pub mod transcript;
 pub use claude_view_types::types;
 pub mod work_type;
+pub mod workflow_files;
 
 pub use analytics_scope_contract::*;
 pub use block_types::*;

@@ -9,6 +9,7 @@ import { SettingsPage } from './components/SettingsPage'
 import { sessionIdFromSlug } from './lib/url-slugs'
 import { ActivityPage } from './pages/ActivityPage'
 import { AnalyticsPage } from './pages/AnalyticsPage'
+import { ClaudeHomePage } from './pages/ClaudeHomePage'
 import { LiveMonitorPage } from './pages/LiveMonitorPage'
 import { MemoryPage } from './pages/MemoryPage'
 
@@ -19,7 +20,7 @@ import { PromptsPage } from './pages/PromptsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { SystemMonitorPage } from './pages/SystemMonitorPage'
 import { TeamsPage } from './pages/TeamsPage'
-import { WorkflowDetailPage } from './pages/WorkflowDetailPage'
+import { WorkflowRunDetailPage } from './pages/WorkflowRunDetailPage'
 import { WorkflowsPage } from './pages/WorkflowsPage'
 
 /** Redirect old /project/:projectId/session/:slug to flat /sessions/:sessionId */
@@ -87,7 +88,11 @@ export const router = createBrowserRouter([
       { path: 'prompts', element: <PromptsPage /> },
       { path: 'teams', element: <TeamsPage /> },
       { path: 'workflows', element: <WorkflowsPage /> },
-      { path: 'workflows/:id', element: <WorkflowDetailPage /> },
+      { path: 'workflows/runs/:sessionId/:runId', element: <WorkflowRunDetailPage /> },
+      // Legacy YAML workflow definition detail/runner is archived — redirect to the
+      // dynamic workflow runs view (the only surfaced workflow experience).
+      { path: 'workflows/:id', element: <Navigate to="/workflows" replace /> },
+      { path: 'claude-home', element: <ClaudeHomePage /> },
       { path: 'plugins', element: <PluginsPage /> },
       { path: 'memory', element: <MemoryPage /> },
       { path: 'monitor', element: <SystemMonitorPage /> },

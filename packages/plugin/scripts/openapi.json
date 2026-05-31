@@ -314,6 +314,29 @@
         }
       }
     },
+    "/api/claude-home": {
+      "get": {
+        "tags": [
+          "claude-home"
+        ],
+        "operationId": "list_claude_home",
+        "responses": {
+          "200": {
+            "description": "Safe Claude home metadata and previews",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClaudeHomeEntry"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/cli-sessions": {
       "post": {
         "tags": [
@@ -5306,6 +5329,121 @@
         }
       }
     },
+    "/api/workflows/runs": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "list_workflow_runs",
+        "responses": {
+          "200": {
+            "description": "Claude Code dynamic workflow runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workflows/runs/{session_id}/{run_id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "get_workflow_run_detail",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Claude Code session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Workflow run ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Claude Code workflow run detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow run not found"
+          }
+        }
+      }
+    },
+    "/api/workflows/runs/{session_id}/{run_id}/agents/{agent_id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "operationId": "get_workflow_agent_detail",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Claude Code session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "description": "Workflow run ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Workflow-scoped agent ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Claude Code workflow agent detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowAgentDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow agent not found"
+          }
+        }
+      }
+    },
     "/api/workflows/{id}": {
       "get": {
         "tags": [
@@ -6929,6 +7067,66 @@
           "voiceEnabled": {
             "type": "boolean",
             "description": "Misc settings"
+          }
+        }
+      },
+      "ClaudeHomeEntry": {
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "relativePath",
+          "path",
+          "isDirectory",
+          "itemCount",
+          "sizeBytes",
+          "previewTruncated",
+          "metadataOnly"
+        ],
+        "properties": {
+          "isDirectory": {
+            "type": "boolean"
+          },
+          "itemCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "metadataOnly": {
+            "type": "boolean"
+          },
+          "modifiedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "previewTruncated": {
+            "type": "boolean"
+          },
+          "relativePath": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },
@@ -14965,6 +15163,165 @@
           }
         }
       },
+      "WorkflowAgentDetail": {
+        "type": "object",
+        "required": [
+          "summary",
+          "events"
+        ],
+        "properties": {
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowAgentEvent"
+            }
+          },
+          "metaPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "promptPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/WorkflowAgentSummary"
+          }
+        }
+      },
+      "WorkflowAgentEvent": {
+        "type": "object",
+        "required": [
+          "kind",
+          "preview"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "role": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "WorkflowAgentSummary": {
+        "type": "object",
+        "required": [
+          "agentId",
+          "state",
+          "tokens",
+          "toolCalls",
+          "eventsAvailable"
+        ],
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "eventsAvailable": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastProgressAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phaseIndex": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "phaseTitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "promptPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "queuedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resultPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "toolCalls": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
       "WorkflowDefinition": {
         "type": "object",
         "required": [
@@ -15043,6 +15400,260 @@
           },
           "type": {
             "type": "string"
+          }
+        }
+      },
+      "WorkflowJournalEvent": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "agentId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "preview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "WorkflowPhaseSummary": {
+        "type": "object",
+        "required": [
+          "index",
+          "title",
+          "agentCount",
+          "completedAgentCount",
+          "tokenCount",
+          "toolCallCount"
+        ],
+        "properties": {
+          "agentCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "completedAgentCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "index": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string"
+          },
+          "tokenCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "toolCallCount": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "WorkflowRunDetail": {
+        "type": "object",
+        "required": [
+          "summary",
+          "phases",
+          "agents",
+          "journal"
+        ],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowAgentSummary"
+            }
+          },
+          "artifactRelativePath": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "journal": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowJournalEvent"
+            }
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowPhaseSummary"
+            }
+          },
+          "result": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "script": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "$ref": "#/components/schemas/WorkflowRunSummary"
+          }
+        }
+      },
+      "WorkflowRunSummary": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "runId",
+          "projectDir",
+          "workflowName",
+          "status",
+          "totalTokens",
+          "totalToolCalls",
+          "agentCount",
+          "phaseCount",
+          "hasSummaryJson",
+          "hasJournal"
+        ],
+        "properties": {
+          "agentCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "defaultModel": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "hasJournal": {
+            "type": "boolean"
+          },
+          "hasSummaryJson": {
+            "type": "boolean"
+          },
+          "phaseCount": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "projectDir": {
+            "type": "string"
+          },
+          "resultPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "runId": {
+            "type": "string"
+          },
+          "scriptPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessionId": {
+            "type": "string"
+          },
+          "startTime": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "totalTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "totalToolCalls": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "updatedAt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "workflowName": {
+            "type": "string"
+          }
+        }
+      },
+      "WorkflowRunsResponse": {
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "properties": {
+          "runs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunSummary"
+            }
           }
         }
       },

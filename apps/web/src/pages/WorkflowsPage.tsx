@@ -1,118 +1,216 @@
-import { useNavigate } from 'react-router-dom'
-import { WorkflowCard } from '../components/workflows/WorkflowCard'
-import { useDeleteWorkflow, useWorkflows } from '../hooks/use-workflows'
+import { Boxes, Search } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Virtuoso } from 'react-virtuoso'
+import {
+  type DateFilter,
+  RUN_ROW_GRID,
+  WorkflowRunRow,
+  formatCompact,
+  matchesDateFilter,
+} from '../components/workflows/WorkflowRunRow'
+import { useWorkflowRuns } from '../hooks/use-workflows'
+import { cn } from '../lib/utils'
 
 export function WorkflowsPage() {
-  const { data: workflows = [], isLoading } = useWorkflows()
-  const { mutate: deleteWorkflow } = useDeleteWorkflow()
-  const navigate = useNavigate()
+  const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [projectFilter, setProjectFilter] = useState('all')
+  const [modelFilter, setModelFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all')
 
-  const official = workflows.filter((w) => w.source === 'official')
-  const user = workflows.filter((w) => w.source === 'user')
+  const { data: runResponse, isLoading: runsLoading, isError } = useWorkflowRuns()
+  const runs = useMemo(() => runResponse?.runs ?? [], [runResponse])
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full bg-[#F5F5F7] dark:bg-[#000000]">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-6 h-6 rounded-full border-2 border-[#1D1D1F]/20 dark:border-white/20 border-t-[#1D1D1F] dark:border-t-white animate-spin" />
-          <span className="text-xs text-[#6E6E73] dark:text-[#98989D]">Loading…</span>
-        </div>
-      </div>
-    )
-  }
+  const projects = useMemo(
+    () => Array.from(new Set(runs.map((run) => run.projectDir))).sort(),
+    [runs],
+  )
+  const models = useMemo(
+    () =>
+      Array.from(
+        new Set(runs.map((run) => run.defaultModel).filter((model): model is string => !!model)),
+      ).sort(),
+    [runs],
+  )
+  const statuses = useMemo(() => Array.from(new Set(runs.map((run) => run.status))).sort(), [runs])
+
+  const filteredRuns = useMemo(() => {
+    const normalized = query.trim().toLowerCase()
+    return runs.filter((run) => {
+      if (statusFilter !== 'all' && run.status !== statusFilter) return false
+      if (projectFilter !== 'all' && run.projectDir !== projectFilter) return false
+      if (modelFilter !== 'all' && run.defaultModel !== modelFilter) return false
+      if (!matchesDateFilter(run, dateFilter)) return false
+      if (!normalized) return true
+      return [
+        run.workflowName,
+        run.summary,
+        run.runId,
+        run.sessionId,
+        run.projectDir,
+        run.defaultModel,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(normalized))
+    })
+  }, [runs, query, statusFilter, projectFilter, modelFilter, dateFilter])
+
+  const totalTokens = useMemo(
+    () => runs.reduce((sum, run) => sum + Number(run.totalTokens), 0),
+    [runs],
+  )
+  const activeRuns = useMemo(() => runs.filter((run) => run.status === 'running').length, [runs])
 
   return (
-    <div className="flex flex-col h-full overflow-auto bg-[#F5F5F7] dark:bg-[#000000]">
-      {/* WIP banner */}
-      <div className="mx-8 mt-6 px-4 py-3 rounded-xl bg-[#FFF7ED] dark:bg-[#2C1A00] border border-[#FED7AA] dark:border-[#92400E] flex items-center gap-3">
-        <span className="text-[#EA580C] dark:text-[#FB923C] shrink-0">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path
-              d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm8-3.5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 4.5ZM8 11a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"
-              fill="currentColor"
+    <div className="flex h-full flex-col overflow-hidden bg-gray-50 dark:bg-black">
+      <div className="shrink-0 border-b border-gray-200 bg-white px-8 py-6 dark:border-gray-800 dark:bg-gray-950">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-950 dark:text-white">
+              Workflows
+            </h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Claude Code dynamic workflow runs from ~/.claude.
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-right">
+            <Stat value={String(runs.length)} label="runs" />
+            <Stat value={String(activeRuns)} label="active" />
+            <Stat value={formatCompact(totalTokens)} label="tokens" />
+          </div>
+        </div>
+      </div>
+
+      <div className="shrink-0 px-8 pt-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="relative min-w-[260px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search runs, sessions, projects"
+              className="h-9 w-full rounded-md border border-gray-200 bg-white pl-9 pr-3 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 dark:border-gray-800 dark:bg-gray-950 dark:text-white dark:focus:ring-blue-950"
             />
-          </svg>
-        </span>
-        <p className="text-xs text-[#9A3412] dark:text-[#FB923C] leading-snug">
-          <span className="font-semibold">Work in progress.</span> Workflow execution is not yet
-          available — you can browse and preview workflows, but running them requires the execution
-          engine (coming in a future release).
-        </p>
+          </label>
+          <FilterSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            allLabel="All statuses"
+            options={statuses}
+          />
+          <FilterSelect
+            value={projectFilter}
+            onChange={setProjectFilter}
+            allLabel="All projects"
+            options={projects}
+            wide
+          />
+          <FilterSelect
+            value={modelFilter}
+            onChange={setModelFilter}
+            allLabel="All models"
+            options={models}
+            wide
+          />
+          <select
+            value={dateFilter}
+            onChange={(event) => setDateFilter(event.target.value as DateFilter)}
+            className="h-9 rounded-md border border-gray-200 bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950 dark:text-white"
+          >
+            <option value="all">Any time</option>
+            <option value="day">Last 24h</option>
+            <option value="week">Last 7d</option>
+            <option value="month">Last 30d</option>
+          </select>
+        </div>
       </div>
 
-      {/* Page header */}
-      <div className="px-8 pt-6 pb-6">
-        <h1 className="text-3xl font-bold text-[#1D1D1F] dark:text-white tracking-tight">
-          Workflows
-        </h1>
-        <p className="mt-1 text-base text-[#6E6E73] dark:text-[#98989D]">
-          Automated pipelines for your Claude sessions.
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-10 px-8 pb-10">
-        {/* Official section */}
-        {official.length > 0 && (
-          <section>
-            <div className="flex items-baseline gap-2 mb-4">
-              <h2 className="text-xs font-semibold text-[#1D1D1F] dark:text-white tracking-wide uppercase">
-                Official
-              </h2>
-              <span className="text-xs text-[#AEAEB2] dark:text-[#636366]">{official.length}</span>
+      <div className="flex min-h-0 flex-1 flex-col px-8 pb-6 pt-4">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950">
+          <div
+            className={cn(
+              RUN_ROW_GRID,
+              'shrink-0 border-b border-gray-200 px-4 py-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:border-gray-800',
+            )}
+          >
+            <div>Workflow</div>
+            <div>Project</div>
+            <div>Status</div>
+            <div>Started</div>
+            <div>Usage</div>
+            <div />
+          </div>
+          {runsLoading ? (
+            <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+              Loading workflow runs...
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {official.map((wf) => (
-                <WorkflowCard
-                  key={wf.id}
-                  workflow={wf}
-                  onRun={(id) => navigate(`/workflows/${id}?tab=runner`)}
-                  onView={(id) => navigate(`/workflows/${id}`)}
-                />
-              ))}
+          ) : isError ? (
+            <div className="flex h-40 flex-col items-center justify-center gap-2 text-center text-sm text-gray-500">
+              <Boxes className="h-6 w-6 text-gray-400" />
+              Could not read workflow runs from ~/.claude.
             </div>
-          </section>
-        )}
-
-        {/* User section */}
-        {user.length > 0 && (
-          <section>
-            <div className="flex items-baseline gap-2 mb-4">
-              <h2 className="text-xs font-semibold text-[#1D1D1F] dark:text-white tracking-wide uppercase">
-                Custom
-              </h2>
-              <span className="text-xs text-[#AEAEB2] dark:text-[#636366]">{user.length}</span>
+          ) : filteredRuns.length > 0 ? (
+            <Virtuoso
+              className="min-h-0 flex-1"
+              data={filteredRuns}
+              computeItemKey={(_, run) => `${run.sessionId}:${run.runId}`}
+              itemContent={(_, run) => <WorkflowRunRow run={run} />}
+            />
+          ) : (
+            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-16 text-center">
+              <Boxes className="h-6 w-6 text-gray-400" />
+              <div className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                No workflow runs found
+              </div>
+              <div className="max-w-md text-xs text-gray-500">
+                Runs appear here when Claude Code writes workflow artifacts under
+                ~/.claude/projects.
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {user.map((wf) => (
-                <WorkflowCard
-                  key={wf.id}
-                  workflow={wf}
-                  onRun={(id) => navigate(`/workflows/${id}?tab=runner`)}
-                  onView={(id) => navigate(`/workflows/${id}`)}
-                  onDelete={(id) => deleteWorkflow(id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Coming soon — only if no custom workflows yet */}
-        {user.length === 0 && (
-          <section>
-            <div className="flex items-baseline gap-2 mb-4">
-              <h2 className="text-xs font-semibold text-[#AEAEB2] dark:text-[#636366] tracking-wide uppercase">
-                Custom
-              </h2>
-            </div>
-            <div className="rounded-2xl border border-dashed border-[#D1D1D6] dark:border-[#3A3A3C] p-8 flex flex-col items-center gap-2 text-center">
-              <p className="text-sm font-medium text-[#AEAEB2] dark:text-[#636366]">
-                Custom Workflows
-              </p>
-              <p className="text-xs text-[#C7C7CC] dark:text-[#48484A]">Coming soon</p>
-            </div>
-          </section>
-        )}
+          )}
+        </div>
       </div>
     </div>
+  )
+}
+
+function Stat({ value, label }: { value: string; label: string }) {
+  return (
+    <div>
+      <div className="text-lg font-semibold text-gray-950 dark:text-white">{value}</div>
+      <div className="text-xs text-gray-500">{label}</div>
+    </div>
+  )
+}
+
+function FilterSelect({
+  value,
+  onChange,
+  allLabel,
+  options,
+  wide,
+}: {
+  value: string
+  onChange: (value: string) => void
+  allLabel: string
+  options: string[]
+  wide?: boolean
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={cn(
+        'h-9 rounded-md border border-gray-200 bg-white px-3 text-sm dark:border-gray-800 dark:bg-gray-950 dark:text-white',
+        wide && 'max-w-[220px]',
+      )}
+    >
+      <option value="all">{allLabel}</option>
+      {options.map((option) => (
+        <option key={option} value={option}>
+          {option}
+        </option>
+      ))}
+    </select>
   )
 }

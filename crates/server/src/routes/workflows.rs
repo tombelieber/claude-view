@@ -22,6 +22,9 @@ use ts_rs::TS;
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
+/// Read-only Claude Code workflow observability endpoints (the primary surface).
+pub(crate) mod observability;
+
 // Note: `Infallible`, `Sse`, `Event` are used in Task 10 (chat_workflow handler).
 // All imports are declared upfront per Rust convention — unused warnings only
 // appear if Task 10 is not yet implemented.
@@ -77,9 +80,8 @@ fn default_version() -> String {
     "1.0.0".to_string()
 }
 
-#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
-#[cfg_attr(test, derive(Deserialize))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowSummary {
     pub id: String,
@@ -95,7 +97,7 @@ pub struct WorkflowSummary {
     pub run_count: u32,
 }
 
-#[derive(Debug, Clone, Serialize, TS, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct WorkflowDetail {
@@ -184,7 +186,7 @@ pub fn seed_official_workflows() {
 }
 
 // ---------------------------------------------------------------------------
-// Handlers
+// Handlers (legacy YAML workflow definitions — archived, not surfaced in the UI)
 // ---------------------------------------------------------------------------
 
 #[utoipa::path(get, path = "/api/workflows", tag = "workflows",
@@ -370,6 +372,16 @@ pub async fn control_run(
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
+        .route("/claude-home", get(observability::list_claude_home))
+        .route("/workflows/runs", get(observability::list_workflow_runs))
+        .route(
+            "/workflows/runs/{session_id}/{run_id}",
+            get(observability::get_workflow_run_detail),
+        )
+        .route(
+            "/workflows/runs/{session_id}/{run_id}/agents/{agent_id}",
+            get(observability::get_workflow_agent_detail),
+        )
         .route("/workflows", get(list_workflows).post(create_workflow))
         // Literal routes MUST be registered before parameterised routes —
         // otherwise `/workflows/chat` is captured by `{id}` as id="chat".

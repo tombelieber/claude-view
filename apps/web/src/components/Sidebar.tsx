@@ -13,6 +13,7 @@ import {
   Cpu,
   FileText,
   Folder,
+  FolderKey,
   FolderOpen,
   FolderTree,
   GitBranch,
@@ -591,13 +592,26 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
           className={cn(
             'p-2 rounded-md transition-colors',
             'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-            location.pathname === '/workflows'
+            location.pathname.startsWith('/workflows')
               ? 'bg-blue-500 text-white'
               : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
           )}
           title="Workflows"
         >
           <Workflow className="w-5 h-5" />
+        </Link>
+        <Link
+          to="/claude-home"
+          className={cn(
+            'p-2 rounded-md transition-colors',
+            'focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+            location.pathname === '/claude-home'
+              ? 'bg-blue-500 text-white'
+              : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+          )}
+          title="Claude Home"
+        >
+          <FolderKey className="w-5 h-5" />
         </Link>
         <Link
           to="/plugins"
@@ -796,13 +810,25 @@ export function Sidebar({ projects, collapsed = false }: SidebarProps) {
                         to={`/workflows${paramString ? `?${paramString}` : ''}`}
                         className={cn(
                           'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                          location.pathname === '/workflows'
+                          location.pathname.startsWith('/workflows')
                             ? 'bg-blue-500 text-white'
                             : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
                         )}
                       >
                         <Workflow className="w-4 h-4" />
                         <span className="font-medium">Workflows</span>
+                      </Link>
+                      <Link
+                        to={`/claude-home${paramString ? `?${paramString}` : ''}`}
+                        className={cn(
+                          'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                          location.pathname === '/claude-home'
+                            ? 'bg-blue-500 text-white'
+                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200/70 dark:hover:bg-gray-800/70',
+                        )}
+                      >
+                        <FolderKey className="w-4 h-4" />
+                        <span className="font-medium">Claude Home</span>
                       </Link>
                       <Link
                         to={`/plugins${paramString ? `?${paramString}` : ''}`}
