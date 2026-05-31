@@ -2213,6 +2213,57 @@ curl -fsSL https://get.claudeview.ai/install.sh | sh
 ```
 
 
+--- blog/v0-42-0-workflows-observability.mdx ---
+
+---
+title: "See Inside Your Claude Code Workflows"
+description: "v0.42.0 turns the Workflows tab into a read-only view of Claude Code's dynamic workflow runs — every phase, every agent, every token — read straight from ~/.claude. Plus a safe Claude Home browser."
+date: 2026-06-01
+author: claude-view team
+---
+
+When you kick off a big workflow in Claude Code — the kind that fans out into dozens of sub-agents reviewing a diff or migrating a codebase — it feels like magic right up until it finishes. Then you're left with a one-line summary and no real sense of what just happened. Which agents ran? How many tokens did the verify phase burn? What did agent #37 actually conclude? The answers are all sitting in `~/.claude`, in a pile of JSON and JSONL files you were never meant to read by hand.
+
+v0.42.0 reads that pile for you.
+
+## The problem
+
+Claude Code's `Workflow` tool writes a trail of artifacts as it runs: a summary per run, a directory of per-agent transcripts, a journal of events. It's all there on disk. But "on disk" isn't "visible." A workflow that spawned 50 agents across two phases leaves you scrolling through opaque files trying to reconstruct what cost 3 million tokens. You can't filter, you can't compare runs, and you definitely can't hand it to a teammate.
+
+## The solution
+
+The **Workflows** tab is now a read-only dashboard for your dynamic workflow runs — no config, nothing to wire up. It scans `~/.claude` and shows you:
+
+- **A run list** you can search and filter by status, project, model, and date.
+- **Run detail** — the phases (with real completion state), every agent with its token and tool counts, the saved workflow script, the final result, and a link straight back to the parent session.
+- **Agent detail** — each agent's prompt, its result, and a bounded transcript of what it did.
+
+It's the difference between "the workflow finished" and "here's exactly what the workflow did, agent by agent."
+
+There's also a new **Claude Home** page: a safe, read-only browser for the rest of your `~/.claude` directory — hooks, rules, jobs, and workflow definitions, with metadata and previews.
+
+## Trust over accuracy
+
+The interesting design constraint here was secrets. Agent transcripts and workflow scripts routinely touch API keys, tokens, and credentials passed as tool arguments. Showing that raw in a UI — one you might screen-share or expose over a tunnel — is exactly the kind of thing that's fine 99 times and a disaster the 100th.
+
+So every preview these views render — scripts, results, transcripts, tool arguments, journal entries — passes through a redactor before it reaches your screen. It scrubs provider key prefixes, JWTs, bearer tokens, PEM blocks, and `key: value` credentials, while leaving normal prose readable. And the genuinely sensitive corners of `~/.claude` — `session-env`, `shell-snapshots`, `file-history` — are shown as metadata only. We count the files; we never preview their contents.
+
+The principle is the same one that runs through the whole product: **better to show nothing than show something wrong.** A leaked key or a wrong number costs more than a blank space ever does.
+
+## What's next
+
+- Live run progress, so you can watch a workflow fan out in real time rather than only after it lands.
+- Cross-run comparison — token and phase trends across your workflow history.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Open the **Workflows** tab and pick your most recent run. If you've run anything ambitious lately, you'll finally get to see what all those agents were up to.
+
+
 --- blog/v0-5-0-mission-control.mdx ---
 
 ---
@@ -4197,6 +4248,33 @@ version: v0.41.2
 ## Improvements
 
 **`format_count` now handles billions.** Current-period token usage is ~19B for active users; the old K/M-only formatter would have rolled over once `stats` started rendering. Adds a `B` suffix so the usage summary stays readable at scale.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.42.0.md ---
+
+---
+title: v0.42.0 — Workflows Observability & Claude Home
+date: 2026-06-01
+version: v0.42.0
+---
+
+## New features
+
+**Workflows Observability.** The Workflows tab is now a read-only window into Claude Code's dynamic workflow runs, read straight from `~/.claude` with no setup. A filterable run list (status, project, model, date) leads into a run detail view with phases, every agent's tokens and tool counts, the saved workflow script, the final result, and a link back to the parent session. Each agent has its own prompt, result, and bounded event transcript.
+
+**Claude Home.** A new page gives a safe, read-only view of your `~/.claude` directory — hooks, rules, jobs, and workflow definitions with metadata and previews. Sensitive areas (`session-env`, `shell-snapshots`, `file-history`) are shown as metadata only and never previewed.
+
+## Improvements
+
+**Secrets are redacted before display.** Every preview the observability views render — scripts, results, agent transcripts, tool arguments, journal entries — runs through a redactor that scrubs provider key prefixes, JWTs, bearer tokens, PEM blocks, and `key: value` credentials, so a workflow that touched an API key doesn't leak it into the UI.
+
+**The legacy YAML workflow editor is retired.** The old workflow-definition editor and runner have been removed from the UI in favor of the observability experience.
 
 ## Getting started
 
