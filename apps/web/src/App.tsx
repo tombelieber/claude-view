@@ -12,7 +12,7 @@ import { Sidebar } from './components/Sidebar'
 import { StatusBar } from './components/StatusBar'
 import { CompactCodeBlock } from './components/live/CompactCodeBlock'
 import { useLiveSSE } from './components/live/use-live-sessions'
-import { useActiveSessions } from './store/live-session-store'
+import { useActiveSessions, useIsLiveInitialized } from './store/live-session-store'
 import { useIndexingProgress } from './hooks/use-indexing-progress'
 import { useNotificationSound } from './hooks/use-notification-sound'
 import { usePatternAlert } from './hooks/use-pattern-alert'
@@ -36,12 +36,13 @@ export default function App() {
   const indexingProgress = useIndexingProgress()
   useLiveSSE() // SSE transport — pushes events into zustand store
   const activeSessions = useActiveSessions()
+  const liveInitialized = useIsLiveInitialized()
   const {
     settings: soundSettings,
     updateSettings: updateSoundSettings,
     previewSound,
     audioUnlocked,
-  } = useNotificationSound(activeSessions)
+  } = useNotificationSound(activeSessions, { initialized: liveInitialized })
   const liveContext = useLiveCommandStore((s) => s.context)
   usePatternAlert()
 

@@ -21,6 +21,10 @@ export interface UseNotificationSoundResult {
   audioUnlocked: boolean
 }
 
+export interface UseNotificationSoundOptions {
+  initialized?: boolean
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -130,8 +134,12 @@ function playPreset(ctx: AudioContext, preset: SoundPreset, volume: number): voi
 // Hook
 // ---------------------------------------------------------------------------
 
-export function useNotificationSound(sessions: LiveSession[]): UseNotificationSoundResult {
+export function useNotificationSound(
+  sessions: LiveSession[],
+  options: UseNotificationSoundOptions = {},
+): UseNotificationSoundResult {
   const [settings, setSettings] = useState<NotificationSoundSettings>(loadSettings)
+  const initialized = options.initialized ?? true
 
   // Truthful: only ever true when the shared AudioContext is actually
   // `running`. Driven by the global unlock module — never set optimistically.
@@ -139,6 +147,10 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
 
   // Map of sessionId → previous group for transition detection
   const prevGroupsRef = useRef<Map<string, string>>(new Map())
+
+  // Suppress the first live snapshot only. After initial load, a session that
+  // first appears already in needs_you is a real new alert and should ding.
+  const initialSnapshotSeenRef = useRef(false)
 
   // Debounce: timestamp of last played sound
   const lastPlayTimeRef = useRef(0)
@@ -218,6 +230,23 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
   // -----------------------------------------------------------------------
 
   useEffect(() => {
+    const nextGroups = new Map<string, string>()
+    for (const session of sessions) {
+      nextGroups.set(session.id, session.agentState.group)
+    }
+
+    if (!initialized) {
+      prevGroupsRef.current = nextGroups
+      initialSnapshotSeenRef.current = false
+      return
+    }
+
+    if (!initialSnapshotSeenRef.current) {
+      prevGroupsRef.current = nextGroups
+      initialSnapshotSeenRef.current = true
+      return
+    }
+
     const prevGroups = prevGroupsRef.current
     let shouldDing = false
 
@@ -225,27 +254,18 @@ export function useNotificationSound(sessions: LiveSession[]): UseNotificationSo
       const currentGroup = session.agentState.group
       const previousGroup = prevGroups.get(session.id)
 
-      if (previousGroup !== undefined) {
-        // Known session — check for transition into needs_you
-        if (previousGroup !== 'needs_you' && currentGroup === 'needs_you') {
-          shouldDing = true
-        }
+      if (currentGroup === 'needs_you' && previousGroup !== 'needs_you') {
+        shouldDing = true
       }
-      // If previousGroup is undefined, this is initial discovery — skip (no ding)
     }
 
-    // Rebuild the map for the next comparison
-    const nextGroups = new Map<string, string>()
-    for (const session of sessions) {
-      nextGroups.set(session.id, session.agentState.group)
-    }
     prevGroupsRef.current = nextGroups
 
     // Trigger sound if any transition was detected and settings allow it
     if (shouldDing && settings.enabled) {
       playSound()
     }
-  }, [sessions, settings.enabled, playSound])
+  }, [sessions, settings.enabled, playSound, initialized])
 
   // -----------------------------------------------------------------------
   // Return

@@ -184,6 +184,41 @@ describe('useNotificationSound — autoplay-policy regression', () => {
     expect(createOscillatorSpy).not.toHaveBeenCalled()
   })
 
+  it('does not ding when the first initialized live snapshot already contains needs_you', async () => {
+    const { rerender } = renderHook(
+      ({ sessions, initialized }) => useNotificationSound(sessions, { initialized }),
+      {
+        initialProps: { sessions: [] as never[], initialized: false },
+      },
+    )
+    await fireGesture()
+
+    await act(async () => {
+      rerender({ sessions: [sess('s1', 'needs_you')] as never[], initialized: true })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(createOscillatorSpy).not.toHaveBeenCalled()
+  })
+
+  it('dings for a newly discovered needs_you session after initial live load', async () => {
+    const { rerender } = renderHook(({ sessions }) => useNotificationSound(sessions), {
+      initialProps: { sessions: [] as never[] },
+    })
+    await fireGesture()
+
+    await act(async () => {
+      rerender({ sessions: [sess('s1', 'needs_you')] as never[] })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    await vi.waitFor(() => {
+      expect(createOscillatorSpy).toHaveBeenCalled()
+    })
+  })
+
   it('does not ding when disabled, even after unlock + transition', async () => {
     localStorage.setItem(
       'claude-view:notification-sound',
