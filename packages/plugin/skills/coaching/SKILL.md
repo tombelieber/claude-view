@@ -77,6 +77,8 @@ Help the user improve their Claude Code workflow through coaching rules and pers
 | `classify_cancel_classification` | Cancel a running classification job. |
 | `classify_single_session` | Classify a single session synchronously. |
 | `classify_get_classification_status` | Get classification status. |
+| **Claude Home Tools** | |
+| `claude_home_list_claude_home` | home |
 | **Cli Tools** | |
 | `cli_create_session` | - Create a new tmux-backed CLI session. |
 | **Coaching Tools** | |
@@ -225,5 +227,8 @@ Help the user improve their Claude Code workflow through coaching rules and pers
 | `workflows_list_workflows` | workflows |
 | `workflows_create_workflow` | workflows |
 | `workflows_control_run` | workflows run {run_id} control |
+| `workflows_list_workflow_runs` | workflows runs |
+| `workflows_get_workflow_run_detail` | workflows runs {session_id} {run_id} |
+| `workflows_get_workflow_agent_detail` | workflows runs {session_id} {run_id} agents {agent_id} |
 | `workflows_get_workflow` | workflows {id} |
 | `workflows_delete_workflow` | workflows {id} |
