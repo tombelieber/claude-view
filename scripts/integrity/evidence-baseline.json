@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "audit_date": "2026-04-28",
+  "audit_date": "2026-06-01",
   "methodology": "jq structural JSON parsing only — never text grep — to avoid miscategorizing message content as structural fields",
   "corpus_stats": {
     "files": 14194,
@@ -23,7 +23,7 @@
       "pr-link"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": [],
+    "silently_ignored": ["mode"],
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
     "removed_dead_code": ["result", "saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []
@@ -146,11 +146,7 @@
       "toolUseResult.totalDurationMs",
       "toolUseResult.totalToolUseCount",
       "toolUseResult.agentId",
-      "data",
-      "data.type",
-      "data.message",
       "content",
-      "parentToolUseID",
       "message.content[].tool_use_id"
     ],
     "consumed_by_parser": [
@@ -264,8 +260,12 @@
       "entrypoint",
       "attributionAgent",
       "attributionPlugin",
-      "attributionSkill"
+      "attributionSkill",
+      "attributionMcpServer",
+      "attributionMcpTool",
+      "mode",
+      "pendingWorkflowCount"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin — not yet wired into the UI."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline."
   }
 }

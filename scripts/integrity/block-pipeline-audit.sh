@@ -354,8 +354,12 @@ jq -n \
 
 step "Step 8/8: Checking for new unhandled types against baseline..."
 
-# Compare fresh JSONL types against baseline handled + handled_as_progress
-BASELINE_HANDLED=$(jq -r '(.top_level_types.handled // []) + (.top_level_types.handled_as_progress // []) | .[]' "$BASELINE" 2>/dev/null | sort -u)
+# Compare fresh JSONL types against baseline handled + handled_as_progress +
+# silently_ignored. silently_ignored types are classified-but-content-less (e.g.
+# session state markers like `mode`) — known to the parser as intentional drops,
+# so they are NOT "new unhandled types". The Rust block_accumulator invariant
+# tests separately guarantee these have no parser match arm.
+BASELINE_HANDLED=$(jq -r '(.top_level_types.handled // []) + (.top_level_types.handled_as_progress // []) + (.top_level_types.silently_ignored // []) | .[]' "$BASELINE" 2>/dev/null | sort -u)
 FRESH_TYPES=$(jq -r '.[]' "$TMPDIR_AUDIT/jsonl-types.json" 2>/dev/null | sort -u)
 
 NEW_TYPES=""
