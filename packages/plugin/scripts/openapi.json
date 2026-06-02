@@ -2637,7 +2637,7 @@
           {
             "name": "branch",
             "in": "query",
-            "description": "Accepted for API compatibility but not yet honored — branch filtering\nrequires per-session JSONL parse + git-branch derivation. Deferred.",
+            "description": "Branch filter (sidebar Quick Jump). None/\"\" -> all branches,\n\"~\" -> sessions with no git_branch, else exact `git_branch` match.\nApplied via `BranchFilter` after enrichment, before pagination.",
             "required": false,
             "schema": {
               "type": [
@@ -3563,7 +3563,7 @@
           "sessions"
         ],
         "summary": "GET /api/sessions/:id — extended session detail.",
-        "description": "Pipeline (same shape as the list endpoint, scoped to one id):\n  1. `SessionCatalog::get` — id → file metadata.\n  2. `session_stats::extract_stats` — JSONL on-demand compute.\n  3. `enrichment::fetch_enrichments` — bulk DB layer (archived, commits_count,\n     skills, reedit_rate). Single-id call here; same layer as list path.\n  4. `get_commits_for_session` — per-session linked commit detail (full tier +\n     evidence), not derivable from JSONL so still DB-backed.\n  5. Read task/todo/plan files from `~/.claude/{tasks,todos,plans}`.",
+        "description": "Pipeline (same shape as the list endpoint, scoped to one id):\n  1. `SessionCatalog::get` — id → file metadata.\n  2. `session_stats::extract_stats` — JSONL on-demand compute.\n  3. `enrichment::fetch_enrichments` — bulk DB layer (archived, commits_count,\n     skills, reedit_rate). Single-id call here; same layer as list path.\n  4. `get_commits_for_session` — per-session linked commit detail (full tier +\n     evidence), not derivable from JSONL so still DB-backed.\n  5. Read task/plan files from `~/.claude/{tasks,plans}`; extract\n     agent todos inline from the session JSONL (TodoWrite blocks).",
         "operationId": "get_session_detail",
         "parameters": [
           {
@@ -12695,7 +12695,7 @@
                 "items": {
                   "$ref": "#/components/schemas/AgentTodos"
                 },
-                "description": "Agent-level todo checklists from ~/.claude/todos/{sessionId}-agent-{agentId}.json"
+                "description": "Agent-level todo checklists extracted from the session JSONL's\ninline `TodoWrite` tool_use blocks (latest checklist per agent)."
               },
               "warnings": {
                 "type": "array",
