@@ -157,7 +157,7 @@ fn subagent_jsonls(main_jsonl: &Path, session_id: &str) -> Vec<(String, PathBuf)
     let mut out = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
-        if !path.extension().is_some_and(|e| e == "jsonl") {
+        if path.extension().is_none_or(|e| e != "jsonl") {
             continue;
         }
         // Filename: agent-<hex>.jsonl → agent_id = <hex>.
