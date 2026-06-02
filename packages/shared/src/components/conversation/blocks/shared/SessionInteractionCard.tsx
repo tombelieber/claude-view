@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import {
   normalizePermissionRequest,
   normalizeAskQuestion,
@@ -80,89 +80,126 @@ function FullCard({
 }) {
   const { variant, data } = fullInteraction
 
-  // ── Permission ────────────────────────────────────────────
-  const handlePermissionRespond = useCallback(
-    (requestId: string, allowed: boolean) => {
-      respond?.({ variant: 'permission', requestId, allowed })
+  // Trust-over-accuracy: await the delivery ack. The card does NOT optimistically
+  // resolve — the server clears the pending interaction (and unmounts this card)
+  // via SSE only once the agent actually consumed the decision. If delivery is
+  // not confirmed (4xx/5xx/offline), keep the card and surface a retry hint so a
+  // failed send is never shown as success. 寧願唔顯示，都唔顯示錯嘅嘢.
+  const [deliveryError, setDeliveryError] = useState<string | null>(null)
+
+  const runRespond = useCallback(
+    async (request: InteractRequest) => {
+      if (!respond) return
+      setDeliveryError(null)
+      const result = await respond(request)
+      if (!result.ok) {
+        const detail =
+          result.status === 0 ? 'no connection' : `the agent didn't confirm (${result.status})`
+        setDeliveryError(`Couldn't deliver your response — ${detail}. Tap again to retry.`)
+      }
     },
     [respond],
   )
 
+  // ── Permission ────────────────────────────────────────────
+  const handlePermissionRespond = useCallback(
+    (requestId: string, allowed: boolean) => {
+      void runRespond({ variant: 'permission', requestId, allowed })
+    },
+    [runRespond],
+  )
+
   const handlePermissionAlwaysAllow = useCallback(
     (requestId: string, allowed: boolean, updatedPermissions: unknown[]) => {
-      respond?.({ variant: 'permission', requestId, allowed, updatedPermissions })
+      void runRespond({ variant: 'permission', requestId, allowed, updatedPermissions })
     },
-    [respond],
+    [runRespond],
   )
 
   // ── Question ──────────────────────────────────────────────
   const handleQuestionAnswer = useCallback(
     (requestId: string, answers: Record<string, string>) => {
-      respond?.({ variant: 'question', requestId, answers })
+      void runRespond({ variant: 'question', requestId, answers })
     },
-    [respond],
+    [runRespond],
   )
 
   // ── Plan ──────────────────────────────────────────────────
   const handlePlanApprove = useCallback(
     (requestId: string, approved: boolean, feedback?: string, bypassPermissions?: boolean) => {
-      respond?.({ variant: 'plan', requestId, approved, feedback, bypassPermissions })
+      void runRespond({ variant: 'plan', requestId, approved, feedback, bypassPermissions })
     },
-    [respond],
+    [runRespond],
   )
 
   // ── Elicitation ───────────────────────────────────────────
   const handleElicitationSubmit = useCallback(
     (requestId: string, response: string) => {
-      respond?.({ variant: 'elicitation', requestId, response })
+      void runRespond({ variant: 'elicitation', requestId, response })
     },
-    [respond],
+    [runRespond],
   )
 
-  switch (variant) {
-    case 'permission': {
-      const permission = normalizePermissionRequest(data)
-      if (!permission) return <InteractionError variant="permission" />
-      return (
-        <PermissionCard
-          permission={permission}
-          onRespond={respond ? handlePermissionRespond : undefined}
-          onAlwaysAllow={
-            respond && permission.suggestions?.length ? handlePermissionAlwaysAllow : undefined
-          }
-        />
-      )
-    }
+  const card = (() => {
+    switch (variant) {
+      case 'permission': {
+        const permission = normalizePermissionRequest(data)
+        if (!permission) return <InteractionError variant="permission" />
+        return (
+          <PermissionCard
+            permission={permission}
+            onRespond={respond ? handlePermissionRespond : undefined}
+            onAlwaysAllow={
+              respond && permission.suggestions?.length ? handlePermissionAlwaysAllow : undefined
+            }
+          />
+        )
+      }
 
-    case 'question': {
-      const question = normalizeAskQuestion(data)
-      if (!question) return <InteractionError variant="question" />
-      return (
-        <AskUserQuestionCard
-          question={question}
-          onAnswer={respond ? handleQuestionAnswer : undefined}
-        />
-      )
-    }
+      case 'question': {
+        const question = normalizeAskQuestion(data)
+        if (!question) return <InteractionError variant="question" />
+        return (
+          <AskUserQuestionCard
+            question={question}
+            onAnswer={respond ? handleQuestionAnswer : undefined}
+          />
+        )
+      }
 
-    case 'plan': {
-      const plan = normalizePlanApproval(data)
-      if (!plan) return <InteractionError variant="plan" />
-      return <PlanApprovalCard plan={plan} onApprove={respond ? handlePlanApprove : undefined} />
-    }
+      case 'plan': {
+        const plan = normalizePlanApproval(data)
+        if (!plan) return <InteractionError variant="plan" />
+        return <PlanApprovalCard plan={plan} onApprove={respond ? handlePlanApprove : undefined} />
+      }
 
-    case 'elicitation': {
-      const elicitation = normalizeElicitation(data)
-      if (!elicitation) return <InteractionError variant="elicitation" />
-      return (
-        <ElicitationCard
-          elicitation={elicitation}
-          onSubmit={respond ? handleElicitationSubmit : undefined}
-        />
-      )
-    }
+      case 'elicitation': {
+        const elicitation = normalizeElicitation(data)
+        if (!elicitation) return <InteractionError variant="elicitation" />
+        return (
+          <ElicitationCard
+            elicitation={elicitation}
+            onSubmit={respond ? handleElicitationSubmit : undefined}
+          />
+        )
+      }
 
-    default:
-      return <InteractionError variant={variant} />
-  }
+      default:
+        return <InteractionError variant={variant} />
+    }
+  })()
+
+  if (!deliveryError) return card
+
+  return (
+    <div>
+      <div
+        role="alert"
+        className="mb-1.5 flex items-center gap-2 rounded-md border border-red-200 dark:border-red-800/40 bg-red-50 dark:bg-red-900/20 px-2.5 py-1.5 text-xs text-red-700 dark:text-red-400"
+      >
+        {deliveryError}
+      </div>
+      {card}
+    </div>
+  )
 }

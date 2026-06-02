@@ -17,8 +17,10 @@ export type InteractRequest =
 
 /**
  * Returns a callback that dispatches an interaction response to the backend,
- * or `undefined` when the session cannot be interacted with (null ownership
- * or observed-only — no sdk/tmux binding).
+ * or `undefined` when the session is not SDK-controlled. Only an SDK fork can
+ * receive a decision — observed (read-only mirror) and tmux-owned-only CLI
+ * sessions render the interaction read-only (wiring-up rule: never show a
+ * control the backend can't honor). Take over a CLI session to drive it.
  */
 export function useInteractionResponder(
   sessionId: string,
@@ -42,7 +44,8 @@ export function useInteractionResponder(
     [sessionId],
   )
 
-  // Interactive only when SDK or tmux-controlled — not when observed (no bindings)
-  if (!ownership || (!ownership.sdk && !ownership.tmux)) return undefined
+  // Interactive only when SDK-controlled. tmux-owned-only / observed sessions
+  // are read-only mirrors of the CLI — interaction must go through a fork.
+  if (!ownership?.sdk) return undefined
   return respond
 }

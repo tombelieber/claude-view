@@ -1,8 +1,13 @@
 import type { PermissionRequest } from '../../../../types/sidecar-protocol'
 import { ShieldAlert } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { cn } from '../../../../utils/cn'
+import { useCallback, useEffect, useState } from 'react'
 import { InteractiveCardShell } from './InteractiveCardShell'
+
+/** Human-friendly "time waiting for your decision" label. */
+function formatWaiting(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`
+}
 
 function getToolDisplay(
   toolName: string,
@@ -39,57 +44,45 @@ export function PermissionCard({
   onAlwaysAllow,
   resolved,
 }: PermissionCardProps) {
-  const totalSeconds = Math.ceil(permission.timeoutMs / 1000)
-  const [countdown, setCountdown] = useState(totalSeconds)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const onRespondRef = useRef(onRespond)
-  onRespondRef.current = onRespond
-  const toolNameRef = useRef(permission.toolName)
-  toolNameRef.current = permission.toolName
-
   const requestId = permission.requestId
-  const timeoutMs = permission.timeoutMs
+  const interactive = !!onRespond
 
-  const autoDeniedRef = useRef(false)
-
+  // Trust-over-accuracy: a permission prompt NEVER auto-resolves. We show how
+  // long it has been awaiting your decision (an attention cue), pausing the
+  // counter while the tab is hidden so it reflects actual attention — but the
+  // prompt stays pending until you decide. 寧願唔顯示，都唔顯示錯嘅嘢.
+  const [waiting, setWaiting] = useState(0)
   useEffect(() => {
-    if (resolved || !onRespondRef.current) return
-    autoDeniedRef.current = false
-
-    const secs = Math.ceil(timeoutMs / 1000)
-    setCountdown(secs)
-
-    timerRef.current = setInterval(() => {
-      setCountdown((prev) => (prev <= 1 ? 0 : prev - 1))
-    }, 1000)
-
+    if (resolved || !interactive) return
+    setWaiting(0)
+    let id: ReturnType<typeof setInterval> | null = null
+    const start = () => {
+      if (id == null) id = setInterval(() => setWaiting((w) => w + 1), 1000)
+    }
+    const stop = () => {
+      if (id != null) {
+        clearInterval(id)
+        id = null
+      }
+    }
+    const onVisibility = () => (document.visibilityState === 'hidden' ? stop() : start())
+    if (document.visibilityState !== 'hidden') start()
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
+      stop()
+      document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [requestId, timeoutMs, resolved])
-
-  // Auto-deny side effect — runs outside the setState updater to avoid
-  // "Cannot update component X while rendering component Y" React warning.
-  useEffect(() => {
-    if (countdown === 0 && !resolved && !autoDeniedRef.current) {
-      autoDeniedRef.current = true
-      if (timerRef.current) clearInterval(timerRef.current)
-      onRespondRef.current?.(requestId, false)
-    }
-  }, [countdown, resolved, requestId])
+  }, [requestId, resolved, interactive])
 
   const handleAllow = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
     onRespond?.(requestId, true)
   }, [onRespond, requestId])
 
   const handleDeny = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
     onRespond?.(requestId, false)
   }, [onRespond, requestId])
 
   const handleAlwaysAllow = useCallback(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
     if (permission.suggestions && onAlwaysAllow) {
       onAlwaysAllow(requestId, true, permission.suggestions)
     }
@@ -179,26 +172,11 @@ export function PermissionCard({
           </div>
         )}
 
-        {!resolved && (
-          <div className="flex items-center gap-2">
-            <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-all duration-1000 ease-linear',
-                  countdown < 10 ? 'bg-red-500 animate-pulse' : 'bg-amber-500',
-                )}
-                style={{ width: `${(countdown / totalSeconds) * 100}%` }}
-              />
-            </div>
-            <span
-              className={cn(
-                'text-xs font-mono tabular-nums w-6 text-right',
-                countdown < 10
-                  ? 'text-red-500 dark:text-red-400 font-bold'
-                  : 'text-gray-500 dark:text-gray-400',
-              )}
-            >
-              {countdown}s
+        {!resolved && interactive && (
+          <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="tabular-nums">
+              Waiting for your response{waiting > 0 ? ` · ${formatWaiting(waiting)}` : ''}
             </span>
           </div>
         )}
