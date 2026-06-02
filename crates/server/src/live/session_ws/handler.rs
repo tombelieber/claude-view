@@ -238,6 +238,10 @@ async fn handle_multiplexed_ws(
             .unwrap_or(0)
     };
     let mut hook_events_seen: usize = 0;
+    // Once the session's hook broadcast closes (session ended), stop polling that
+    // select arm — otherwise `recv()` returns `Closed` immediately on every poll
+    // and busy-loops the task at 100% CPU until the client disconnects.
+    let mut hook_closed = false;
 
     // 6. Main event loop
     let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(15));
@@ -344,8 +348,25 @@ async fn handle_multiplexed_ws(
             }
 
             // Hook events
-            hook_event = hook_rx.recv() => {
-                if let Ok(event) = hook_event {
+            hook_event = hook_rx.recv(), if !hook_closed => {
+                let event = match hook_event {
+                    Ok(event) => event,
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        // Receiver fell behind the 256-slot broadcast; n live hook
+                        // events were dropped for this client. Surface it (the JSONL
+                        // file remains the source of truth — a reconnect re-derives
+                        // full state from scrollback) rather than failing silently.
+                        warn!(session_id = %session_id, dropped = n, "Hook broadcast lagged");
+                        continue;
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        // Session's hook channel closed (session ended). Disable this
+                        // arm; block/raw updates from the file watcher still flow.
+                        hook_closed = true;
+                        continue;
+                    }
+                };
+                {
                     hook_events_seen += 1;
                     if hook_events_seen <= replayed_hook_count {
                         continue;
