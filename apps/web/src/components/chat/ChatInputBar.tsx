@@ -1,5 +1,5 @@
 import { ArrowUp, Square } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useMemo } from 'react'
 import type { ModelOption } from '../../hooks/use-models'
 import type { SessionCapabilities } from '../../hooks/use-session-capabilities'
 import { FEATURES } from '../../lib/feature-flags'
@@ -8,55 +8,18 @@ import type { PermissionMode } from '../../types/control'
 import { AttachButton, AttachmentChips } from './AttachButton'
 import { ChatContextGauge } from './ChatContextGauge'
 import { ChatPalette } from './ChatPalette'
-import { ModeSwitch, cycleMode } from './ModeSwitch'
+import { ModeSwitch } from './ModeSwitch'
 import { ModelSelector } from './ModelSelector'
 import { SlashCommandPopover } from './SlashCommandPopover'
 import { ThinkingBudgetControl } from './ThinkingBudgetControl'
 import type { SlashCommand } from './commands'
+import { STATE_CONFIG } from './input/input-bar-state'
+import { useChatInput } from './input/useChatInput'
 import { buildPaletteSections } from './palette-items'
 
-// ---------------------------------------------------------------------------
-// Dormant state machine
-// ---------------------------------------------------------------------------
-
-export type InputBarState =
-  | 'dormant'
-  | 'active'
-  | 'streaming'
-  | 'waiting_permission'
-  | 'completed'
-  | 'controlled_elsewhere'
-  | 'connecting'
-  | 'reconnecting'
-
-interface StateConfig {
-  placeholder: string
-  disabled: boolean
-  muted: boolean
-}
-
-const STATE_CONFIG: Record<InputBarState, StateConfig> = {
-  dormant: { placeholder: 'Send a message...', disabled: false, muted: true },
-  connecting: { placeholder: 'Connecting...', disabled: true, muted: true },
-  reconnecting: { placeholder: 'Reconnecting...', disabled: true, muted: true },
-  active: {
-    placeholder: 'Send a message... (or type / for commands)',
-    disabled: false,
-    muted: false,
-  },
-  streaming: { placeholder: 'Type to queue a follow-up...', disabled: false, muted: false },
-  waiting_permission: {
-    placeholder: 'Waiting for permission response...',
-    disabled: true,
-    muted: false,
-  },
-  completed: { placeholder: 'Session ended', disabled: true, muted: true },
-  controlled_elsewhere: {
-    placeholder: 'This session is running in another process',
-    disabled: true,
-    muted: true,
-  },
-}
+// Input-bar state machine + STATE_CONFIG live in ./input/input-bar-state.
+// Re-export the type so existing consumers/tests keep importing it from here.
+export type { InputBarState } from './input/input-bar-state'
 
 // ---------------------------------------------------------------------------
 // Props
@@ -65,7 +28,7 @@ const STATE_CONFIG: Record<InputBarState, StateConfig> = {
 export interface ChatInputBarProps {
   onSend: (message: string) => void
   onStop?: () => void
-  state?: InputBarState
+  state?: import('./input/input-bar-state').InputBarState
   placeholder?: string
   mode?: PermissionMode
   onModeChange?: (mode: PermissionMode) => void
@@ -79,30 +42,18 @@ export interface ChatInputBarProps {
   } | null
   commands?: SlashCommand[]
   onCommand?: (command: string) => void
-  // NEW: Session capabilities for command palette
   capabilities?: SessionCapabilities
-  // NEW: Model options for palette submenu
   modelOptions?: ModelOption[]
-  // NEW: Palette-specific model switch (triggers resume)
   onModelSwitch?: (model: string) => void
-  // NEW: Palette-specific mode change (triggers resume)
   onPaletteModeChange?: (mode: PermissionMode) => void
-  // NEW: Palette agent invocation (sends @agent-name)
   onAgent?: (agent: string) => void
-  // NEW: Called when palette opens — refresh commands/agents via WS
   onPaletteOpen?: () => void
-  // Effort slider (thinking budget)
   effortValue?: number | null
   onEffortChange?: (tokens: number | null) => void
 }
 
 // ---------------------------------------------------------------------------
-// Mode commands that map directly to onModeChange
-// ---------------------------------------------------------------------------
-const MODE_COMMANDS = new Set(['default', 'acceptEdits', 'plan', 'dontAsk', 'bypassPermissions'])
-
-// ---------------------------------------------------------------------------
-// Component
+// Component (thin view — input state/handlers live in useChatInput)
 // ---------------------------------------------------------------------------
 
 export function ChatInputBar({
@@ -133,128 +84,31 @@ export function ChatInputBar({
   const isMuted = config.muted
   const isStreaming = state === 'streaming'
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const [input, setInput] = useState('')
-  const [slashOpen, setSlashOpen] = useState(false)
-  const [attachments, setAttachments] = useState<File[]>([])
-
-  // ---- Auto-grow textarea ----
-  const autoGrow = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [])
-
-  // ---- Send logic ----
-  const send = useCallback(() => {
-    const trimmed = input.trim()
-    if (!trimmed || isDisabled) return
-    onSend(trimmed)
-    setInput('')
-    setAttachments([])
-    // Reset textarea height on next frame
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.style.height = 'auto'
-      }
-    })
-  }, [input, isDisabled, onSend])
-
-  // ---- Slash command handling ----
-  const handleSlashSelect = useCallback(
-    (cmd: SlashCommand) => {
-      if (MODE_COMMANDS.has(cmd.name) && onModeChange) {
-        onModeChange(cmd.name as PermissionMode)
-      } else if (onCommand) {
-        onCommand(cmd.name)
-      }
-      setInput('')
-      setSlashOpen(false)
-      requestAnimationFrame(() => {
-        const el = textareaRef.current
-        if (el) {
-          el.style.height = 'auto'
-          el.focus()
-        }
-      })
-    },
-    [onModeChange, onCommand],
-  )
-
-  // ---- Input change ----
-  const handleInputChange = useCallback(
-    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const value = e.target.value
-      setInput(value)
-
-      // Open slash popover when input starts with "/" (single-line, at start)
-      const trimmed = value.trimStart()
-      if (trimmed.startsWith('/') && !trimmed.includes('\n')) {
-        if (!slashOpen) onPaletteOpen?.()
-        setSlashOpen(true)
-      } else {
-        setSlashOpen(false)
-      }
-
-      requestAnimationFrame(autoGrow)
-    },
-    [autoGrow, slashOpen, onPaletteOpen],
-  )
-
-  // ---- Keyboard: Enter=send, Shift+Enter=newline, Escape=stop ----
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      // Don't intercept keys when slash popover is open
-      // (the popover handles its own keyboard events)
-      if (slashOpen) return
-
-      if (e.key === 'Tab' && e.shiftKey && onModeChange) {
-        e.preventDefault()
-        onModeChange(cycleMode(mode))
-      } else if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        send()
-      } else if (e.key === 'Escape' && isStreaming && onStop) {
-        e.preventDefault()
-        onStop()
-      }
-    },
-    [slashOpen, send, isStreaming, onStop, mode, onModeChange],
-  )
-
-  // ---- Image paste handler ----
-  const handlePaste = useCallback(
-    (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
-      if (isDisabled) return
-      const items = e.clipboardData?.items
-      if (!items) return
-
-      const imageFiles: File[] = []
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i]
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile()
-          if (file) imageFiles.push(file)
-        }
-      }
-
-      if (imageFiles.length > 0) {
-        setAttachments((prev) => [...prev, ...imageFiles])
-      }
-    },
-    [isDisabled],
-  )
-
-  // ---- Attachments ----
-  const handleAttach = useCallback((files: File[]) => {
-    setAttachments((prev) => [...prev, ...files])
-  }, [])
-
-  const handleRemoveAttachment = useCallback((index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index))
-  }, [])
+  const {
+    textareaRef,
+    input,
+    slashOpen,
+    setSlashOpen,
+    attachments,
+    send,
+    canSend,
+    handleSlashSelect,
+    handleInputChange,
+    handleKeyDown,
+    handlePaste,
+    handleAttach,
+    handleRemoveAttachment,
+    handlePaletteClose,
+  } = useChatInput({
+    onSend,
+    onStop,
+    isDisabled,
+    isStreaming,
+    mode,
+    onModeChange,
+    onCommand,
+    onPaletteOpen,
+  })
 
   // ---- Command palette sections ----
   const paletteCallbacks = useMemo(
@@ -276,21 +130,6 @@ export function ChatInputBar({
       isStreaming,
     })
   }, [capabilities, modelOptions, paletteCallbacks, state, isStreaming])
-
-  const handlePaletteClose = useCallback(() => {
-    setSlashOpen(false)
-    setInput('')
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.style.height = 'auto'
-        el.focus()
-      }
-    })
-  }, [])
-
-  // ---- Send/Stop button ----
-  const canSend = input.trim().length > 0 && !isDisabled
 
   if (!FEATURES.chat) return null
 
@@ -396,8 +235,7 @@ export function ChatInputBar({
             )}
           </div>
 
-          {/* Send / Stop button */}
-          {/* During streaming: show Send if user typed text (queues message), Stop otherwise */}
+          {/* Send / Stop button. During streaming: Send if text typed (queues), else Stop. */}
           {isStreaming && !canSend ? (
             <button
               type="button"
