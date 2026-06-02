@@ -1,6 +1,7 @@
 // sidecar/src/routes.ts
 import { Hono } from 'hono'
 import { notifyBindControl, notifyUnbindControl } from './control-binding.js'
+import { type InteractionResponse, resolveInteraction } from './interaction-resolver.js'
 import { getCacheState } from './model-cache.js'
 import type { CreateSessionRequest, ForkSessionRequest, ResumeSessionRequest } from './protocol.js'
 import {
@@ -94,6 +95,26 @@ export function createRoutes(registry: SessionRegistry) {
     } catch (err) {
       return c.json({ error: `Fork failed: ${err instanceof Error ? err.message : err}` }, 500)
     }
+  })
+
+  // Resolve a pending interaction (permission / question / plan / elicitation).
+  //
+  // REST delivery bridge for surfaces with no live control WS (live monitor,
+  // mobile). The Rust server POSTs the decision here and reads the {ok} ack to
+  // decide whether to clear its pending state — so a decision that never lands
+  // (session gone, unknown requestId) is reported honestly instead of silently
+  // dropped. Keyed by sessionId, matching the other /sessions/:id routes.
+  app.post('/sessions/:id/interact', async (c) => {
+    const sessionId = c.req.param('id')
+    const cs = registry.getBySessionId(sessionId)
+    if (!cs) {
+      return c.json({ ok: false, reason: 'Session not active in sidecar' }, 404)
+    }
+    const msg = await c.req.json<InteractionResponse>().catch(() => null)
+    if (!msg || typeof msg.type !== 'string') {
+      return c.json({ ok: false, reason: 'Invalid interaction body' }, 400)
+    }
+    return c.json(resolveInteraction(cs, msg))
   })
 
   // List active control sessions (lightweight — no SDK calls)

@@ -243,6 +243,7 @@ pub struct AppStateBuilder {
     indexing: Option<Arc<IndexingState>>,
     registry: Option<RegistryHolder>,
     shutdown: Option<tokio::sync::watch::Receiver<bool>>,
+    sidecar: Option<Arc<SidecarManager>>,
 }
 
 impl AppStateBuilder {
@@ -261,6 +262,13 @@ impl AppStateBuilder {
     /// Override the shutdown watch receiver.
     pub fn with_shutdown(mut self, shutdown: tokio::sync::watch::Receiver<bool>) -> Self {
         self.shutdown = Some(shutdown);
+        self
+    }
+
+    /// Override the sidecar manager (e.g. tests pointing delivery at a mock
+    /// sidecar via `SidecarManager::with_base_url`).
+    pub fn with_sidecar(mut self, sidecar: Arc<SidecarManager>) -> Self {
+        self.sidecar = Some(sidecar);
         self
     }
 
@@ -327,7 +335,9 @@ impl AppStateBuilder {
                 .shutdown
                 .unwrap_or_else(|| tokio::sync::watch::channel(false).1),
             hook_event_channels: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
-            sidecar: Arc::new(SidecarManager::new()),
+            sidecar: self
+                .sidecar
+                .unwrap_or_else(|| Arc::new(SidecarManager::new())),
             terminal_manager: Arc::new(TerminalManager::new()),
             session_catalog: legacy_catalog,
             session_catalog_adapter,
@@ -390,6 +400,7 @@ impl AppState {
             indexing: None,
             registry: None,
             shutdown: None,
+            sidecar: None,
         }
     }
 

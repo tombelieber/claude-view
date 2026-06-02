@@ -1,7 +1,7 @@
 // sidecar/src/ws-handler.ts
-import type { PermissionUpdate } from '@anthropic-ai/claude-agent-sdk'
 import type { WebSocket } from 'ws'
 import { normalizeNameArray } from './event-mapper.js'
+import { resolveInteraction } from './interaction-resolver.js'
 import type { ClientMessage, ServerEvent } from './protocol.js'
 import { sendMessage, setSessionMode } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
@@ -129,62 +129,25 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
           sendMessage(session, msg.content)
           break
 
+        // All four interaction decisions share one resolution primitive
+        // (interaction-resolver.ts), so the WS path and the REST delivery
+        // bridge can never drift. An unknown requestId returns {ok:false}.
         case 'permission_response':
-          if (
-            !session.permissions.resolvePermission(
-              msg.requestId,
-              msg.allowed,
-              msg.updatedPermissions as PermissionUpdate[] | undefined,
-            )
-          ) {
-            ws.send(
-              JSON.stringify({
-                type: 'error',
-                message: 'Unknown permission requestId',
-                fatal: false,
-              }),
-            )
-          }
-          break
-
         case 'question_response':
-          if (!session.permissions.resolveQuestion(msg.requestId, msg.answers)) {
-            ws.send(
-              JSON.stringify({
-                type: 'error',
-                message: 'Unknown question requestId',
-                fatal: false,
-              }),
-            )
-          }
-          break
-
         case 'plan_response':
-          if (
-            !session.permissions.resolvePlan(
-              msg.requestId,
-              msg.approved,
-              msg.feedback,
-              msg.bypassPermissions,
-            )
-          ) {
-            ws.send(
-              JSON.stringify({ type: 'error', message: 'Unknown plan requestId', fatal: false }),
-            )
-          }
-          break
-
-        case 'elicitation_response':
-          if (!session.permissions.resolveElicitation(msg.requestId, msg.response)) {
+        case 'elicitation_response': {
+          const result = resolveInteraction(session, msg)
+          if (!result.ok) {
             ws.send(
               JSON.stringify({
                 type: 'error',
-                message: 'Unknown elicitation requestId',
+                message: result.reason ?? 'Unknown requestId',
                 fatal: false,
               }),
             )
           }
           break
+        }
 
         case 'ping':
           ws.send(JSON.stringify({ type: 'pong' }))

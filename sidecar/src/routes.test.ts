@@ -212,4 +212,89 @@ describe('routes', () => {
       expect(mockWaitForSessionInit).toHaveBeenCalledWith(cs, 15_000)
     })
   })
+
+  describe('POST /sessions/:id/interact', () => {
+    // Stub the four resolve* methods so we can assert routing + the {ok} ack
+    // without standing up a real PermissionHandler / SDK session.
+    function makeInteractiveCs(sessionId: string, resolves: Record<string, boolean>) {
+      return makeStubCs({
+        controlId: `ctrl-${sessionId}`,
+        sessionId,
+        // biome-ignore lint/suspicious/noExplicitAny: stubbed PermissionHandler
+        permissions: {
+          resolvePermission: vi.fn().mockReturnValue(resolves.permission ?? true),
+          resolveQuestion: vi.fn().mockReturnValue(resolves.question ?? true),
+          resolvePlan: vi.fn().mockReturnValue(resolves.plan ?? true),
+          resolveElicitation: vi.fn().mockReturnValue(resolves.elicitation ?? true),
+          drainAll: vi.fn(),
+        } as any,
+      })
+    }
+
+    it('resolves a pending permission and returns {ok:true}', async () => {
+      const app = createRoutes(registry)
+      const cs = makeInteractiveCs('sess-int-1', { permission: true })
+      registry.register(cs)
+
+      const res = await app.request('/sessions/sess-int-1/interact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'permission_response', requestId: 'req-1', allowed: true }),
+      })
+
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: true })
+      expect(cs.permissions.resolvePermission).toHaveBeenCalledWith('req-1', true, undefined)
+    })
+
+    it('returns {ok:false} (200) when the requestId is unknown/stale', async () => {
+      const app = createRoutes(registry)
+      const cs = makeInteractiveCs('sess-int-2', { permission: false })
+      registry.register(cs)
+
+      const res = await app.request('/sessions/sess-int-2/interact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'permission_response', requestId: 'stale', allowed: false }),
+      })
+
+      // Delivery reached the sidecar (200) but the decision was not applied (ok:false).
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: false, reason: 'Unknown permission requestId' })
+    })
+
+    it('routes question_response to resolveQuestion', async () => {
+      const app = createRoutes(registry)
+      const cs = makeInteractiveCs('sess-int-3', { question: true })
+      registry.register(cs)
+
+      const res = await app.request('/sessions/sess-int-3/interact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'question_response',
+          requestId: 'q-1',
+          answers: { color: 'blue' },
+        }),
+      })
+
+      expect(res.status).toBe(200)
+      expect(await res.json()).toEqual({ ok: true })
+      expect(cs.permissions.resolveQuestion).toHaveBeenCalledWith('q-1', { color: 'blue' })
+    })
+
+    it('returns 404 {ok:false} when the session is not active in the sidecar', async () => {
+      const app = createRoutes(registry)
+      // nothing registered for this id
+
+      const res = await app.request('/sessions/missing/interact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'permission_response', requestId: 'req-x', allowed: true }),
+      })
+
+      expect(res.status).toBe(404)
+      expect(await res.json()).toMatchObject({ ok: false })
+    })
+  })
 })

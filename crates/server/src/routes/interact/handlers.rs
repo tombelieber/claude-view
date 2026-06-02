@@ -12,6 +12,7 @@ use axum::{
 
 use crate::error::{ApiError, ApiResult};
 use crate::live::mutation::types::{InteractionAction, SessionMutation};
+use crate::routes::interact::delivery::{self, DeliveryOutcome};
 use crate::state::AppState;
 use claude_view_types::{InteractRequest, InteractionBlock};
 
@@ -90,22 +91,28 @@ pub async fn get_interaction_handler(
 
 /// Resolve a pending interaction (permission, question, plan, elicitation).
 ///
-/// 1. Parse InteractRequest from body
-/// 2. Look up session in live_sessions — 404 if not found
-/// 3. Resolve ownership — 400 if Observed
-/// 4. Check interaction_data side-map — 409 if request_id not found (stale)
-/// 5. For SDK: forward to sidecar HTTP API
-/// 6. Clear pending interaction via coordinator
+/// 1. Look up session in live_sessions — 404 if not found
+/// 2. Require an SDK control channel — 400 if observed (read-only mirror) or
+///    tmux-only (a CLI session is driven by forking, never by writing into it)
+/// 3. Check interaction_data side-map — 409 if request_id not found (stale)
+/// 4. Deliver to the sidecar and await its ack, then:
+///    - Delivered  → clear pending + 200
+///    - Rejected   → 409, pending retained (SDK turn-end is authoritative)
+///    - Failed     → 503, pending retained for retry
+///
+/// Pending state is cleared ONLY on confirmed delivery: a decision the agent
+/// never received must never be reported as resolved (寧願唔顯示，都唔顯示錯嘅嘢).
 #[utoipa::path(
     post,
     path = "/api/sessions/{session_id}/interact",
     tag = "sessions",
     params(("session_id" = String, Path, description = "Session UUID")),
     responses(
-        (status = 200, description = "Interaction resolved"),
-        (status = 400, description = "Observed session or invalid request"),
+        (status = 200, description = "Interaction delivered and resolved"),
+        (status = 400, description = "Observed/tmux-only session — no SDK control channel"),
         (status = 404, description = "Session not found"),
-        (status = 409, description = "Request ID stale or already resolved"),
+        (status = 409, description = "Request ID stale, or sidecar reported it already resolved"),
+        (status = 503, description = "Delivery to the controlling sidecar could not be confirmed"),
     )
 )]
 pub async fn interact_handler(
@@ -115,7 +122,7 @@ pub async fn interact_handler(
 ) -> ApiResult<Json<serde_json::Value>> {
     let request_id = extract_request_id(&req).to_string();
 
-    // Step 2: session exists? Clone and drop lock before async compute.
+    // Step 1: session exists? Clone and drop lock before async work.
     let session_clone = {
         let sessions = state.live_sessions.read().await;
         sessions
@@ -125,14 +132,17 @@ pub async fn interact_handler(
     };
     let ownership = crate::live::ownership::compute_ownership(&session_clone);
 
-    // Step 3: check ownership — can interact if tmux or sdk binding exists
-    if ownership.tmux.is_none() && ownership.sdk.is_none() {
+    // Step 2: require an SDK control channel. Observed sessions are read-only
+    // mirrors of the CLI; a tmux-owned CLI session is driven by *forking* it
+    // (take-over), never by injecting a response into the CLI's own lineage.
+    if ownership.sdk.is_none() {
         return Err(ApiError::BadRequest(
-            "Cannot interact with an observed session — no control channel available".to_string(),
+            "Cannot interact with this session — no SDK control channel (take over to drive it)"
+                .to_string(),
         ));
     }
 
-    // Step 4: check side-map for request_id (stale check)
+    // Step 3: side-map must still hold this request_id (else stale / already resolved).
     {
         let data = state.interaction_data.read().await;
         if !data.contains_key(&request_id) {
@@ -142,140 +152,35 @@ pub async fn interact_handler(
         }
     }
 
-    // Step 5: dispatch based on ownership
-    let sidecar_forwarded = if ownership.sdk.is_some() {
-        match forward_to_sidecar(&state, &session_id, &req).await {
-            Ok(()) => true,
-            Err(e) => {
-                tracing::warn!(
-                    session_id,
-                    request_id = %request_id,
-                    error = %e,
-                    "Sidecar forward failed — state cleared but sidecar not notified"
-                );
-                false
-            }
-        }
-    } else if ownership.tmux.is_some() {
-        // TODO(Task 10+): forward keystroke via tmux send-keys.
-        true
-    } else {
-        unreachable!("guarded above")
-    };
-
-    // Step 6: clear pending interaction regardless of sidecar result.
-    // The user made their decision — don't leave stale pending state.
-    clear_pending_interaction(&state, &session_id, &request_id).await;
-
-    // Always return 200 — the interaction is resolved from the server's
-    // perspective. The sidecarForwarded flag lets the frontend know if
-    // the ConversationView WS path needs to deliver the response instead.
-    Ok(Json(serde_json::json!({
-        "resolved": true,
-        "requestId": request_id,
-        "sessionId": session_id,
-        "sidecarForwarded": sidecar_forwarded
-    })))
-}
-
-/// Forward the interaction resolution to the sidecar HTTP API.
-///
-/// Uses lazy recovery: resolves the session's current valid control_id
-/// (resuming in the sidecar if the previous one was orphaned by a restart).
-async fn forward_to_sidecar(
-    state: &AppState,
-    session_id: &str,
-    req: &InteractRequest,
-) -> Result<(), String> {
-    let live_manager = state
-        .live_manager
-        .as_ref()
-        .ok_or_else(|| "Live manager not initialized".to_string())?;
-    let control_id = live_manager
-        .ensure_session_control_alive(session_id, "interact")
-        .await
-        .map_err(|e| format!("Sidecar not available: {e}"))?;
-    let sidecar_base = state.sidecar.base_url().to_string();
-
-    let url = format!("{sidecar_base}/api/sessions/{control_id}/message");
-
-    // Build the sidecar message from the InteractRequest.
-    let sidecar_body = build_sidecar_message(req);
-
-    let client = reqwest::Client::new();
-    let resp = client
-        .post(&url)
-        .json(&sidecar_body)
-        .timeout(std::time::Duration::from_secs(10))
-        .send()
-        .await
-        .map_err(|e| format!("Sidecar HTTP request failed: {e}"))?;
-
-    if resp.status().is_success() {
-        Ok(())
-    } else {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        Err(format!("Sidecar returned {status}: {body}"))
-    }
-}
-
-/// Build a sidecar-compatible JSON message from an InteractRequest.
-fn build_sidecar_message(req: &InteractRequest) -> serde_json::Value {
-    match req {
-        InteractRequest::Permission {
-            request_id,
-            allowed,
-            updated_permissions,
-        } => {
-            let mut msg = serde_json::json!({
-                "type": "permission_response",
+    // Step 4: deliver to the controlling sidecar and confirm receipt.
+    match delivery::deliver(&state, &session_id, &req).await {
+        DeliveryOutcome::Delivered => {
+            clear_pending_interaction(&state, &session_id, &request_id).await;
+            Ok(Json(serde_json::json!({
+                "resolved": true,
                 "requestId": request_id,
-                "allowed": allowed
-            });
-            if let Some(perms) = updated_permissions {
-                msg["updatedPermissions"] = serde_json::json!(perms);
-            }
-            msg
+                "sessionId": session_id,
+            })))
         }
-        InteractRequest::Question {
-            request_id,
-            answers,
-        } => {
-            serde_json::json!({
-                "type": "question_response",
-                "requestId": request_id,
-                "answers": answers
-            })
+        DeliveryOutcome::Rejected(reason) => {
+            // Sidecar reached, but the decision didn't apply (unknown/stale id).
+            // The SDK's own turn-end clear is authoritative — don't clear here.
+            Err(ApiError::Conflict(format!(
+                "Interaction already resolved or unknown: {reason}"
+            )))
         }
-        InteractRequest::Plan {
-            request_id,
-            approved,
-            feedback,
-            bypass_permissions,
-        } => {
-            let mut msg = serde_json::json!({
-                "type": "plan_response",
-                "requestId": request_id,
-                "approved": approved
-            });
-            if let Some(fb) = feedback {
-                msg["feedback"] = serde_json::json!(fb);
-            }
-            if let Some(bp) = bypass_permissions {
-                msg["bypassPermissions"] = serde_json::json!(bp);
-            }
-            msg
-        }
-        InteractRequest::Elicitation {
-            request_id,
-            response,
-        } => {
-            serde_json::json!({
-                "type": "elicitation_response",
-                "requestId": request_id,
-                "response": response
-            })
+        DeliveryOutcome::Failed(reason) => {
+            // Delivery unconfirmed — keep pending so the user can retry. The
+            // decision is NOT silently lost or falsely reported as resolved.
+            tracing::warn!(
+                session_id,
+                request_id = %request_id,
+                reason = %reason,
+                "Interaction delivery failed — pending retained for retry"
+            );
+            Err(ApiError::ServiceUnavailable(format!(
+                "Could not deliver decision to the controlling agent: {reason}"
+            )))
         }
     }
 }

@@ -57,6 +57,16 @@ impl SidecarManager {
         }
     }
 
+    /// Construct a manager pointed at an explicit base URL.
+    ///
+    /// For tests that need delivery to hit a mock sidecar (or a known-dead URL)
+    /// rather than the default `http://localhost:{SIDECAR_PORT}`.
+    pub fn with_base_url(base_url: String) -> Self {
+        let mut manager = Self::new();
+        manager.base_url = base_url;
+        manager
+    }
+
     /// Current spawn generation. Starts at 0, increments on every successful
     /// spawn. Control bindings created before a restart will have a smaller
     /// generation than this; callers use the mismatch to detect staleness.
