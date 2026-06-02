@@ -96,8 +96,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 16 models + 3 aliases = 19 entries
-        assert_eq!(pricing.len(), 19);
+        // 17 models + 3 aliases = 20 entries
+        assert_eq!(pricing.len(), 20);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -107,6 +107,7 @@ mod tests {
     /// list is the CI gate: if a dev forgets the pricing update, the test below
     /// fails with a pointer to the fix.
     const ACTIVE_MODELS: &[&str] = &[
+        "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
         "claude-sonnet-4-6",
@@ -126,6 +127,33 @@ mod tests {
                 model_id
             );
         }
+    }
+
+    #[test]
+    fn test_opus_48_priced_and_matches_opus_47() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-06-02:
+        // Opus 4.8 is $5 in / $25 out / $6.25 5m-cache / $10 1h-cache / $0.50 read,
+        // identical to Opus 4.7. The family fallback would produce the same value,
+        // but an exact entry keeps the displayed cost precise (no estimate).
+        let pricing = load_pricing();
+        let opus48 = pricing.get("claude-opus-4-8").expect(
+            "Opus 4.8 must be in pricing table — JSONL files already contain this model ID",
+        );
+        let opus47 = pricing.get("claude-opus-4-7").unwrap();
+        assert_eq!(opus48.input_cost_per_token, opus47.input_cost_per_token);
+        assert_eq!(opus48.output_cost_per_token, opus47.output_cost_per_token);
+        assert_eq!(
+            opus48.cache_creation_cost_per_token,
+            opus47.cache_creation_cost_per_token
+        );
+        assert_eq!(
+            opus48.cache_read_cost_per_token,
+            opus47.cache_read_cost_per_token
+        );
+        assert_eq!(
+            opus48.cache_creation_cost_per_token_1hr,
+            opus47.cache_creation_cost_per_token_1hr
+        );
     }
 
     #[test]

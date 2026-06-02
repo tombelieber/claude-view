@@ -14,7 +14,7 @@ pub use audit::scan_unpriced_models;
 pub use calculate::{calculate_cost, calculate_cost_usd, finalize_cost_breakdown};
 pub use extract::extract_usage_tokens;
 pub use loader::load_pricing;
-pub use lookup::{lookup_pricing, resolve_model_alias};
+pub use lookup::{lookup_pricing, resolve_model_alias, resolve_pricing, Family, MatchKind};
 pub use types::{
     CacheStatus, CostBreakdown, ModelPricing, PricingTable, TokenBreakdown, TokenUsage,
 };
@@ -38,4 +38,11 @@ pub use types::{
 ///   nested `cache_creation.ephemeral_{5m,1h}_input_tokens`. Pre-v2 turns
 ///   with 1-hour cache usage were under-priced ~37.5% (5m rate applied to
 ///   1h tokens).
-pub const PRICING_VERSION: u32 = 2;
+/// - **v3**: 2026-06-02 — `lookup_pricing` gained a family-nearest-version
+///   fallback (`lookup::family_nearest_pricing`): a brand-new point release
+///   (e.g. `claude-opus-4-8`) now inherits the newest known same-family rate
+///   instead of being left unpriced. Added the exact `claude-opus-4-8` row.
+///   Pre-v3, sessions whose model post-dated the pricing table were stored with
+///   NULL/zero `total_cost_usd` (UI showed "Unavailable"); reindex recomputes
+///   them with real costs.
+pub const PRICING_VERSION: u32 = 3;
