@@ -94,6 +94,7 @@ impl BlockAccumulator {
             "agent-name" => self.handle_agent_name(entry),
             "attachment" => self.handle_attachment(entry),
             "permission-mode" => self.handle_permission_mode(entry),
+            "mode" => self.handle_mode(entry),
             _ => {} // unknown entry type -- skip silently
         }
     }

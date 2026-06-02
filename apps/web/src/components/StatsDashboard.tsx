@@ -19,6 +19,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useDashboardStats } from '../hooks/use-dashboard'
 import { useIsMobile } from '../hooks/use-media-query'
 import { useTimeRange } from '../hooks/use-time-range'
+import { resolveSessionBreakdown, scopeLabel } from '../lib/analytics-scope'
 import { buildSessionUrl } from '../lib/url-utils'
 import { cn } from '../lib/utils'
 import { AIGenerationStats } from './AIGenerationStats'
@@ -46,43 +47,6 @@ function formatShortDate(ts: number | null | undefined): string {
     month: 'short',
     year: 'numeric',
   })
-}
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
 }
 
 export function StatsDashboard() {
@@ -134,10 +98,10 @@ export function StatsDashboard() {
   }
 
   const maxProjectSessions = stats.topProjects[0]?.sessionCount || 1
-  const dashboardMeta = stats.meta as ScopeMeta | undefined
-  const sessionBreakdown = resolveSessionBreakdown(dashboardMeta, stats.totalSessions)
-  const sessionsScope = scopeLabel(dashboardMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(dashboardMeta?.dataScope?.workload)
+  const dashboardMeta = stats.meta
+  const sessionBreakdown = resolveSessionBreakdown(dashboardMeta)
+  const sessionsScope = scopeLabel(dashboardMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(dashboardMeta.dataScope.workload)
 
   const handleInvocableClick = (name: string) => {
     navigate(`/search?q=${encodeURIComponent(`skill:${name.replace('/', '')}`)}`)

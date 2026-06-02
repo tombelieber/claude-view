@@ -23,6 +23,14 @@ echo "Generating TypeScript types from Rust structs..."
 # Run only the export_bindings tests with the `codegen` feature enabled.
 # Without `--features codegen`, #[ts(export)] is gated off via cfg_attr,
 # so normal `cargo test` never touches the generated files.
+#
+# claude-view-types owns the base shared types — Message/SessionInfo/
+# ContentBlock plus the whole ConversationBlock hierarchy (block_types.rs:
+# SystemVariant, ImageContent, etc.). ts-rs writes each type's .ts from its
+# OWN defining crate's export_bindings test (deps are imported, not
+# co-written), so omitting this crate froze Message.ts / SystemVariant.ts /
+# ImageContent.ts whenever those types changed. Run it first (base layer).
+"$ROOT_DIR/scripts/cq" test -p claude-view-types --features codegen export_bindings -- --nocapture
 "$ROOT_DIR/scripts/cq" test -p claude-view-core --features codegen export_bindings -- --nocapture
 "$ROOT_DIR/scripts/cq" test -p claude-view-search --features codegen export_bindings -- --nocapture
 "$ROOT_DIR/scripts/cq" test -p claude-view-db --features codegen export_bindings -- --nocapture
@@ -42,6 +50,15 @@ if [ -f "$AGENT_STATE" ]; then
   mv "$tmp_file" "$AGENT_STATE"
 fi
 
+# Format + organize imports with Biome so output matches project style and pre-commit hook
+# Uses `biome check --write` (not `biome format`) to include organizeImports
+# Linting is disabled for generated dirs via biome.json overrides
+echo ""
+echo "Formatting generated types with Biome..."
+bunx biome check --write --no-errors-on-unmatched \
+  packages/shared/src/types/generated/ \
+  apps/web/src/types/generated/
+
 # Post-process: localize cross-package imports that escape shared's rootDir.
 # ts-rs emits absolute-ish `../../../../../apps/web/src/types/generated/X`
 # imports for types that are ALSO generated into shared (X exists in both
@@ -52,6 +69,11 @@ fi
 # for every shared generated file, rewrite any apps/web escape to a local
 # `./X` import IFF `packages/shared/src/types/generated/X.ts` exists. Types
 # that genuinely live only in apps/web are left untouched.
+#
+# MUST run AFTER Biome: ts-rs emits DOUBLE-quoted imports, Biome rewrites them
+# to single quotes. This regex matches single-quoted imports, so running it
+# before Biome silently no-ops (the bug that froze LiveSession.ts's imports
+# pointing into apps/web and broke `packages/shared` typecheck).
 SHARED_GEN="packages/shared/src/types/generated"
 if [ -d "$SHARED_GEN" ]; then
   for f in "$SHARED_GEN"/*.ts; do
@@ -63,15 +85,6 @@ if [ -d "$SHARED_GEN" ]; then
     ' "$f"
   done
 fi
-
-# Format + organize imports with Biome so output matches project style and pre-commit hook
-# Uses `biome check --write` (not `biome format`) to include organizeImports
-# Linting is disabled for generated dirs via biome.json overrides
-echo ""
-echo "Formatting generated types with Biome..."
-bunx biome check --write --no-errors-on-unmatched \
-  packages/shared/src/types/generated/ \
-  apps/web/src/types/generated/
 
 echo ""
 echo "=== Shared types (packages/shared/src/types/generated/) ==="

@@ -18,12 +18,18 @@ export type { PendingInteractionMeta } from './CompactInteractionPreview'
 
 // ── Types ──────────────────────────────────────────────────────────
 
+// Local mirror of the ts-rs-generated `InteractionBlock` contract. `shared`
+// cannot import `apps/web/src/types/generated/InteractionBlock` (it escapes
+// shared's tsconfig rootDir — TS6059), so the shape is declared here with the
+// SAME optionality as the generated contract: `requestId`/`historicalSource`
+// are OPTIONAL (the previous fork wrongly marked them required), and
+// `historicalSource` is the `HistoricalSource` union (not bare `string`).
 export interface FullInteractionBlock {
   id: string
   variant: 'permission' | 'question' | 'plan' | 'elicitation'
-  requestId: string | null
+  requestId?: string | null
   resolved: boolean
-  historicalSource: string | null
+  historicalSource?: 'system_variant' | 'inferred_from_tool_pattern' | null
   data: unknown
 }
 
@@ -60,12 +66,7 @@ export function SessionInteractionCard({
     return <CompactInteractionPreview meta={meta} />
   }
 
-  return (
-    <FullCard
-      fullInteraction={fullInteraction}
-      respond={respond}
-    />
-  )
+  return <FullCard fullInteraction={fullInteraction} respond={respond} />
 }
 
 // ── Inner card renderer (avoids conditional hooks in parent) ──────
@@ -127,9 +128,7 @@ function FullCard({
           permission={permission}
           onRespond={respond ? handlePermissionRespond : undefined}
           onAlwaysAllow={
-            respond && permission.suggestions?.length
-              ? handlePermissionAlwaysAllow
-              : undefined
+            respond && permission.suggestions?.length ? handlePermissionAlwaysAllow : undefined
           }
         />
       )
@@ -149,12 +148,7 @@ function FullCard({
     case 'plan': {
       const plan = normalizePlanApproval(data)
       if (!plan) return <InteractionError variant="plan" />
-      return (
-        <PlanApprovalCard
-          plan={plan}
-          onApprove={respond ? handlePlanApprove : undefined}
-        />
-      )
+      return <PlanApprovalCard plan={plan} onApprove={respond ? handlePlanApprove : undefined} />
     }
 
     case 'elicitation': {

@@ -6,6 +6,8 @@
  * without depending on the web app's generated types.
  */
 
+import type { ImageContent } from '../blocks'
+
 export type Role = 'user' | 'assistant' | 'tool_use' | 'tool_result' | 'system' | 'progress'
 
 export type ToolCall = {
@@ -25,6 +27,8 @@ export type Message = {
   parent_uuid?: string | null
   metadata?: unknown
   category?: string | null
+  /** Pasted screenshots attached to this message (absent for most messages). */
+  images?: Array<ImageContent>
 }
 
 export type SessionMetadata = {

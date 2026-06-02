@@ -21,7 +21,6 @@ export function PluginsPage() {
     scope,
     source,
     kind,
-    sort: 'installs',
   })
 
   // Frontend-only name filter — instant, no API round-trip

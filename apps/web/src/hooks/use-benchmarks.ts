@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import type { BenchmarksResponse as GeneratedBenchmarksResponse } from '../types/generated/BenchmarksResponse'
-import type { AnalyticsScopeContractMeta } from './use-dashboard'
+import type { BenchmarksResponseWithMeta } from '../types/generated/BenchmarksResponseWithMeta'
 
-export type BenchmarksResponse = GeneratedBenchmarksResponse & {
-  meta?: AnalyticsScopeContractMeta
-}
+// The endpoint returns `BenchmarksResponseWithMeta`, which carries an always-present
+// `meta: AnalyticsScopeMeta` (non-Option in the backend) alongside the flattened
+// benchmarks fields.
+export type BenchmarksResponse = BenchmarksResponseWithMeta
 
 interface UseBenchmarksOptions {
   range?: 'all' | '30d' | '90d' | '1y'

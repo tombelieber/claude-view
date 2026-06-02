@@ -1,13 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import type { InsightsTrendsResponse as GeneratedInsightsTrendsResponse } from '../types/generated/InsightsTrendsResponse'
-import type { AnalyticsScopeContractMeta } from './use-dashboard'
+import type { InsightsTrendsResponse } from '../types/generated/InsightsTrendsResponse'
 
-type InsightsTrendsMetaWithScope = GeneratedInsightsTrendsResponse['meta'] &
-  AnalyticsScopeContractMeta
-
-export type InsightsTrendsResponse = Omit<GeneratedInsightsTrendsResponse, 'meta'> & {
-  meta: InsightsTrendsMetaWithScope
-}
+// The generated `InsightsTrendsResponse.meta` (`InsightsTrendsMeta`) already models
+// the always-present `dataScope` + `sessionBreakdown` scope fields as required.
+export type { InsightsTrendsResponse } from '../types/generated/InsightsTrendsResponse'
 
 // ============================================================================
 // Types

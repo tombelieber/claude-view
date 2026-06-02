@@ -46,7 +46,7 @@ impl ConversationBlock {
 
 // ── Image content ─────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "camelCase")]
 pub struct ImageContent {
@@ -351,6 +351,7 @@ pub enum SystemVariant {
     AgentName,
     Attachment,
     PermissionModeChange,
+    Mode,
     ScheduledTaskFire,
     AwaySummary,
     Unknown,
@@ -792,11 +793,12 @@ mod tests {
             SystemVariant::AgentName,
             SystemVariant::Attachment,
             SystemVariant::PermissionModeChange,
+            SystemVariant::Mode,
             SystemVariant::ScheduledTaskFire,
             SystemVariant::AwaySummary,
             SystemVariant::Unknown,
         ];
-        assert_eq!(variants.len(), 26);
+        assert_eq!(variants.len(), 27);
         for variant in &variants {
             let block = SystemBlock {
                 id: "s1".into(),

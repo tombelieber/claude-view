@@ -10,7 +10,6 @@ interface PluginsQueryParams {
   source?: string
   kind?: string
   search?: string
-  sort?: string
 }
 
 async function fetchPlugins(params: PluginsQueryParams): Promise<PluginsResponse> {
@@ -19,7 +18,6 @@ async function fetchPlugins(params: PluginsQueryParams): Promise<PluginsResponse
   if (params.source) search.set('source', params.source)
   if (params.kind) search.set('kind', params.kind)
   if (params.search) search.set('search', params.search)
-  if (params.sort) search.set('sort', params.sort)
   const qs = search.toString()
   const res = await fetch(`/api/plugins${qs ? `?${qs}` : ''}`)
   if (!res.ok) throw new Error('Failed to fetch plugins')

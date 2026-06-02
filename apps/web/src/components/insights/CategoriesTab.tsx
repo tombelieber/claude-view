@@ -1,47 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useCategories } from '../../hooks/use-categories'
 import type { TimeRange } from '../../hooks/use-insights'
+import { resolveSessionBreakdown, scopeLabel } from '../../lib/analytics-scope'
 import type { CategoryNode } from '../../types/generated/CategoryNode'
 import { CategoriesVisualization } from './CategoriesVisualization'
 import { CategoryDrillDown } from './CategoryDrillDown'
 import { CategoryStatsSummary } from './CategoryStatsSummary'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? 0
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 interface CategoriesTabProps {
   timeRange: TimeRange
@@ -112,10 +76,10 @@ export function CategoriesTab({ timeRange }: CategoriesTabProps) {
 
   if (!data) return null
 
-  const scopeMeta = data.meta as ScopeMeta | undefined
+  const scopeMeta = data.meta
   const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
   const disclosure = (
     <p className="text-xs text-gray-500 dark:text-gray-400">
       Session counts show {sessionsScope}. Workload metrics include {workloadScope}. Observed

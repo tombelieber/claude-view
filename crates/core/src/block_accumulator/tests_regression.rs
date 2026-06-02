@@ -304,6 +304,101 @@ fn permission_mode_top_level_type_produces_system_block() {
     }
 }
 
+#[test]
+fn mode_top_level_type_produces_system_block() {
+    // Finding E (2026-06-02): real ~/.claude JSONL emits 542 records of
+    // {"type":"mode","mode":"normal","sessionId":...} (no timestamp). This is
+    // a sibling of "permission-mode" and was silently dropped by the `_ => {}`
+    // arm. It must produce a SystemBlock preserving the raw payload verbatim.
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({
+        "type": "mode",
+        "mode": "normal",
+        "sessionId": "s1"
+    }));
+    let blocks = acc.finalize();
+    assert_eq!(blocks.len(), 1);
+    match &blocks[0] {
+        ConversationBlock::System(sys) => {
+            assert_eq!(sys.variant, SystemVariant::Mode);
+            assert_eq!(
+                sys.data.get("mode").and_then(|v| v.as_str()),
+                Some("normal")
+            );
+            assert_eq!(
+                sys.data.get("sessionId").and_then(|v| v.as_str()),
+                Some("s1")
+            );
+        }
+        other => panic!("Expected SystemBlock, got {:?}", other),
+    }
+}
+
+#[test]
+fn orphan_tool_results_produce_distinct_per_result_blocks() {
+    // Finding L (2026-06-02): orphan tool_result fallback used to clone the
+    // whole parent `entry` once per result. If CC ever emits >1 tool_result
+    // in a single user message with no matching assistant tool_use, that
+    // duplicated the entire user entry. Each orphan must instead carry ONLY
+    // its own result fields (tool_use_id, content, is_error).
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({
+        "type": "user",
+        "uuid": "u-orphan",
+        "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "tu-a", "content": "out A", "is_error": false},
+            {"type": "tool_result", "tool_use_id": "tu-b", "content": "out B", "is_error": true}
+        ]},
+        "timestamp": "2026-06-02T01:00:00.000Z"
+    }));
+    let blocks = acc.finalize();
+
+    let orphans: Vec<_> = blocks
+        .iter()
+        .filter_map(|b| match b {
+            ConversationBlock::System(sys) if sys.variant == SystemVariant::Unknown => Some(sys),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        orphans.len(),
+        2,
+        "two orphan tool_results must yield two distinct System blocks"
+    );
+
+    // First orphan carries only result A's fields -- not the whole user entry.
+    assert_eq!(
+        orphans[0].data.get("tool_use_id").and_then(|v| v.as_str()),
+        Some("tu-a")
+    );
+    assert_eq!(
+        orphans[0].data.get("content").and_then(|v| v.as_str()),
+        Some("out A")
+    );
+    assert_eq!(
+        orphans[0].data.get("is_error").and_then(|v| v.as_bool()),
+        Some(false)
+    );
+    assert!(
+        orphans[0].data.get("message").is_none(),
+        "orphan must NOT carry the whole parent user entry"
+    );
+
+    // Second orphan carries only result B's fields.
+    assert_eq!(
+        orphans[1].data.get("tool_use_id").and_then(|v| v.as_str()),
+        Some("tu-b")
+    );
+    assert_eq!(
+        orphans[1].data.get("content").and_then(|v| v.as_str()),
+        Some("out B")
+    );
+    assert_eq!(
+        orphans[1].data.get("is_error").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+}
+
 // ── Team transcript tests ───────────────────────────────────────
 
 #[test]

@@ -1,13 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import type { CategoriesResponse as GeneratedCategoriesResponse } from '../types/generated/CategoriesResponse'
-import type { AnalyticsScopeContractMeta } from './use-dashboard'
+import type { CategoriesResponse } from '../types/generated/CategoriesResponse'
 import type { TimeRange } from './use-insights'
 
-type CategoriesMetaWithScope = GeneratedCategoriesResponse['meta'] & AnalyticsScopeContractMeta
-
-export type CategoriesResponse = Omit<GeneratedCategoriesResponse, 'meta'> & {
-  meta: CategoriesMetaWithScope
-}
+// The generated `CategoriesResponse.meta` (`CategoriesMeta`) already models the
+// always-present `dataScope` + `sessionBreakdown` scope fields as required, so
+// use the generated contract directly.
+export type { CategoriesResponse } from '../types/generated/CategoriesResponse'
 
 // ============================================================================
 // Helpers

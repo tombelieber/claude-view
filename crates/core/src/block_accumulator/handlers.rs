@@ -72,13 +72,13 @@ impl BlockAccumulator {
             .any(|block| block.get("type").and_then(|t| t.as_str()) == Some("tool_result"));
 
         if is_tool_result {
-            self.handle_user_tool_result(arr, entry);
+            self.handle_user_tool_result(arr);
         } else {
             self.handle_user_message(arr, entry);
         }
     }
 
-    fn handle_user_tool_result(&mut self, arr: &[Value], entry: &Value) {
+    fn handle_user_tool_result(&mut self, arr: &[Value]) {
         let tool_results = extract_tool_results(arr);
         for tr in tool_results {
             let matched = self
@@ -87,12 +87,22 @@ impl BlockAccumulator {
                 .and_then(|b| b.attach_tool_result(&tr.tool_use_id, &tr.output, tr.is_error));
 
             if matched.is_none() {
-                // Orphaned tool_result
+                // Orphaned tool_result (no matching assistant tool_use).
+                // Emit a per-result block carrying ONLY this result's fields --
+                // never the whole parent `entry`, which would duplicate the
+                // entire user message once per result when CC emits >1
+                // tool_result in a single user message.
+                let data = serde_json::json!({
+                    "type": "tool_result",
+                    "tool_use_id": tr.tool_use_id,
+                    "content": tr.output,
+                    "is_error": tr.is_error,
+                });
                 self.blocks.push(ConversationBlock::System(SystemBlock {
                     id: self.make_id("sys"),
                     variant: SystemVariant::Unknown,
-                    data: entry.clone(),
-                    raw_json: Some(entry.clone()),
+                    data: data.clone(),
+                    raw_json: Some(data),
                 }));
             }
         }
@@ -548,6 +558,15 @@ impl BlockAccumulator {
         self.blocks.push(ConversationBlock::System(SystemBlock {
             id: self.make_id("sys"),
             variant: SystemVariant::PermissionModeChange,
+            data: entry.clone(),
+            raw_json: None,
+        }));
+    }
+
+    pub(super) fn handle_mode(&mut self, entry: &Value) {
+        self.blocks.push(ConversationBlock::System(SystemBlock {
+            id: self.make_id("sys"),
+            variant: SystemVariant::Mode,
             data: entry.clone(),
             raw_json: None,
         }));

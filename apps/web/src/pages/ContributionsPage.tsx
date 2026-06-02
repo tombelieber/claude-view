@@ -15,44 +15,8 @@ import { UncommittedWorkSection } from '../components/contributions/UncommittedW
 import { WarningBanner } from '../components/contributions/WarningBanner'
 import { type ContributionsTimeRange, useContributions } from '../hooks/use-contributions'
 import { useTimeRange } from '../hooks/use-time-range'
+import { resolveSessionBreakdown, scopeLabel } from '../lib/analytics-scope'
 import { buildSessionUrl } from '../lib/url-utils'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 /**
  * ContributionsPage - AI Contribution Tracking dashboard.
@@ -173,10 +137,10 @@ export function ContributionsPage() {
   }
 
   const sessionCount = data.overview.fluency.sessions
-  const scopeMeta = data.meta as ScopeMeta | undefined
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
-  const sessionBreakdown = resolveSessionBreakdown(scopeMeta, Number(sessionCount))
+  const scopeMeta = data.meta
+  const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
+  const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
 
   return (
     <div className="h-full overflow-y-auto overflow-x-hidden p-6">

@@ -1,6 +1,7 @@
 import type {
   AssistantBlock,
   ConversationBlock,
+  ImageContent,
   ProgressBlock,
   SystemBlock,
   ToolExecution,
@@ -25,6 +26,7 @@ interface HistoricalMessage {
   metadata?: unknown
   category?: string | null
   raw_json?: unknown
+  images?: Array<ImageContent>
 }
 
 let _counter = 0
@@ -50,6 +52,7 @@ export function historyToBlocks(messages: HistoricalMessage[]): ConversationBloc
           timestamp: msg.timestamp ? new Date(msg.timestamp).getTime() / 1000 : 0,
           status: 'sent',
           parentUuid: msg.parent_uuid ?? undefined,
+          images: msg.images && msg.images.length > 0 ? msg.images : undefined,
           rawJson: msg.raw_json as Record<string, unknown> | undefined,
         }
         blocks.push(block)

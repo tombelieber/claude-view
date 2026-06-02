@@ -106,14 +106,14 @@ describe('useTrendsData', () => {
     )
 
     await waitFor(() => {
-      expect(result.current.data?.meta.dataScope?.sessions).toBe('primary_sessions_only')
+      expect(result.current.data?.meta.dataScope.sessions).toBe('primary_sessions_only')
     })
 
-    expect(result.current.data?.meta.dataScope?.workload).toBe('primary_plus_subagent_work')
-    expect(result.current.data?.meta.sessionBreakdown?.primarySessions).toBe(1)
-    expect(result.current.data?.meta.sessionBreakdown?.sidechainSessions).toBe(4)
-    expect(result.current.data?.meta.sessionBreakdown?.otherSessions).toBe(2)
-    expect(result.current.data?.meta.sessionBreakdown?.totalObservedSessions).toBe(7)
+    expect(result.current.data?.meta.dataScope.workload).toBe('primary_plus_subagent_work')
+    expect(result.current.data?.meta.sessionBreakdown.primarySessions).toBe(1)
+    expect(result.current.data?.meta.sessionBreakdown.sidechainSessions).toBe(4)
+    expect(result.current.data?.meta.sessionBreakdown.otherSessions).toBe(2)
+    expect(result.current.data?.meta.sessionBreakdown.totalObservedSessions).toBe(7)
   })
 
   it('sends range-only payload without from/to', async () => {

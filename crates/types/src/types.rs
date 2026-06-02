@@ -78,6 +78,11 @@ pub struct Message {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub raw_json: Option<serde_json::Value>,
+    /// Images (pasted screenshots) attached to this message. Empty for the
+    /// vast majority of messages; populated so HTML/PDF/Markdown export and
+    /// shared sessions reach parity with the in-app block view.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub images: Vec<crate::block_types::ImageContent>,
 }
 
 impl Message {
@@ -94,6 +99,7 @@ impl Message {
             metadata: None,
             category: None,
             raw_json: None,
+            images: Vec::new(),
         }
     }
 
@@ -152,6 +158,11 @@ impl Message {
 
     pub fn with_raw_json(mut self, raw: serde_json::Value) -> Self {
         self.raw_json = Some(raw);
+        self
+    }
+
+    pub fn with_images(mut self, images: Vec<crate::block_types::ImageContent>) -> Self {
+        self.images = images;
         self
     }
 }
@@ -646,6 +657,11 @@ pub fn parse_model_id(model_str: &str) -> (&str, &str) {
 #[derive(Debug, Clone, Deserialize)]
 pub struct JsonlMessage {
     pub role: Option<String>,
+    // Claude Code always emits message.content today, but a tool-only or
+    // refusal record could omit it. `#[serde(default)]` keeps such a record
+    // alive (empty content) instead of failing `from_value` and silently
+    // dropping the whole message on the /parsed + legacy /messages path.
+    #[serde(default)]
     pub content: JsonlContent,
 }
 
@@ -654,6 +670,12 @@ pub struct JsonlMessage {
 pub enum JsonlContent {
     Text(String),
     Blocks(Vec<ContentBlock>),
+}
+
+impl Default for JsonlContent {
+    fn default() -> Self {
+        JsonlContent::Blocks(Vec::new())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -673,6 +695,14 @@ pub enum ContentBlock {
     ToolResult {
         #[serde(default)]
         content: Option<serde_json::Value>,
+    },
+    /// User-pasted image / screenshot. The raw block is
+    /// `{type:"image", source:{type, media_type, url?, data?}}`; the simple
+    /// parser keeps the `source` verbatim so export/share reach feature
+    /// parity with the block accumulator (which already renders images).
+    Image {
+        #[serde(default)]
+        source: serde_json::Value,
     },
     #[serde(other)]
     Other,

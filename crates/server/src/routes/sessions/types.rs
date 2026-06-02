@@ -117,7 +117,8 @@ pub struct SessionDetail {
     /// Persistent task data from ~/.claude/tasks/{sessionId}/*.json
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tasks: Vec<TaskItem>,
-    /// Agent-level todo checklists from ~/.claude/todos/{sessionId}-agent-{agentId}.json
+    /// Agent-level todo checklists extracted from the session JSONL's
+    /// inline `TodoWrite` tool_use blocks (latest checklist per agent).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub todos: Vec<AgentTodos>,
     /// Whether plan files exist for this session's slug

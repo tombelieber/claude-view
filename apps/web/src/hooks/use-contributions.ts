@@ -1,24 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import type {
-  BranchSessionsResponse as GeneratedBranchSessionsResponse,
-  ContributionsResponse as GeneratedContributionsResponse,
-  SessionContributionResponse as GeneratedSessionContributionResponse,
+  BranchSessionsResponse,
+  ContributionsResponse,
+  SessionContributionResponse,
 } from '../types/generated'
-import type { AnalyticsScopeContractMeta } from './use-dashboard'
 import { HttpError, isNotFoundError } from './use-session'
 import type { TimeRangePreset } from './use-time-range'
 
-export type ContributionsResponse = GeneratedContributionsResponse & {
-  meta?: AnalyticsScopeContractMeta
-}
-
-export type SessionContributionResponse = GeneratedSessionContributionResponse & {
-  meta?: AnalyticsScopeContractMeta
-}
-
-export type BranchSessionsResponse = GeneratedBranchSessionsResponse & {
-  meta?: AnalyticsScopeContractMeta
-}
+// All three contribution responses carry an always-present `meta: AnalyticsScopeMeta`
+// (non-Option in the backend), so use the generated contract directly.
+export type {
+  BranchSessionsResponse,
+  ContributionsResponse,
+  SessionContributionResponse,
+} from '../types/generated'
 
 /**
  * Map frontend presets to the contributions API's expected range strings.

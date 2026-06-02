@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::extract::{Path, State};
 use axum::Json;
-use claude_view_core::{session_stats, task_files, todo_files};
+use claude_view_core::{session_stats, task_files, todo_extract};
 
 use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
@@ -22,7 +22,8 @@ use super::types::{CommitWithTier, DerivedMetrics, SessionDetail};
 ///      skills, reedit_rate). Single-id call here; same layer as list path.
 ///   4. `get_commits_for_session` — per-session linked commit detail (full tier +
 ///      evidence), not derivable from JSONL so still DB-backed.
-///   5. Read task/todo/plan files from `~/.claude/{tasks,todos,plans}`.
+///   5. Read task/plan files from `~/.claude/{tasks,plans}`; extract
+///      agent todos inline from the session JSONL (TodoWrite blocks).
 #[utoipa::path(get, path = "/api/sessions/{id}", tag = "sessions",
     params(("id" = String, Path, description = "Session ID")),
     responses(
@@ -81,7 +82,7 @@ pub async fn get_session_detail(
 
     let derived_metrics = DerivedMetrics::from(&info);
 
-    // 5. Task / todo / plan sidecar files.
+    // 5. Task / plan sidecar files (+ inline JSONL todos below).
     let mut warnings: Vec<String> = Vec::new();
 
     let tasks = match task_files::claude_tasks_dir() {
@@ -94,10 +95,12 @@ pub async fn get_session_detail(
         }
     };
 
-    let todos = match todo_files::claude_todos_dir() {
-        Some(dir) => todo_files::parse_session_todos(&dir, &session_id),
-        None => Vec::new(),
-    };
+    // Agent-level todos. Claude Code no longer writes the on-disk
+    // ~/.claude/todos/ files; TodoWrite output now lives inline in the
+    // session JSONL as a `tool_use` block. Extract the latest checklist
+    // per agent from the JSONL (and any subagents/ logs) — same
+    // `AgentTodos` contract as the legacy on-disk reader.
+    let todos = todo_extract::extract_session_todos(&row.file_path, row.is_compressed, &session_id);
 
     let has_plans =
         info.slug.as_ref().is_some_and(

@@ -12,22 +12,37 @@ use tracing::{debug, warn};
 // Deserialization types for installed_plugins.json
 // ---------------------------------------------------------------------------
 
+// Every field is `#[serde(default)]` so a single malformed entry -- or a
+// changed JSON type on any field -- can never fail the whole-file parse and
+// silently wipe out ALL plugin-sourced skills/commands/agents/MCP tools from
+// the registry. (Boundary normalizer must be truthful: external data structs
+// reading ~/.claude/ files must default ALL fields.)
 #[derive(Debug, Deserialize)]
 pub(crate) struct InstalledPlugins {
+    // Typed as `serde_json::Value` (not `u32`/`Option<u32>`) so that a schema
+    // change -- e.g. the top-level `version` becoming a string `"2"` instead of
+    // an int `2` -- cannot fail deserialization. The value is unused; we only
+    // need the parse to succeed so `plugins` survives.
     #[allow(dead_code)]
-    pub(crate) version: u32,
+    #[serde(default)]
+    pub(crate) version: serde_json::Value,
+    #[serde(default)]
     pub(crate) plugins: HashMap<String, Vec<PluginEntry>>,
 }
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct PluginEntry {
     #[allow(dead_code)]
+    #[serde(default)]
     pub(crate) scope: String,
     #[serde(rename = "installPath")]
+    #[serde(default)]
     pub(crate) install_path: String,
     #[allow(dead_code)]
+    #[serde(default)]
     pub(crate) version: String,
     #[serde(rename = "installedAt")]
+    #[serde(default)]
     #[allow(dead_code)]
     pub(crate) installed_at: String,
 }

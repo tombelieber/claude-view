@@ -1,10 +1,25 @@
-//! Parser for ~/.claude/todos/{sessionId}-agent-{agentId}.json agent-level todo files.
+//! Agent-level todo (`TodoWrite`) types + **legacy** on-disk reader.
 //!
 //! TodoWrite tool outputs — the agent-level equivalent of TaskCreate.
 //! When sessionId == agentId → main agent's todos.
 //! When sessionId != agentId → subagent's todos.
 //!
-//! 96% of files are empty arrays. Only non-empty files are returned.
+//! ## Source moved — read this before reusing the reader below
+//!
+//! Claude Code **no longer writes** the
+//! `~/.claude/todos/{sessionId}-agent-{agentId}.json` files this module
+//! parses; that directory is gone on disk. TodoWrite output now lives
+//! **inline in the session JSONL** as a `tool_use` block. The live
+//! extraction path is [`crate::todo_extract::extract_session_todos`],
+//! which produces the **same** [`AgentTodos`] contract.
+//!
+//! [`TodoItem`] / [`AgentTodos`] remain the canonical API types (the
+//! detail endpoint and `ts-rs` bindings depend on them). The file
+//! reader ([`parse_session_todos`] / [`claude_todos_dir`]) is retained
+//! only for the historical on-disk format and is **not wired into any
+//! production path** — do not re-point new callers at it.
+//!
+//! 96% of files were empty arrays. Only non-empty files are returned.
 //! On-demand read, NO SQLite indexing — follows task_files.rs pattern.
 
 use serde::{Deserialize, Serialize};

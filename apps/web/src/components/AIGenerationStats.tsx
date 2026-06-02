@@ -5,45 +5,9 @@ import {
   useAIGenerationStats,
 } from '../hooks/use-ai-generation'
 import { useIsMobile } from '../hooks/use-media-query'
+import { resolveSessionBreakdown, scopeLabel } from '../lib/analytics-scope'
 import { formatModelName } from '../lib/format-model'
 import { ProgressBar } from './ui'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? 0
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 interface AIGenerationStatsProps {
   /** Optional time range filter */
@@ -106,9 +70,9 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
   // Check if we have any meaningful data for the by-model / by-project breakdowns
   const hasModelData = stats.tokensByModel.length > 0
   const hasProjectData = stats.tokensByProject.length > 0
-  const scopeMeta = stats.meta as ScopeMeta | undefined
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const scopeMeta = stats.meta
+  const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
   const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
 
   // Headline tokens + cost now live in TokenCostSummary at the top of the dashboard.

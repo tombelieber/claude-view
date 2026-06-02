@@ -330,4 +330,94 @@ mod tests {
         assert_eq!(InvocableKind::McpTool.to_string(), "mcp_tool");
         assert_eq!(InvocableKind::BuiltinTool.to_string(), "builtin_tool");
     }
+
+    // -----------------------------------------------------------------------
+    // installed_plugins.json boundary-normalization (Finding D)
+    //
+    // The deserializer must be truthful and robust: a single malformed entry --
+    // or a top-level `version` whose JSON type changes -- must NOT fail the
+    // whole-file parse and silently wipe out every plugin-sourced invocable.
+    // -----------------------------------------------------------------------
+
+    /// Write `contents` to a temp `installed_plugins.json` and parse it.
+    fn parse_installed_plugins(contents: &str) -> super::super::parse::InstalledPlugins {
+        use std::io::Write;
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("installed_plugins.json");
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(contents.as_bytes()).unwrap();
+        super::super::parse::read_installed_plugins(&path)
+            .expect("read_installed_plugins should not return None for valid JSON")
+    }
+
+    #[test]
+    fn test_installed_plugins_partial_entry_does_not_fail_whole_file() {
+        // One entry is missing scope/installPath/version/installedAt; a sibling
+        // entry is fully valid. The partial entry must NOT poison the parse --
+        // the valid entry (and the partial one) must both survive.
+        let json = r#"{
+            "version": 2,
+            "plugins": {
+                "broken@marketplace": [
+                    {}
+                ],
+                "good@marketplace": [
+                    {
+                        "scope": "user",
+                        "installPath": "/some/path/good",
+                        "version": "1.2.3",
+                        "installedAt": "2026-01-01T00:00:00Z"
+                    }
+                ]
+            }
+        }"#;
+
+        let parsed = parse_installed_plugins(json);
+
+        // Both plugins survived -- no whole-file failure.
+        assert_eq!(parsed.plugins.len(), 2);
+
+        // The valid entry kept all its fields.
+        let good = &parsed.plugins["good@marketplace"][0];
+        assert_eq!(good.install_path, "/some/path/good");
+
+        // The broken entry defaulted every missing field instead of aborting.
+        let broken = &parsed.plugins["broken@marketplace"][0];
+        assert_eq!(broken.install_path, "");
+    }
+
+    #[test]
+    fn test_installed_plugins_top_level_version_as_string() {
+        // The top-level `version` is a STRING "2" instead of an int. This must
+        // still parse (it is typed as serde_json::Value), and `plugins` must
+        // survive intact.
+        let json = r#"{
+            "version": "2",
+            "plugins": {
+                "good@marketplace": [
+                    {
+                        "scope": "user",
+                        "installPath": "/some/path/good",
+                        "version": "1.2.3",
+                        "installedAt": "2026-01-01T00:00:00Z"
+                    }
+                ]
+            }
+        }"#;
+
+        let parsed = parse_installed_plugins(json);
+
+        assert_eq!(parsed.plugins.len(), 1);
+        assert_eq!(
+            parsed.plugins["good@marketplace"][0].install_path,
+            "/some/path/good"
+        );
+    }
+
+    #[test]
+    fn test_installed_plugins_missing_version_and_plugins() {
+        // An empty object must parse to an empty plugin map rather than failing.
+        let parsed = parse_installed_plugins("{}");
+        assert!(parsed.plugins.is_empty());
+    }
 }

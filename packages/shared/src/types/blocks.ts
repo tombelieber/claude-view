@@ -47,8 +47,11 @@ export type { ActionCategory } from './generated/ActionCategory'
 export type ImageContent = {
   sourceType: string
   mediaType: string
-  url?: string
-  data?: string
+  // `string | null` mirrors the Rust contract (Option<String> → ts-rs emits
+  // `string | null`), so this hand-maintained shared type stays structurally
+  // assignment-compatible with the generated `Message.images` / `ImageContent`.
+  url?: string | null
+  data?: string | null
 }
 
 // ── UserBlock ───────────────────────────────────────────────────────────────

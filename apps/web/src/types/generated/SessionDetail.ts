@@ -16,7 +16,8 @@ export type SessionDetail = {
    */
   tasks?: Array<TaskItem>
   /**
-   * Agent-level todo checklists from ~/.claude/todos/{sessionId}-agent-{agentId}.json
+   * Agent-level todo checklists extracted from the session JSONL's
+   * inline `TodoWrite` tool_use blocks (latest checklist per agent).
    */
   todos?: Array<AgentTodos>
   /**

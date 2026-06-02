@@ -24,5 +24,7 @@ export type SystemVariant =
   | 'agent_name'
   | 'attachment'
   | 'permission_mode_change'
+  | 'mode'
   | 'scheduled_task_fire'
+  | 'away_summary'
   | 'unknown'

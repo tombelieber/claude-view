@@ -1,6 +1,5 @@
 //! File history endpoints for session file diffs.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use axum::{
@@ -12,6 +11,7 @@ use claude_view_core::file_history::{self, FileDiffResponse, FileHistoryResponse
 use serde::Deserialize;
 
 use crate::error::{ApiError, ApiResult};
+use crate::routes::sessions::resolve_session_file_path;
 use crate::state::AppState;
 
 #[derive(Deserialize, utoipa::IntoParams)]
@@ -35,20 +35,11 @@ pub async fn get_file_history(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<FileHistoryResponse>> {
-    // Source the JSONL path from the catalog adapter (session_stats →
-    // fallback to in-memory catalog), then use the DB helper as a final
-    // session_stats lookup before reporting 404.
-    let jsonl_path = match state.session_catalog_adapter.get(&session_id).await {
-        Some(row) => row.file_path,
-        None => {
-            let legacy = state
-                .db
-                .get_session_file_path(&session_id)
-                .await?
-                .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
-            PathBuf::from(legacy)
-        }
-    };
+    // Resolve the JSONL path via the shared 3-tier resolver (adapter →
+    // in-memory catalog → DB → live). The sibling `get_file_diff` endpoint
+    // resolves the same way, so the list and diff panels stay in lockstep:
+    // both succeed (or both 404) for any given session.
+    let jsonl_path = resolve_session_file_path(&state, &session_id).await?;
 
     let history_dir = file_history::claude_file_history_dir()
         .ok_or_else(|| ApiError::Internal("Cannot determine home directory".to_string()))?;
@@ -87,12 +78,14 @@ pub async fn get_file_diff(
     // Validate file_hash against path traversal
     file_history::validate_file_hash(&file_hash).map_err(ApiError::BadRequest)?;
 
-    // Verify session exists and get its JSONL path
-    let jsonl_path = state
-        .db
-        .get_session_file_path(&session_id)
-        .await?
-        .ok_or_else(|| ApiError::SessionNotFound(session_id.clone()))?;
+    // Resolve the JSONL path via the shared 3-tier resolver (adapter →
+    // in-memory catalog → DB → live). This keeps the diff endpoint at
+    // parity with the sibling `get_file_history` list endpoint: both must
+    // resolve identically so a freshly-created/recently-modified session
+    // (resolved from the in-memory catalog before the indexer writes
+    // session_stats) renders the list AND the diff, instead of the diff
+    // 404ing while the list succeeds.
+    let jsonl_path = resolve_session_file_path(&state, &session_id).await?;
 
     let history_dir = file_history::claude_file_history_dir()
         .ok_or_else(|| ApiError::Internal("Cannot determine home directory".to_string()))?;
@@ -100,7 +93,7 @@ pub async fn get_file_diff(
     let from = query.from;
     let to = query.to;
     let hash = file_hash.clone();
-    let jsonl = PathBuf::from(jsonl_path);
+    let jsonl = jsonl_path;
     let provided_file_path = query.file_path;
     let sid = session_id.clone();
 

@@ -146,6 +146,18 @@ export function useSessionChannel(options: UseSessionChannelOptions): UseSession
               next.set(block.id, block)
               return next
             })
+          } else {
+            // Missing id/type = upstream bug. Drop and surface the error
+            // (mirrors normalizeBlocks in packages/shared/src/utils/normalize-block.ts).
+            const obj = block as unknown as Record<string, unknown>
+            console.error(
+              '[useSessionChannel] dropped block_delta with missing id/type — upstream bug:',
+              {
+                type: obj.type,
+                variant: obj.variant,
+                keys: Object.keys(obj),
+              },
+            )
           }
           break
         }

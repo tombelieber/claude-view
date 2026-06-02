@@ -496,7 +496,7 @@ async fn handle_client_message(
             "mode" => {
                 // Update the display mode mid-stream
                 if let Some(new_mode) = &msg.mode {
-                    if new_mode == "raw" || new_mode == "rich" {
+                    if matches!(new_mode.as_str(), "raw" | "rich" | "block") {
                         *current_mode = new_mode.clone();
                         tracing::debug!(
                             session_id = %session_id,

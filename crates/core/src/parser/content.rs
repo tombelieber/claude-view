@@ -4,8 +4,44 @@
 //! Handles both string and array content formats, extracts tool calls,
 //! thinking text, and tool result content from various block types.
 
+use crate::block_types::ImageContent;
 use crate::category::categorize_tool;
 use crate::types::{ContentBlock, JsonlContent, ToolCall};
+
+/// Extract pasted images from a raw `message.content[]` array.
+///
+/// Mirrors the block_accumulator's image handling (block_accumulator/content.rs)
+/// byte-for-byte so the simple parser — used by `/parsed`, HTML/PDF/Markdown
+/// export, and the share serializer — reaches feature parity. The raw `source`
+/// shape is `{type, media_type, url?, data?}`.
+pub(super) fn extract_images(content: &[serde_json::Value]) -> Vec<ImageContent> {
+    content
+        .iter()
+        .filter_map(|item| {
+            if item.get("type").and_then(|v| v.as_str()) != Some("image") {
+                return None;
+            }
+            let source = item.get("source")?;
+            Some(ImageContent {
+                source_type: source
+                    .get("type")
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                media_type: source
+                    .get("media_type")
+                    .and_then(|m| m.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+                url: source.get("url").and_then(|u| u.as_str()).map(String::from),
+                data: source
+                    .get("data")
+                    .and_then(|d| d.as_str())
+                    .map(String::from),
+            })
+        })
+        .collect()
+}
 
 /// Extract readable content from tool_result array blocks.
 pub(super) fn extract_tool_result_content(blocks: &[serde_json::Value]) -> String {
@@ -219,5 +255,34 @@ mod tests {
         assert_eq!(text, "");
         assert!(tools.is_empty());
         assert_eq!(thinking, Some("Just thinking...".to_string()));
+    }
+
+    #[test]
+    fn test_extract_images_base64_and_url() {
+        // Mirrors the real Claude Code image block shape: a user content array
+        // mixing text + image blocks (base64-data and url source variants).
+        let content = serde_json::json!([
+            {"type": "text", "text": "look at this"},
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}},
+            {"type": "image", "source": {"type": "url", "media_type": "image/jpeg", "url": "https://x/y.jpg"}}
+        ]);
+        let images = extract_images(content.as_array().unwrap());
+        assert_eq!(images.len(), 2, "both image blocks must be extracted");
+
+        assert_eq!(images[0].source_type, "base64");
+        assert_eq!(images[0].media_type, "image/png");
+        assert_eq!(images[0].data.as_deref(), Some("AAAA"));
+        assert_eq!(images[0].url, None);
+
+        assert_eq!(images[1].source_type, "url");
+        assert_eq!(images[1].media_type, "image/jpeg");
+        assert_eq!(images[1].url.as_deref(), Some("https://x/y.jpg"));
+        assert_eq!(images[1].data, None);
+    }
+
+    #[test]
+    fn test_extract_images_none_for_text_only() {
+        let content = serde_json::json!([{"type": "text", "text": "no images here"}]);
+        assert!(extract_images(content.as_array().unwrap()).is_empty());
     }
 }

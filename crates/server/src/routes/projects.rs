@@ -95,8 +95,9 @@ pub struct SessionsQuery {
     pub offset: i64,
     #[serde(default = "default_sort")]
     pub sort: String,
-    /// Accepted for API compatibility but not yet honored — branch filtering
-    /// requires per-session JSONL parse + git-branch derivation. Deferred.
+    /// Branch filter (sidebar Quick Jump). None/"" -> all branches,
+    /// "~" -> sessions with no git_branch, else exact `git_branch` match.
+    /// Applied via `BranchFilter` after enrichment, before pagination.
     pub branch: Option<String>,
     /// Accepted for API compatibility; the catalog already excludes sidechains.
     #[serde(default, alias = "include_sidechains")]
@@ -188,6 +189,11 @@ pub async fn list_project_sessions(
     if let "messages" = params.sort.as_str() {
         all_sessions.sort_by(|a, b| b.message_count.cmp(&a.message_count));
     }
+
+    // Honor the `branch` query param (sidebar Quick Jump). None -> All,
+    // "~" -> sessions with no git_branch, else exact branch match.
+    let bf = claude_view_core::BranchFilter::from_param(params.branch.as_deref());
+    all_sessions.retain(|info| bf.matches(info.git_branch.as_deref()));
 
     let total = all_sessions.len();
     let offset = params.offset.max(0) as usize;
@@ -313,5 +319,86 @@ mod tests {
         assert_eq!(parsed[1].name, "proj-bravo");
         assert_eq!(parsed[1].session_count, 1);
         assert_eq!(parsed[1].last_activity_at, Some(1_700_000_000));
+    }
+
+    /// Regression: the `branch` query param on the per-project sessions
+    /// endpoint must actually filter (it was a declared-but-ignored no-op).
+    /// Seeds three sessions in one project — two on named branches, one with
+    /// no git_branch — and asserts All / Named / NoBranch ("~") semantics.
+    #[tokio::test]
+    async fn list_project_sessions_honors_branch_param() {
+        let db = Database::new_in_memory().await.unwrap();
+
+        // (session_id, branch). branch=None seeds a NULL git_branch row.
+        for (idx, (sid, branch)) in [
+            ("s-main", Some("main")),
+            ("s-feat", Some("feature/x")),
+            ("s-none", None),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            sqlx::query(
+                r#"INSERT INTO session_stats (
+                       session_id, source_content_hash, source_size,
+                       parser_version, stats_version, indexed_at,
+                       last_message_at,
+                       project_id, file_path, is_compressed, source_mtime,
+                       git_branch
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            )
+            .bind(sid)
+            .bind(vec![idx as u8])
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_i64)
+            .bind(1_800_000_000_i64 + idx as i64)
+            .bind("proj-branch")
+            .bind(format!("/tmp/proj-branch/{sid}.jsonl"))
+            .bind(0_i64)
+            .bind(1_800_000_000_i64)
+            .bind(branch)
+            .execute(db.pool())
+            .await
+            .unwrap();
+        }
+
+        let app = crate::create_app(db);
+
+        // No branch param -> all three sessions.
+        let (status, body) = do_get(app.clone(), "/api/projects/proj-branch/sessions").await;
+        assert_eq!(status, StatusCode::OK);
+        let page: SessionsPage = serde_json::from_str(&body).unwrap();
+        assert_eq!(page.total, 3, "no branch filter must return all sessions");
+
+        // branch=main -> only the main-branch session.
+        let (_, body) = do_get(
+            app.clone(),
+            "/api/projects/proj-branch/sessions?branch=main",
+        )
+        .await;
+        let page: SessionsPage = serde_json::from_str(&body).unwrap();
+        assert_eq!(page.total, 1, "branch=main must return exactly one session");
+        assert_eq!(page.sessions[0].id, "s-main");
+
+        // branch=feature/x -> only that session (slashes survive routing).
+        let (_, body) = do_get(
+            app.clone(),
+            "/api/projects/proj-branch/sessions?branch=feature%2Fx",
+        )
+        .await;
+        let page: SessionsPage = serde_json::from_str(&body).unwrap();
+        assert_eq!(page.total, 1);
+        assert_eq!(page.sessions[0].id, "s-feat");
+
+        // branch=~ (NO_BRANCH_SENTINEL) -> only the NULL-branch session.
+        let (_, body) = do_get(app, "/api/projects/proj-branch/sessions?branch=~").await;
+        let page: SessionsPage = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            page.total, 1,
+            "branch=~ must return only NULL-branch sessions"
+        );
+        assert_eq!(page.sessions[0].id, "s-none");
     }
 }

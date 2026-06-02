@@ -51,6 +51,7 @@ pub mod task_files;
 pub mod telemetry_config;
 pub mod telemetry_events;
 pub mod time_range_contract;
+pub mod todo_extract;
 pub mod todo_files;
 pub mod transcript;
 pub use claude_view_types::types;

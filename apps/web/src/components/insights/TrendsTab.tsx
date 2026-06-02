@@ -6,46 +6,10 @@ import {
   type TrendsMetric,
   useTrendsData,
 } from '../../hooks/use-trends-data'
+import { resolveSessionBreakdown, scopeLabel } from '../../lib/analytics-scope'
 import { ActivityHeatmapGrid } from './ActivityHeatmapGrid'
 import { CategoryEvolutionChart } from './CategoryEvolutionChart'
 import { TrendsChart } from './TrendsChart'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 // ============================================================================
 // Types
@@ -178,10 +142,10 @@ export function TrendsTab({ timeRange }: TrendsTabProps) {
     return <TrendsSkeleton />
   }
 
-  const scopeMeta = data.meta as ScopeMeta | undefined
-  const sessionBreakdown = resolveSessionBreakdown(scopeMeta, data.totalSessions)
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const scopeMeta = data.meta
+  const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
+  const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
 
   return (
     <div className="space-y-6 pt-4">

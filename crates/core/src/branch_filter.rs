@@ -23,6 +23,16 @@ impl<'a> BranchFilter<'a> {
             Some(s) => BranchFilter::Named(s),
         }
     }
+
+    /// Test whether a session's `git_branch` value satisfies this filter.
+    /// All -> always; NoBranch -> only NULL git_branch; Named(n) -> exact match.
+    pub fn matches(&self, git_branch: Option<&str>) -> bool {
+        match self {
+            BranchFilter::All => true,
+            BranchFilter::NoBranch => git_branch.is_none(),
+            BranchFilter::Named(n) => git_branch == Some(*n),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -58,5 +68,27 @@ mod tests {
             BranchFilter::from_param(Some("feature/auth")),
             BranchFilter::Named("feature/auth")
         );
+    }
+
+    #[test]
+    fn test_matches_all() {
+        let bf = BranchFilter::All;
+        assert!(bf.matches(None));
+        assert!(bf.matches(Some("main")));
+    }
+
+    #[test]
+    fn test_matches_no_branch() {
+        let bf = BranchFilter::NoBranch;
+        assert!(bf.matches(None));
+        assert!(!bf.matches(Some("main")));
+    }
+
+    #[test]
+    fn test_matches_named() {
+        let bf = BranchFilter::Named("main");
+        assert!(bf.matches(Some("main")));
+        assert!(!bf.matches(Some("dev")));
+        assert!(!bf.matches(None));
     }
 }

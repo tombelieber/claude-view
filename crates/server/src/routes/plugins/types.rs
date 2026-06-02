@@ -85,7 +85,7 @@ pub struct UserItemInfo {
     pub last_used_at: Option<i64>,
 }
 
-/// Query parameters for filtering and sorting the plugins list.
+/// Query parameters for filtering the plugins list.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginsQuery {
@@ -93,7 +93,6 @@ pub struct PluginsQuery {
     pub source: Option<String>,
     pub kind: Option<String>,
     pub search: Option<String>,
-    pub sort: Option<String>,
 }
 
 /// Full response for the plugins endpoint.

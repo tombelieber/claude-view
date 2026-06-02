@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
+import type { AnalyticsDataScopeMeta } from '../types/generated/AnalyticsDataScopeMeta'
+import type { AnalyticsSessionBreakdown } from '../types/generated/AnalyticsSessionBreakdown'
 import type { GeneratedInsight } from '../types/generated/GeneratedInsight'
 import type { InsightsResponse } from '../types/generated/InsightsResponse'
-import type { AnalyticsScopeContractMeta } from './use-dashboard'
 
 // ============================================================================
 // Time Range Types
@@ -67,8 +68,8 @@ export interface InsightsData {
     patternsReturned: number
     minSessionsRequired: number
     hasEnoughData: boolean
-    dataScope?: AnalyticsScopeContractMeta['dataScope']
-    sessionBreakdown?: AnalyticsScopeContractMeta['sessionBreakdown']
+    dataScope: AnalyticsDataScopeMeta
+    sessionBreakdown: AnalyticsSessionBreakdown
   }
 }
 
@@ -101,7 +102,7 @@ function timeRangeToBounds(timeRange: TimeRange): { from?: number; to?: number }
  * Map insights API response to UI data structure.
  */
 function mapApiToUi(api: InsightsResponse): InsightsData {
-  const apiMeta = api.meta as InsightsResponse['meta'] & AnalyticsScopeContractMeta
+  const apiMeta = api.meta
   const totalSessions = api.overview.workBreakdown.totalSessions
   const hasEnoughData = totalSessions >= 20
 

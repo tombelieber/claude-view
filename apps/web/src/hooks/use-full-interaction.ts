@@ -1,19 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
+import type { InteractionBlock } from '../types/generated/InteractionBlock'
+import type { PendingInteractionMeta } from '../types/generated/PendingInteractionMeta'
 
-export interface PendingInteractionMeta {
-  variant: 'permission' | 'question' | 'plan' | 'elicitation'
-  requestId: string
-  preview: string
-}
-
-export interface InteractionBlock {
-  id: string
-  variant: 'permission' | 'question' | 'plan' | 'elicitation'
-  requestId: string | null
-  resolved: boolean
-  historicalSource: string | null
-  data: unknown
-}
+// Re-export the ts-rs-generated contract so existing consumers/tests that
+// imported these types from this module keep working. The shapes are the
+// single source of truth in `../types/generated/` — never re-declare them.
+export type { InteractionBlock, PendingInteractionMeta }
 
 /**
  * Fetches the full interaction payload for a session's pending interaction.

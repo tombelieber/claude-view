@@ -10363,7 +10363,7 @@
                 "items": {
                   "$ref": "#/components/schemas/AgentTodos"
                 },
-                "description": "Agent-level todo checklists from ~/.claude/todos/{sessionId}-agent-{agentId}.json"
+                "description": "Agent-level todo checklists extracted from the session JSONL's\ninline `TodoWrite` tool_use blocks (latest checklist per agent)."
               },
               "warnings": {
                 "type": "array",

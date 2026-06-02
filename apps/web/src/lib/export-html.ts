@@ -1,3 +1,4 @@
+import type { ImageContent } from '../types/generated/ImageContent'
 import type { Message } from '../types/generated/Message'
 import type { ToolCall } from '../types/generated/ToolCall'
 import { formatTokenCount } from './format-utils'
@@ -317,6 +318,40 @@ function renderThinkingBlock(thinking: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// Image attachment rendering
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolves an ImageContent to an <img> src.
+ * Mirrors the in-app ChatUserBlock priority: inline base64 data first, then
+ * remote url. Returns null when neither is present so we render nothing.
+ */
+function imageSrc(img: ImageContent): string | null {
+  if (img.data) return `data:${img.mediaType};base64,${img.data}`
+  if (img.url) return img.url
+  return null
+}
+
+function renderImages(images?: Array<ImageContent>): string {
+  if (!images || images.length === 0) return ''
+
+  const imgs = images
+    .map((img) => {
+      const src = imageSrc(img)
+      if (!src) return ''
+      // src is either a data: URL or a remote http(s) url — escape quotes for
+      // attribute safety. alt is a fixed literal so no escaping needed.
+      const safeSrc = src.replace(/"/g, '&quot;')
+      return `<img class="message-image" src="${safeSrc}" alt="Pasted image" loading="lazy">`
+    })
+    .filter(Boolean)
+    .join('')
+
+  if (!imgs) return ''
+  return `<div class="message-images">${imgs}</div>`
+}
+
+// ---------------------------------------------------------------------------
 // Metadata header rendering
 // ---------------------------------------------------------------------------
 
@@ -410,6 +445,8 @@ function renderMessage(message: Message, thread?: ThreadInfo): string {
 
   const contentHtml = message.content.trim() ? markdownToHtml(message.content) : ''
 
+  const imagesHtml = renderImages(message.images)
+
   const toolCallsHtml = renderToolCalls(message.tool_calls || [])
 
   return `
@@ -426,6 +463,7 @@ function renderMessage(message: Message, thread?: ThreadInfo): string {
       <div class="message-content">
         ${thinkingHtml}
         ${contentHtml}
+        ${imagesHtml}
         ${toolCallsHtml}
       </div>
     </div>
@@ -878,6 +916,22 @@ body {
   white-space: pre-wrap;
 }
 
+/* --- Image Attachments --- */
+.message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.message-image {
+  max-width: 100%;
+  height: auto;
+  max-height: 480px;
+  border-radius: 8px;
+  border: 1px solid var(--border-primary);
+}
+
 /* --- Tool Badges --- */
 .tool-badge {
   display: inline-block;
@@ -1050,6 +1104,11 @@ body {
   }
 
   .thinking-block {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .message-image {
     break-inside: avoid;
     page-break-inside: avoid;
   }

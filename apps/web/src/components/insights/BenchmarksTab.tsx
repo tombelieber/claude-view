@@ -1,47 +1,11 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react'
 import { useBenchmarks } from '../../hooks/use-benchmarks'
 import type { TimeRange } from '../../hooks/use-insights'
+import { resolveSessionBreakdown, scopeLabel } from '../../lib/analytics-scope'
 import { CategoryPerformanceTable } from './CategoryPerformanceTable'
 import { MonthlyReportGenerator } from './MonthlyReportGenerator'
 import { SkillAdoptionImpact } from './SkillAdoptionImpact'
 import { ThenVsNow } from './ThenVsNow'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? 0
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 // ============================================================================
 // Types
@@ -166,10 +130,10 @@ export function BenchmarksTab({ timeRange }: BenchmarksTabProps) {
 
   if (!data) return null
 
-  const scopeMeta = data.meta as ScopeMeta | undefined
+  const scopeMeta = data.meta
   const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
 
   return (
     <div className="space-y-6">

@@ -9,7 +9,8 @@ use crate::state::AppState;
 /// Handshake message sent by the client on connection.
 #[derive(Debug, serde::Deserialize)]
 pub(super) struct HandshakeMessage {
-    /// Display mode: "raw" (default) or "rich" (structured JSONL parsing).
+    /// Display mode: "raw" (default), "rich" (structured JSONL parsing),
+    /// or "block" (conversation-block rendering).
     #[serde(default = "default_mode")]
     pub mode: String,
     /// Number of scrollback lines to send on connect (default: 100).
@@ -42,7 +43,7 @@ pub(super) const MAX_SCROLLBACK: usize = 5_000;
 pub(super) struct ClientMessage {
     #[serde(rename = "type")]
     pub msg_type: String,
-    /// New mode for "mode" messages: "raw" or "rich".
+    /// New mode for "mode" messages: "raw", "rich", or "block".
     #[serde(default)]
     pub mode: Option<String>,
     #[allow(dead_code)]

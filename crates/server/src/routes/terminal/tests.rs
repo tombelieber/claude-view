@@ -730,6 +730,146 @@ async fn ws_mode_switch() {
 }
 
 // =========================================================================
+// Test 6b: ws_mode_switch_to_block
+//
+// Regression: the mid-stream `{type:"mode"}` switch validator must accept
+// "block" (a first-class handshake + render mode), not just "raw"/"rich".
+// Before the fix the allowlist silently ignored a switch to "block", so the
+// stream kept emitting raw lines. This asserts a mid-stream switch to "block"
+// is ACCEPTED — newly-appended lines arrive as conversation blocks (type
+// discriminator = block kind, e.g. "user"), not raw `"line"` frames.
+// =========================================================================
+
+#[tokio::test]
+async fn ws_mode_switch_to_block() {
+    let tmp = tempfile::NamedTempFile::new().unwrap();
+    // Write a JSONL line so the initial scrollback has something to send.
+    writeln!(
+        tmp.as_file(),
+        r#"{{"type":"assistant","message":{{"role":"assistant","content":"initial data"}}}}"#
+    )
+    .unwrap();
+    tmp.as_file().flush().unwrap();
+
+    let state =
+        test_state_with_session("test-mode-switch-block", tmp.path().to_str().unwrap()).await;
+    let (addr, server_handle) = start_test_server(state).await;
+
+    let mut ws = ws_connect(addr, "test-mode-switch-block").await;
+
+    // Start in raw mode
+    ws.send(tungstenite::Message::Text(
+        r#"{"mode":"raw","scrollback":1}"#.into(),
+    ))
+    .await
+    .unwrap();
+
+    // Drain the initial scrollback (raw frames) up to buffer_end.
+    let mut raw_lines = Vec::new();
+    for _ in 0..10 {
+        if let Some(text) = recv_text(&mut ws).await {
+            let parsed: serde_json::Value = serde_json::from_str(&text).unwrap();
+            match parsed["type"].as_str() {
+                Some("line") => {
+                    assert!(
+                        parsed.get("data").is_some(),
+                        "Raw mode should have 'data' field"
+                    );
+                    raw_lines.push(parsed);
+                }
+                Some("buffer_end") => break,
+                _ => {}
+            }
+        }
+    }
+    assert!(
+        !raw_lines.is_empty(),
+        "Should have received at least 1 raw line"
+    );
+
+    // Switch to block mode mid-stream — this is the path under test.
+    ws.send(tungstenite::Message::Text(
+        r#"{"type":"mode","mode":"block"}"#.into(),
+    ))
+    .await
+    .unwrap();
+
+    // Small delay to let the mode switch be processed.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    // Append new lines to reliably trigger the file watcher.
+    let path = tmp.path().to_path_buf();
+    let write_path = path.clone();
+    let write_handle = tokio::spawn(async move {
+        for i in 0..10 {
+            {
+                let mut f = std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&write_path)
+                    .unwrap();
+                if i == 0 {
+                    // A user line yields a UserBlock whose `text` is top-level,
+                    // mirroring `format_line_block_mode_produces_conversation_blocks`.
+                    writeln!(
+                        f,
+                        r#"{{"type":"user","uuid":"u-1","message":{{"role":"user","content":[{{"type":"text","text":"block content here"}}]}},"timestamp":"2026-01-15T10:30:00Z"}}"#
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        f,
+                        r#"{{"type":"system","message":{{"role":"system","content":"poke {i}"}}}}"#
+                    )
+                    .unwrap();
+                }
+                f.flush().unwrap();
+            }
+            tokio::time::sleep(Duration::from_millis(300)).await;
+        }
+    });
+
+    // Wait for a block-mode message. In block mode the `type` discriminator is
+    // the conversation-block kind (e.g. "user"/"assistant") — NOT the raw
+    // "line" frame and NOT the rich "message" frame. Receiving such a frame
+    // proves the mid-stream switch to "block" was accepted, not ignored.
+    let block_msg = tokio::time::timeout(Duration::from_secs(15), async {
+        loop {
+            if let Some(text) = recv_text(&mut ws).await {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
+                    let ty = v["type"].as_str().unwrap_or("");
+                    // A raw "line" frame here would mean the switch was ignored
+                    // (the bug). Block formatting must have kicked in instead.
+                    assert_ne!(
+                        ty, "line",
+                        "After switching to block mode the stream must NOT emit raw 'line' frames"
+                    );
+                    if ty == "user" {
+                        return v;
+                    }
+                }
+            }
+            // recv_text returned None (per-message timeout) — keep waiting for
+            // the outer timeout rather than giving up early (macOS FSEvents lag).
+        }
+    })
+    .await;
+
+    write_handle.abort();
+
+    assert!(
+        block_msg.is_ok(),
+        "Timed out waiting for block mode message after mid-stream switch to 'block'"
+    );
+
+    let msg = block_msg.unwrap();
+    assert_eq!(msg["type"], "user", "Should produce a UserBlock");
+    assert_eq!(msg["text"], "block content here");
+
+    ws.close(None).await.ok();
+    server_handle.abort();
+}
+
+// =========================================================================
 // Unit tests for format_line_for_mode
 // =========================================================================
 

@@ -1,45 +1,9 @@
 import { ArrowRight, Code2, GitBranch, RefreshCcw, TrendingUp } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { type ContributionsTimeRange, useContributions } from '../hooks/use-contributions'
+import { resolveSessionBreakdown, scopeLabel } from '../lib/analytics-scope'
 import { formatNumber, formatPercent } from '../lib/format-utils'
 import { cn } from '../lib/utils'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 export interface ContributionSummaryCardProps {
   className?: string
@@ -145,16 +109,16 @@ export function ContributionSummaryCard({
 
   // Extract metrics
   const { overview } = data
-  const scopeMeta = data.meta as ScopeMeta | undefined
+  const scopeMeta = data.meta
   const linesAdded = Number(overview.output.linesAdded)
   const linesRemoved = Number(overview.output.linesRemoved)
   const netLines = linesAdded - linesRemoved
   const commits = Number(overview.output.commitsCount)
   const reeditRate = overview.effectiveness.reeditRate
   const fluencyTrend = overview.fluency.trend
-  const sessionBreakdown = resolveSessionBreakdown(scopeMeta, Number(overview.fluency.sessions))
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
+  const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
+  const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
 
   // AI lines share: lines added by AI / total lines — more meaningful than commit rate
   const totalLines = linesAdded + linesRemoved

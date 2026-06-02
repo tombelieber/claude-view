@@ -147,6 +147,22 @@ const mockTrendsResponse = {
   periodStart: '2026-01-01',
   periodEnd: '2026-03-05',
   totalSessions: 5,
+  // `meta` (AnalyticsScopeMeta) is non-Option in the backend trends response
+  // (crates/server/src/routes/insights/types.rs / trends.rs), so TrendsTab reads
+  // `data.meta.dataScope` / `data.meta.sessionBreakdown` unguarded. The fixture
+  // must mirror that contract or the real (unmocked) TrendsTab crashes.
+  meta: {
+    dataScope: {
+      sessions: 'primary_sessions_only',
+      workload: 'primary_plus_subagent_work',
+    },
+    sessionBreakdown: {
+      primarySessions: 25,
+      sidechainSessions: 6,
+      otherSessions: 2,
+      totalObservedSessions: 33,
+    },
+  },
 }
 
 function renderInsightsPage(initialEntry = '/insights') {

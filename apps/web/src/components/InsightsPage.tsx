@@ -1,6 +1,7 @@
 import { AlertTriangle, BarChart3, Lightbulb, RefreshCw } from 'lucide-react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { type TabId, type TimeRange, useInsights } from '../hooks/use-insights'
+import { resolveSessionBreakdown, scopeLabel } from '../lib/analytics-scope'
 import { ExperimentalBadge } from './ExperimentalBadge'
 import { ExperimentalBanner } from './ExperimentalBanner'
 import { BenchmarksTab } from './insights/BenchmarksTab'
@@ -13,43 +14,6 @@ import { QualityTab } from './insights/QualityTab'
 import { QuickStatsRow } from './insights/QuickStatsRow'
 import { TimeRangeFilter } from './insights/TimeRangeFilter'
 import { TrendsTab } from './insights/TrendsTab'
-
-type ScopeValue = 'primary_sessions_only' | 'primary_plus_subagent_work'
-
-type ScopeMeta = {
-  dataScope?: {
-    sessions?: ScopeValue
-    workload?: ScopeValue
-  }
-  sessionBreakdown?: {
-    primarySessions?: number
-    sidechainSessions?: number
-    otherSessions?: number
-    totalObservedSessions?: number
-  }
-}
-
-function scopeLabel(scope: ScopeValue | undefined): string {
-  return scope === 'primary_plus_subagent_work'
-    ? 'primary + subagent work'
-    : 'primary sessions only'
-}
-
-function resolveSessionBreakdown(meta: ScopeMeta | undefined, primaryFallback: number) {
-  const primarySessions = meta?.sessionBreakdown?.primarySessions ?? primaryFallback
-  const sidechainSessions = meta?.sessionBreakdown?.sidechainSessions ?? 0
-  const otherSessions = meta?.sessionBreakdown?.otherSessions ?? 0
-  const totalObservedSessions =
-    meta?.sessionBreakdown?.totalObservedSessions ??
-    primarySessions + sidechainSessions + otherSessions
-
-  return {
-    primarySessions,
-    sidechainSessions,
-    otherSessions,
-    totalObservedSessions,
-  }
-}
 
 const VALID_RANGES: TimeRange[] = ['7d', '30d', '90d', 'all']
 const VALID_TABS: TabId[] = ['patterns', 'trends', 'categories', 'benchmarks', 'quality']
@@ -72,10 +36,15 @@ export function InsightsPage() {
   const activeTab: TabId = isValidTab(tabFromUrl) ? tabFromUrl : 'patterns'
 
   const { data, isLoading, error, refetch } = useInsights({ timeRange })
-  const scopeMeta = data?.meta as ScopeMeta | undefined
-  const sessionBreakdown = resolveSessionBreakdown(scopeMeta, data?.meta.totalSessions ?? 0)
-  const sessionsScope = scopeLabel(scopeMeta?.dataScope?.sessions)
-  const workloadScope = scopeLabel(scopeMeta?.dataScope?.workload)
+  // `data` is undefined while loading; the contract guarantees the scope fields
+  // are present once it resolves. The disclosure line below only renders in the
+  // populated state, so `scopeMeta` is always defined where these are shown.
+  const scopeMeta = data?.meta
+  const sessionBreakdown = scopeMeta
+    ? resolveSessionBreakdown(scopeMeta)
+    : { primarySessions: 0, sidechainSessions: 0, otherSessions: 0, totalObservedSessions: 0 }
+  const sessionsScope = scopeLabel(scopeMeta?.dataScope.sessions ?? 'primary_sessions_only')
+  const workloadScope = scopeLabel(scopeMeta?.dataScope.workload ?? 'primary_sessions_only')
 
   const handleTimeRangeChange = (range: TimeRange) => {
     const params = new URLSearchParams(searchParams)

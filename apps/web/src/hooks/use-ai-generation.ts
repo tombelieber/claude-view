@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
 import type {
-  AIGenerationStats as GeneratedAIGenerationStats,
+  AIGenerationStatsResponse as GeneratedAIGenerationStatsResponse,
   TokensByModel,
   TokensByProject,
 } from '../types/generated'
 import type { TimeRangeParams } from '../types/time-range'
-import type { AnalyticsScopeContractMeta } from './use-dashboard'
 
 export type { TimeRangeParams } from '../types/time-range'
 
-export type AIGenerationStats = GeneratedAIGenerationStats & {
-  meta?: AnalyticsScopeContractMeta
-}
+// The endpoint returns `AIGenerationStatsResponse`, which carries an always-present
+// `meta: AnalyticsScopeMeta` (non-Option in the backend) alongside the flattened
+// AI generation fields.
+export type AIGenerationStats = GeneratedAIGenerationStatsResponse
 
 /**
  * Fetch AI generation stats from /api/stats/ai-generation.

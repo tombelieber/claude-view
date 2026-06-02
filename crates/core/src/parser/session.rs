@@ -15,7 +15,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tracing::debug;
 
 use super::content::{
-    extract_assistant_content, extract_text_content, extract_tool_result_content,
+    extract_assistant_content, extract_images, extract_text_content, extract_tool_result_content,
 };
 use super::helpers::{attach_common_fields, maybe_attach_raw};
 use super::tags::{clean_command_tags, TagRegexes};
@@ -277,8 +277,9 @@ fn handle_user_entry(
             if has_tool_result {
                 // Role::ToolResult - extract readable content
                 let content = extract_tool_result_content(arr);
-                if !content.trim().is_empty() {
-                    let message = Message::tool_result(content);
+                let images = extract_images(arr);
+                if !content.trim().is_empty() || !images.is_empty() {
+                    let message = Message::tool_result(content).with_images(images);
                     let message = attach_common_fields(message, timestamp, uuid, parent_uuid);
                     let message = maybe_attach_raw(message, value, include_raw);
                     messages.push(message);
@@ -339,8 +340,15 @@ fn push_user_text_message(
             let content = extract_text_content(&msg.content);
             let cleaned_content = clean_command_tags(&content, tag_regexes);
             let cleaned_content = cleaned_content.replace("\\\n", "\n");
-            if !cleaned_content.trim().is_empty() {
-                let message = Message::user(cleaned_content);
+            let images = msg_value
+                .get("content")
+                .and_then(|c| c.as_array())
+                .map(|arr| extract_images(arr))
+                .unwrap_or_default();
+            // Push when there is text OR an image-only message (Zero Data Loss):
+            // a user who pastes a screenshot with no text must not vanish.
+            if !cleaned_content.trim().is_empty() || !images.is_empty() {
+                let message = Message::user(cleaned_content).with_images(images);
                 let message = attach_common_fields(message, timestamp, uuid, parent_uuid);
                 let message = maybe_attach_raw(message, value, include_raw);
                 messages.push(message);

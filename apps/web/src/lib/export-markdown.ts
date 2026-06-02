@@ -14,6 +14,19 @@ function formatTimestamp(timestamp?: string | null): string {
   })
 }
 
+function renderImages(images?: Message['images']): string {
+  if (!images || images.length === 0) return ''
+  const lines = images
+    .map((img) => {
+      // Mirror in-app ChatUserBlock: inline base64 data first, then remote url.
+      const src = img.data ? `data:${img.mediaType};base64,${img.data}` : (img.url ?? '')
+      return src ? `![image](${src})` : ''
+    })
+    .filter(Boolean)
+  if (lines.length === 0) return ''
+  return `\n\n${lines.join('\n\n')}`
+}
+
 function renderToolCalls(toolCalls?: ToolCall[] | null): string {
   if (!toolCalls || toolCalls.length === 0) return ''
   // Re-aggregate individual tool calls by name for display
@@ -55,6 +68,9 @@ export function generateMarkdown(
     const ts = formatTimestamp(message.timestamp)
     md += `**${roleLabel}:**${ts ? ` *${ts}*` : ''}\n\n`
     md += message.content
+    if (message.images && message.images.length > 0) {
+      md += renderImages(message.images)
+    }
     if (message.tool_calls && message.tool_calls.length > 0) {
       md += renderToolCalls(message.tool_calls)
     }
