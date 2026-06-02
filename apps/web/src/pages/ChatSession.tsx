@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChatInputBar } from '../components/chat/ChatInputBar'
 import { McpPanel } from '../components/chat/McpPanel'
 import { ModelSelector } from '../components/chat/ModelSelector'
-import { TakeoverDialog } from '../components/chat/TakeoverDialog'
+import { TakeoverConfirmDialog } from '../components/chat/TakeoverConfirmDialog'
+import { WatchingBanner } from '../components/chat/WatchingBanner'
 import { ErrorBoundary } from '@claude-view/shared/components/ErrorBoundary'
 import { ConversationThread } from '@claude-view/shared/components/conversation/ConversationThread'
 import { ThinkingIndicator } from '@claude-view/shared/components/conversation/ThinkingIndicator'
@@ -277,6 +278,22 @@ export function ChatSession({
   // Takeover dialog state
   const [showTakeover, setShowTakeover] = useState(false)
 
+  // Enter CONTROL mode: fork the watched CLI session into an SDK branch.
+  // Skip the confirm dialog if the user previously opted out ("don't remind me").
+  const handleTakeover = useCallback(() => {
+    let skipConfirm = false
+    try {
+      skipConfirm = localStorage.getItem('claude-view:takeover-no-remind') === 'true'
+    } catch {
+      /* localStorage unavailable — fall through to the confirm dialog */
+    }
+    if (skipConfirm) {
+      dispatch({ type: 'TAKEOVER_CLI' })
+    } else {
+      setShowTakeover(true)
+    }
+  }, [dispatch])
+
   return (
     <div className="flex-1 min-w-0 flex flex-col overflow-hidden" data-panel-mode={viewMode}>
       {/* Header */}
@@ -423,14 +440,7 @@ export function ChatSession({
       {/* Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-800">
         <div className="max-w-3xl mx-auto px-4 py-3">
-          {/* TODO: re-enable fork banner when fork flow is fixed */}
-          {viewMode === 'watching' && (
-            <div className="mb-2 rounded-lg border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-3 py-2">
-              <p className="text-xs text-blue-600/80 dark:text-blue-400/70">
-                This session is running in Claude Code CLI.
-              </p>
-            </div>
-          )}
+          {viewMode === 'watching' && <WatchingBanner onTakeover={handleTakeover} />}
           <ChatInputBar
             onSend={handleSend}
             onStop={() => dispatch({ type: 'INTERRUPT' })}
@@ -489,7 +499,7 @@ export function ChatSession({
         </div>
       </div>
 
-      <TakeoverDialog
+      <TakeoverConfirmDialog
         open={showTakeover}
         onConfirm={() => {
           setShowTakeover(false)

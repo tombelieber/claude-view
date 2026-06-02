@@ -223,6 +223,53 @@ describe('integration: takeover flow (fork)', () => {
     expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'CLOSE_TERMINAL_WS' }))
     expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'POST_FORK', sessionId: 'abc' }))
   })
+
+  test('fork fails → recovering + error toast (decision surfaced, never silently lost)', () => {
+    const watchingStore: ChatPanelStore = {
+      panel: { phase: 'cc_cli', sessionId: 'abc', blocks: [], sub: { sub: 'watching' } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+
+    const { store, allCmds } = drive(watchingStore, [
+      { type: 'TAKEOVER_CLI' },
+      { type: 'ACQUIRE_FAILED', error: 'Fork failed: session file not found' },
+    ])
+
+    expect(store.panel.phase).toBe('recovering')
+    expect(allCmds).toContainEqual(expect.objectContaining({ cmd: 'TOAST', variant: 'error' }))
+  })
+
+  test('fork fails → original CLI stays observable: recovering → OWNERSHIP_CHANGED(watchable) → cc_cli watching', () => {
+    const watchingStore: ChatPanelStore = {
+      panel: { phase: 'cc_cli', sessionId: 'abc', blocks: [], sub: { sub: 'watching' } },
+      outbox: { messages: [] },
+      meta: null,
+      projectPath: null,
+      lastModel: null,
+      lastPermissionMode: null,
+      historyPagination: null,
+    }
+
+    const { store, allCmds } = drive(watchingStore, [
+      { type: 'TAKEOVER_CLI' },
+      { type: 'ACQUIRE_FAILED', error: 'boom' },
+      // The original CLI session is still live → SSE re-asserts watchable ownership.
+      { type: 'OWNERSHIP_CHANGED', tier: { tmux: { cliSessionId: 'cv-1' } } },
+    ])
+
+    expect(store.panel.phase).toBe('cc_cli')
+    if (store.panel.phase === 'cc_cli') {
+      expect(store.panel.sub.sub).toBe('watching')
+    }
+    expect(allCmds).toContainEqual(
+      expect.objectContaining({ cmd: 'OPEN_TERMINAL_WS', sessionId: 'abc' }),
+    )
+  })
 })
 
 // ── Error recovery ────────────────────────────────────────────────

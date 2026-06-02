@@ -60,8 +60,11 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
     return () => disposable.dispose()
   }, [api])
 
-  // Called when ChatSession creates a new session from the blank "New Chat" panel.
-  // Transitions this panel from blank to the real session.
+  // Called when the FSM's panel session id diverges from this panel's prop:
+  //   - blank "New Chat" panel creates a session, or
+  //   - a watched CLI session is TAKEN OVER (forked) into a new SDK session id.
+  // Either way, point this dockview panel + the router URL at the new id. The
+  // original CLI session stays in the live list (sidebar) and keeps streaming.
   const onSessionCreated = useCallback(
     (newSessionId: string) => {
       api.updateParameters({ sessionId: newSessionId })
@@ -88,7 +91,7 @@ export function ChatPanel({ params, api }: IDockviewPanelProps<ChatPanelParams>)
         ownership={ownership ?? null}
         liveProjectPath={liveProjectPath}
         liveContextData={liveContextData}
-        onSessionCreated={!sessionId ? onSessionCreated : undefined}
+        onSessionCreated={onSessionCreated}
         scrollToBottomSignal={scrollSignal}
       />
     </div>
