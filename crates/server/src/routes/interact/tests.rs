@@ -29,6 +29,45 @@ async fn test_state() -> std::sync::Arc<AppState> {
     AppState::new(db)
 }
 
+/// Helper: test AppState whose sidecar delivery is pointed at `base_url`
+/// (a mock sidecar or a known-dead URL).
+async fn test_state_with_sidecar(base_url: String) -> std::sync::Arc<AppState> {
+    let db = claude_view_db::Database::new_in_memory()
+        .await
+        .expect("in-memory DB");
+    AppState::builder(db)
+        .with_sidecar(std::sync::Arc::new(
+            crate::sidecar::SidecarManager::with_base_url(base_url),
+        ))
+        .build()
+}
+
+/// Spawn a mock sidecar that answers the interact bridge with `(status, body)`.
+/// Returns its base URL.
+async fn spawn_mock_sidecar(status: StatusCode, body: serde_json::Value) -> String {
+    let app = axum::Router::new().route(
+        "/api/sidecar/sessions/{id}/interact",
+        axum::routing::post(move || {
+            let body = body.clone();
+            async move { (status, axum::Json(body)) }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    format!("http://{addr}")
+}
+
+/// A base URL whose port is closed — delivery to it fails (connection refused).
+async fn dead_sidecar_url() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    drop(listener);
+    format!("http://{addr}")
+}
+
 /// Helper: insert a live session into the state's live_sessions map.
 async fn insert_live_session(state: &AppState, id: &str) {
     let session = claude_view_server_live_state::core::test_live_session(id);
@@ -257,24 +296,15 @@ async fn post_interact_returns_400_for_observed_sessions() {
 }
 
 #[tokio::test]
-async fn post_interact_clears_pending_on_success_sdk() {
-    let state = test_state().await;
+async fn post_interact_clears_pending_when_delivered() {
+    // Mock sidecar acks the decision → handler clears pending + returns 200.
+    let base = spawn_mock_sidecar(StatusCode::OK, json!({ "ok": true })).await;
+    let state = test_state_with_sidecar(base).await;
     insert_sdk_session(&state, "sess-005", "ctl-xyz").await;
     set_pending_interaction(&state, "sess-005", "req-300").await;
 
-    // Verify pending is set before
-    {
-        let sessions = state.live_sessions.read().await;
-        assert!(sessions["sess-005"].pending_interaction.is_some());
-    }
-    assert!(state.interaction_data.read().await.contains_key("req-300"));
-
     let app = test_router(state.clone());
-    let body = json!({
-        "variant": "permission",
-        "requestId": "req-300",
-        "allowed": true
-    });
+    let body = json!({ "variant": "permission", "requestId": "req-300", "allowed": true });
     let resp = app
         .oneshot(
             Request::builder()
@@ -287,30 +317,90 @@ async fn post_interact_clears_pending_on_success_sdk() {
         .await
         .unwrap();
 
-    // The handler always returns 200 — state is cleared regardless of
-    // whether sidecar forward succeeded. The `sidecarForwarded` field
-    // tells the frontend if the sidecar got the message.
     assert_eq!(resp.status(), StatusCode::OK);
-
-    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+    let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
         .await
         .unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(json["resolved"], true);
     assert_eq!(json["requestId"], "req-300");
     assert_eq!(json["sessionId"], "sess-005");
+    // No sidecarForwarded field anymore — 200 means actually delivered.
+    assert!(json.get("sidecarForwarded").is_none());
 
-    // Verify pending cleared from session
+    // Pending cleared only because delivery was confirmed.
+    {
+        let sessions = state.live_sessions.read().await;
+        assert!(sessions["sess-005"].pending_interaction.is_none());
+    }
+    assert!(!state.interaction_data.read().await.contains_key("req-300"));
+}
+
+#[tokio::test]
+async fn post_interact_keeps_pending_when_delivery_fails() {
+    // THE regression guard: a failed delivery must NEVER report resolved and
+    // must NEVER clear pending (寧願唔顯示，都唔顯示錯嘅嘢). Sidecar is dead.
+    let base = dead_sidecar_url().await;
+    let state = test_state_with_sidecar(base).await;
+    insert_sdk_session(&state, "sess-006", "ctl-dead").await;
+    set_pending_interaction(&state, "sess-006", "req-301").await;
+
+    let app = test_router(state.clone());
+    let body = json!({ "variant": "permission", "requestId": "req-301", "allowed": true });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/sessions/sess-006/interact")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+    // Pending retained so the user can retry — decision not silently lost.
     {
         let sessions = state.live_sessions.read().await;
         assert!(
-            sessions["sess-005"].pending_interaction.is_none(),
-            "pending_interaction should be cleared after interact"
+            sessions["sess-006"].pending_interaction.is_some(),
+            "pending_interaction MUST be retained when delivery fails"
         );
     }
-    // Verify side-map entry removed
     assert!(
-        !state.interaction_data.read().await.contains_key("req-300"),
-        "interaction_data side-map should be cleared after interact"
+        state.interaction_data.read().await.contains_key("req-301"),
+        "side-map entry MUST be retained when delivery fails"
     );
+}
+
+#[tokio::test]
+async fn post_interact_keeps_pending_when_sidecar_rejects() {
+    // Sidecar reached but reports the requestId unknown/stale → 409, no clear.
+    let base = spawn_mock_sidecar(
+        StatusCode::OK,
+        json!({ "ok": false, "reason": "Unknown permission requestId" }),
+    )
+    .await;
+    let state = test_state_with_sidecar(base).await;
+    insert_sdk_session(&state, "sess-007", "ctl-rej").await;
+    set_pending_interaction(&state, "sess-007", "req-302").await;
+
+    let app = test_router(state.clone());
+    let body = json!({ "variant": "permission", "requestId": "req-302", "allowed": false });
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/sessions/sess-007/interact")
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&body).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    // The SDK's own turn-end clear is authoritative — the handler does not clear.
+    assert!(state.interaction_data.read().await.contains_key("req-302"));
 }

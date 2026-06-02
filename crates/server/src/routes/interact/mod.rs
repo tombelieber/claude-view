@@ -6,6 +6,7 @@
 //! - POST /sessions/{session_id}/interact    — resolve a pending interaction
 //! - GET  /sessions/{session_id}/interaction  — fetch full interaction block
 
+pub mod delivery;
 pub mod handlers;
 
 // Re-export handlers for openapi.rs path annotations.

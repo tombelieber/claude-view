@@ -4125,7 +4125,7 @@
           "sessions"
         ],
         "summary": "Resolve a pending interaction (permission, question, plan, elicitation).",
-        "description": "1. Parse InteractRequest from body\n2. Look up session in live_sessions — 404 if not found\n3. Resolve ownership — 400 if Observed\n4. Check interaction_data side-map — 409 if request_id not found (stale)\n5. For SDK: forward to sidecar HTTP API\n6. Clear pending interaction via coordinator",
+        "description": "1. Look up session in live_sessions — 404 if not found\n2. Require an SDK control channel — 400 if observed (read-only mirror) or\n   tmux-only (a CLI session is driven by forking, never by writing into it)\n3. Check interaction_data side-map — 409 if request_id not found (stale)\n4. Deliver to the sidecar and await its ack, then:\n   - Delivered  → clear pending + 200\n   - Rejected   → 409, pending retained (SDK turn-end is authoritative)\n   - Failed     → 503, pending retained for retry\n\nPending state is cleared ONLY on confirmed delivery: a decision the agent\nnever received must never be reported as resolved (寧願唔顯示，都唔顯示錯嘅嘢).",
         "operationId": "interact_handler",
         "parameters": [
           {
@@ -4150,16 +4150,19 @@
         },
         "responses": {
           "200": {
-            "description": "Interaction resolved"
+            "description": "Interaction delivered and resolved"
           },
           "400": {
-            "description": "Observed session or invalid request"
+            "description": "Observed/tmux-only session — no SDK control channel"
           },
           "404": {
             "description": "Session not found"
           },
           "409": {
-            "description": "Request ID stale or already resolved"
+            "description": "Request ID stale, or sidecar reported it already resolved"
+          },
+          "503": {
+            "description": "Delivery to the controlling sidecar could not be confirmed"
           }
         }
       }
