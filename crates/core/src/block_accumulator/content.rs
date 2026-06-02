@@ -1,5 +1,14 @@
 use crate::block_types::ImageContent;
 
+/// The `message.content[].type` values the content extractors handle —
+/// `extract_content_blocks` (text/tool_use/thinking/image) plus
+/// `extract_tool_results` (tool_result). The cc-compat oracle diffs this against
+/// the content-block types present in real ~/.claude data; anything missing is a
+/// dropped block type (the `image` finding was exactly this class).
+pub fn handled_content_block_types() -> &'static [&'static str] {
+    &["text", "tool_use", "tool_result", "thinking", "image"]
+}
+
 /// Extracted content blocks from a JSONL message.content[] array.
 pub struct ContentBlocks {
     pub text_segments: Vec<TextSegment>,

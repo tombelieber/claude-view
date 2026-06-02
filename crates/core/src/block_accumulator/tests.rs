@@ -554,5 +554,61 @@ fn user_message_array_content_still_works() {
     }
 }
 
+/// Parity guard for [`handled_record_types`]: every declared type must, when fed a
+/// representative record, produce at least one block (i.e. reach a real dispatch arm,
+/// not the `_ => {}` skip). If someone removes a `process_line` arm but leaves the type
+/// in the list — or the reverse — this fails. The cc-compat oracle relies on this list
+/// being an accurate mirror of the dispatch.
+#[test]
+fn handled_record_types_each_produces_a_block() {
+    // Minimal-but-valid representative record per handled type.
+    let rep = |t: &str| -> serde_json::Value {
+        match t {
+            "user" => serde_json::json!({"type":"user","message":{"role":"user","content":"hi"}}),
+            "assistant" => serde_json::json!({"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}),
+            "progress" => serde_json::json!({"type":"progress","data":{"type":"hook_progress","hookEvent":"PreToolUse","hookName":"h","command":"c","statusMessage":"m"}}),
+            "system" => serde_json::json!({"type":"system","subtype":"init"}),
+            "queue-operation" => serde_json::json!({"type":"queue-operation","operation":"enqueue","sessionId":"s"}),
+            "file-history-snapshot" => serde_json::json!({"type":"file-history-snapshot","snapshot":{},"isSnapshotUpdate":false}),
+            "ai-title" => serde_json::json!({"type":"ai-title","aiTitle":"t","sessionId":"s"}),
+            "last-prompt" => serde_json::json!({"type":"last-prompt","lastPrompt":"p","sessionId":"s"}),
+            "worktree-state" => serde_json::json!({"type":"worktree-state","worktreeSession":{},"sessionId":"s"}),
+            "pr-link" => serde_json::json!({"type":"pr-link","prNumber":1,"prUrl":"u","sessionId":"s"}),
+            "custom-title" => serde_json::json!({"type":"custom-title","customTitle":"t","sessionId":"s"}),
+            "agent-name" => serde_json::json!({"type":"agent-name","agentName":"a","sessionId":"s"}),
+            "attachment" => serde_json::json!({"type":"attachment","attachment":{},"sessionId":"s"}),
+            "permission-mode" => serde_json::json!({"type":"permission-mode","permissionMode":"default","sessionId":"s"}),
+            "mode" => serde_json::json!({"type":"mode","mode":"normal","sessionId":"s"}),
+            other => panic!("handled_record_types lists `{other}` but the parity test has no representative record — add one (and confirm process_line dispatches it)"),
+        }
+    };
+
+    for t in handled_record_types() {
+        let mut acc = BlockAccumulator::new();
+        acc.process_line(&rep(t));
+        let blocks = acc.finalize();
+        assert!(
+            !blocks.is_empty(),
+            "handled type `{t}` produced no block — its process_line arm is missing or broken (it would be silently dropped)"
+        );
+    }
+}
+
+/// An unknown/未來 record type must NOT silently masquerade as handled: it produces no
+/// block (forward-compatible skip) AND is absent from the declared surface.
+#[test]
+fn unknown_record_type_is_not_in_handled_surface_and_drops() {
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({"type":"some-future-cc-type-2099","sessionId":"s"}));
+    assert!(
+        acc.finalize().is_empty(),
+        "unknown type should skip, not emit"
+    );
+    assert!(
+        !handled_record_types().contains(&"some-future-cc-type-2099"),
+        "sanity: the test's synthetic type must not be in the declared surface"
+    );
+}
+
 #[path = "tests_regression.rs"]
 mod tests_regression;

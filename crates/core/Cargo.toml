@@ -42,3 +42,7 @@ dirs = { workspace = true }
 [[bin]]
 name = "evidence-audit"
 path = "src/bin/evidence_audit.rs"
+
+[[bin]]
+name = "cc-compat-oracle"
+path = "src/bin/cc_compat_oracle.rs"

@@ -205,6 +205,54 @@ impl Default for BlockAccumulator {
     }
 }
 
+/// The set of top-level JSONL record `type` values that [`BlockAccumulator::process_line`]
+/// dispatches (everything else hits the `_ => {}` skip arm).
+///
+/// This is the **declared compatibility surface**. The `cc-compat-oracle` bin diffs it
+/// against the `type`s actually present in `~/.claude/projects/**/*.jsonl`: any live type
+/// NOT in this list is a compatibility gap — a Claude Code record type the parser silently
+/// drops, exactly the class of bug a CC release introduces (see the `mode` finding).
+///
+/// MUST stay in lockstep with the `process_line` match. The
+/// `handled_record_types_each_produces_a_block` test feeds a representative record of each
+/// entry through the accumulator and asserts it is NOT silently skipped, so adding a match
+/// arm without updating this list (or vice-versa) fails CI for free.
+pub fn handled_record_types() -> &'static [&'static str] {
+    &[
+        "user",
+        "assistant",
+        "progress",
+        "system",
+        "queue-operation",
+        "file-history-snapshot",
+        "ai-title",
+        "last-prompt",
+        "worktree-state",
+        "pr-link",
+        "custom-title",
+        "agent-name",
+        "attachment",
+        "permission-mode",
+        "mode",
+    ]
+}
+
+/// Top-level `type` values that appear in real `~/.claude` JSONL but are
+/// **deliberately not rendered** as conversation blocks — they are internal
+/// bookkeeping, not conversation content:
+///
+/// - `started` / `result`: the agent tool-result **cache** (`{type, key:"v2:<hash>",
+///   agentId, result}`), an implementation detail of sub-agent result memoization,
+///   not a message.
+///
+/// The cc-compat oracle subtracts these from "unhandled" so they aren't flagged as
+/// gaps every run. A genuinely-new CC record type will NOT be in this set, so it
+/// still surfaces. Revisit if Claude Code ever gives `started`/`result` user-facing
+/// meaning.
+pub fn intentionally_ignored_record_types() -> &'static [&'static str] {
+    &["started", "result"]
+}
+
 /// Session-level metadata extracted alongside blocks.
 pub struct ParsedSession {
     pub blocks: Vec<ConversationBlock>,
