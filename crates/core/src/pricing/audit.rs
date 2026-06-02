@@ -9,16 +9,20 @@ use std::path::Path;
 
 use crate::session_stats::extract_stats;
 
-use super::lookup::lookup_pricing;
+use super::lookup::{resolve_pricing, MatchKind};
 use super::types::PricingTable;
 
-/// Scan a set of JSONL files for distinct model IDs, return those not in pricing.
+/// Scan a set of JSONL files for distinct model IDs that lack an *exact* price.
 ///
 /// Caller picks which paths to audit — typical use is the N most recent sessions
 /// from `SessionCatalog`. Best-effort: files that fail to parse are skipped
 /// silently rather than aborting the scan.
 ///
-/// Returns a sorted, deduplicated list of unpriced model IDs.
+/// Returns a sorted, deduplicated list of model IDs that are NOT exactly priced —
+/// i.e. either served by the family-nearest fallback (cost is estimated from a
+/// sibling release; a precise `data/anthropic-pricing.json` entry should be added)
+/// or entirely unknown. Exact / alias / prefix matches are considered fully priced
+/// and are not reported.
 pub fn scan_unpriced_models(paths: &[(&Path, bool)], pricing: &PricingTable) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut unpriced: Vec<String> = Vec::new();
@@ -31,7 +35,11 @@ pub fn scan_unpriced_models(paths: &[(&Path, bool)], pricing: &PricingTable) -> 
             if !seen.insert(model_id.clone()) {
                 continue;
             }
-            if lookup_pricing(model_id, pricing).is_none() {
+            let needs_exact_entry = match resolve_pricing(model_id, pricing) {
+                None => true,
+                Some(m) => m.kind == MatchKind::FamilyFallback,
+            };
+            if needs_exact_entry {
                 unpriced.push(model_id.clone());
             }
         }

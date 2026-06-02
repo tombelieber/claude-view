@@ -261,7 +261,7 @@ export function CostTooltip({
  * `data/README.md`. When bumping `last_verified` in `data/anthropic-pricing.json`,
  * update this constant in the same commit.
  */
-const PRICING_LAST_VERIFIED = '2026-04-14'
+const PRICING_LAST_VERIFIED = '2026-06-02'
 
 function CostRow({
   label,
