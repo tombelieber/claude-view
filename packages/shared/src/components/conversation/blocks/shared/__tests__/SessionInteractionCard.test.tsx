@@ -1,5 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, render, screen, fireEvent } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SessionInteractionCard } from '../SessionInteractionCard'
 import { CompactInteractionPreview } from '../CompactInteractionPreview'
 import { InteractionError } from '../InteractionError'
@@ -9,9 +9,7 @@ import type { PendingInteractionMeta, FullInteractionBlock } from '../SessionInt
 // Factories
 // ---------------------------------------------------------------------------
 
-function makeMeta(
-  overrides: Partial<PendingInteractionMeta> = {},
-): PendingInteractionMeta {
+function makeMeta(overrides: Partial<PendingInteractionMeta> = {}): PendingInteractionMeta {
   return {
     variant: 'permission',
     requestId: 'req-1',
@@ -20,9 +18,7 @@ function makeMeta(
   }
 }
 
-function makeFullPermission(
-  overrides: Partial<FullInteractionBlock> = {},
-): FullInteractionBlock {
+function makeFullPermission(overrides: Partial<FullInteractionBlock> = {}): FullInteractionBlock {
   return {
     id: 'ib-1',
     variant: 'permission',
@@ -41,9 +37,7 @@ function makeFullPermission(
   }
 }
 
-function makeFullQuestion(
-  overrides: Partial<FullInteractionBlock> = {},
-): FullInteractionBlock {
+function makeFullQuestion(overrides: Partial<FullInteractionBlock> = {}): FullInteractionBlock {
   return {
     id: 'ib-2',
     variant: 'question',
@@ -69,9 +63,7 @@ function makeFullQuestion(
   }
 }
 
-function makeFullPlan(
-  overrides: Partial<FullInteractionBlock> = {},
-): FullInteractionBlock {
+function makeFullPlan(overrides: Partial<FullInteractionBlock> = {}): FullInteractionBlock {
   return {
     id: 'ib-3',
     variant: 'plan',
@@ -87,9 +79,7 @@ function makeFullPlan(
   }
 }
 
-function makeFullElicitation(
-  overrides: Partial<FullInteractionBlock> = {},
-): FullInteractionBlock {
+function makeFullElicitation(overrides: Partial<FullInteractionBlock> = {}): FullInteractionBlock {
   return {
     id: 'ib-4',
     variant: 'elicitation',
@@ -114,9 +104,7 @@ function makeFullElicitation(
 describe('InteractionError', () => {
   it('renders the variant name in the error message', () => {
     render(<InteractionError variant="permission" />)
-    expect(
-      screen.getByText(/could not display permission interaction/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/could not display permission interaction/i)).toBeInTheDocument()
   })
 })
 
@@ -142,9 +130,7 @@ describe('CompactInteractionPreview', () => {
     ]
 
     for (const { variant, label } of variants) {
-      const { unmount } = render(
-        <CompactInteractionPreview meta={makeMeta({ variant })} />,
-      )
+      const { unmount } = render(<CompactInteractionPreview meta={makeMeta({ variant })} />)
       expect(screen.getByText(label)).toBeInTheDocument()
       unmount()
     }
@@ -164,13 +150,7 @@ describe('CompactInteractionPreview', () => {
 describe('SessionInteractionCard', () => {
   it('renders CompactInteractionPreview when fullInteraction is null', () => {
     const meta = makeMeta({ preview: 'Loading preview...' })
-    render(
-      <SessionInteractionCard
-        sessionId="s-1"
-        meta={meta}
-        fullInteraction={null}
-      />,
-    )
+    render(<SessionInteractionCard sessionId="s-1" meta={meta} fullInteraction={null} />)
 
     // Should show the compact preview, not a card
     expect(screen.getByText('Permission')).toBeInTheDocument()
@@ -201,17 +181,9 @@ describe('SessionInteractionCard', () => {
       data: { broken: true } as any, // missing requestId and toolName
     })
 
-    render(
-      <SessionInteractionCard
-        sessionId="s-1"
-        meta={makeMeta()}
-        fullInteraction={invalid}
-      />,
-    )
+    render(<SessionInteractionCard sessionId="s-1" meta={makeMeta()} fullInteraction={invalid} />)
 
-    expect(
-      screen.getByText(/could not display permission interaction/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/could not display permission interaction/i)).toBeInTheDocument()
   })
 
   it('omits action buttons when respond is undefined (read-only)', () => {
@@ -227,12 +199,8 @@ describe('SessionInteractionCard', () => {
     // Card content renders
     expect(screen.getByText('Bash')).toBeInTheDocument()
     // But no action buttons
-    expect(
-      screen.queryByRole('button', { name: /allow/i }),
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /deny/i }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /allow/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /deny/i })).not.toBeInTheDocument()
   })
 
   it('renders AskUserQuestionCard for question variant', () => {
@@ -300,9 +268,7 @@ describe('SessionInteractionCard', () => {
       />,
     )
 
-    expect(
-      screen.getByRole('button', { name: /always allow/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /always allow/i })).toBeInTheDocument()
   })
 
   it('does NOT show Always Allow when permission has no suggestions', () => {
@@ -315,8 +281,90 @@ describe('SessionInteractionCard', () => {
       />,
     )
 
-    expect(
-      screen.queryByRole('button', { name: /always allow/i }),
-    ).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /always allow/i })).not.toBeInTheDocument()
   })
+
+  // ── PR-2: trustworthy interaction ────────────────────────────────
+
+  it('surfaces a retry hint when delivery is NOT confirmed (never shows success on a failed send)', async () => {
+    const respond = vi.fn().mockResolvedValue({ ok: false, status: 503, reason: 'sidecar down' })
+    render(
+      <SessionInteractionCard
+        sessionId="s-1"
+        meta={makeMeta()}
+        fullInteraction={makeFullPermission()}
+        respond={respond}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /^allow$/i }))
+
+    // Failure is surfaced...
+    expect(await screen.findByText(/couldn't deliver/i)).toBeInTheDocument()
+    // ...the card is NOT optimistically resolved — it stays pending for retry.
+    expect(screen.getByText('Bash')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^allow$/i })).toBeInTheDocument()
+    expect(respond).toHaveBeenCalledWith({
+      variant: 'permission',
+      requestId: 'req-1',
+      allowed: true,
+    })
+  })
+
+  it('does NOT show a retry hint on confirmed delivery', async () => {
+    const respond = vi.fn().mockResolvedValue({ ok: true })
+    render(
+      <SessionInteractionCard
+        sessionId="s-1"
+        meta={makeMeta()}
+        fullInteraction={makeFullPermission()}
+        respond={respond}
+      />,
+    )
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /^allow$/i }))
+    })
+
+    expect(screen.queryByText(/couldn't deliver/i)).not.toBeInTheDocument()
+  })
+
+  it('does NOT auto-resolve a permission when the timeout elapses (no silent deny)', () => {
+    vi.useFakeTimers()
+    const respond = vi.fn().mockResolvedValue({ ok: true })
+    try {
+      render(
+        <SessionInteractionCard
+          sessionId="s-1"
+          meta={makeMeta()}
+          fullInteraction={makeFullPermission({
+            data: {
+              type: 'permission_request',
+              requestId: 'req-1',
+              toolName: 'Bash',
+              toolInput: { command: 'echo hello' },
+              toolUseID: 'tu-1',
+              timeoutMs: 1_000,
+            },
+          })}
+          respond={respond}
+        />,
+      )
+
+      // Advance well past the old 60s auto-deny window.
+      act(() => {
+        vi.advanceTimersByTime(120_000)
+      })
+
+      // The prompt must remain pending — never silently denied.
+      expect(respond).not.toHaveBeenCalled()
+      expect(screen.getByText(/waiting for your response/i)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+afterEach(() => {
+  vi.useRealTimers()
 })
