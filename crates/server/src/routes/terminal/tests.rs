@@ -524,9 +524,12 @@ async fn ws_live_lines_streamed() {
     // Use a generous outer timeout and keep looping even when individual
     // recv_text calls time out — on macOS the FSEvents watcher may take
     // several seconds to coalesce and fire.
-    // 30s is generous but necessary: under heavy nextest parallelism (2776
-    // tests), macOS FSEvents coalescing + debounce can exceed 15s.
-    let live_msg = tokio::time::timeout(Duration::from_secs(30), async {
+    // The timeout scales with parallel load: under the full workspace nextest
+    // run (now ~3095 tests) macOS FSEvents coalescing + debounce can exceed 30s
+    // (observed a 30.1s timeout). 45s keeps a graceful assert-failure path below
+    // nextest's 60s slow-timeout hard-kill while absorbing that load. The common
+    // path still returns in <1s — this only extends patience on the slow path.
+    let live_msg = tokio::time::timeout(Duration::from_secs(45), async {
         loop {
             if let Some(text) = recv_text(&mut ws).await {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -695,8 +698,10 @@ async fn ws_mode_switch() {
 
     // Wait for the rich-mode message.
     // Keep looping even when individual recv_text calls time out — on
-    // macOS the FSEvents watcher may take several seconds to fire.
-    let rich_msg = tokio::time::timeout(Duration::from_secs(15), async {
+    // macOS the FSEvents watcher may take several seconds to fire. 45s matches
+    // the live-stream wait above: same FSEvents dependency, same load profile
+    // under the full workspace nextest run.
+    let rich_msg = tokio::time::timeout(Duration::from_secs(45), async {
         loop {
             if let Some(text) = recv_text(&mut ws).await {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
@@ -832,7 +837,9 @@ async fn ws_mode_switch_to_block() {
     // the conversation-block kind (e.g. "user"/"assistant") — NOT the raw
     // "line" frame and NOT the rich "message" frame. Receiving such a frame
     // proves the mid-stream switch to "block" was accepted, not ignored.
-    let block_msg = tokio::time::timeout(Duration::from_secs(15), async {
+    // 45s: same FSEvents live-stream dependency and load profile as the
+    // live-stream and rich-mode waits above.
+    let block_msg = tokio::time::timeout(Duration::from_secs(45), async {
         loop {
             if let Some(text) = recv_text(&mut ws).await {
                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
