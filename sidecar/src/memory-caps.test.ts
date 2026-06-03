@@ -153,6 +153,7 @@ describe('StreamAccumulator memory caps', () => {
       modelUsage: {},
       usage: { input_tokens: 10, output_tokens: 5 },
       stopReason: 'end_turn',
+      result: 'ok',
       permissionDenials: [],
     })
 

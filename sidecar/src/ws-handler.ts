@@ -51,6 +51,37 @@ const BLOCK_PRODUCING_EVENTS = new Set([
   // stream_delta (non-text) is handled by isBlockStart. pong produces no block.
 ])
 
+// WS backpressure thresholds. A live conversation snapshot (getBlocks()) can be
+// large, and a block-producing event fires one on nearly every streaming tick.
+// If a client (backgrounded tab, slow link) stops draining, queuing a fresh full
+// snapshot per event grows the ws send buffer without bound — a sidecar OOM
+// vector for long sessions. So we (a) skip the redundant full snapshot while the
+// buffer is over SOFT (the next under-limit event or turn_complete carries the
+// latest full state — getBlocks() is always current and the client merges by id),
+// and (b) close a client that blows past HARD (it is effectively dead; retaining
+// its queue would leak memory). Small per-event messages still flow until HARD.
+const WS_SNAPSHOT_SOFT_LIMIT_BYTES = 4 * 1024 * 1024
+const WS_CLOSE_HARD_LIMIT_BYTES = 32 * 1024 * 1024
+
+/** Bytes currently queued in the socket's send buffer. Mocks and exotic
+ *  transports may not expose `bufferedAmount`; treat absent as 0 so the happy
+ *  path (and unit-test mocks) behave exactly as before. */
+function bufferedBytes(ws: WebSocket): number {
+  return (ws as { bufferedAmount?: number }).bufferedAmount ?? 0
+}
+
+/** Send if the socket is keeping up; drop a client that has fallen too far
+ *  behind instead of letting its backlog OOM the sidecar. */
+function trySend(ws: WebSocket, payload: string): void {
+  if (ws.readyState !== ws.OPEN) return
+  if (bufferedBytes(ws) > WS_CLOSE_HARD_LIMIT_BYTES) {
+    // 1013 = "Try Again Later".
+    ws.close(1013, 'client too slow to keep up')
+    return
+  }
+  ws.send(payload)
+}
+
 export function handleWebSocket(ws: WebSocket, controlId: string, registry: SessionRegistry) {
   const session = registry.get(controlId)
   if (!session) {
@@ -94,9 +125,10 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
     if (ws.readyState !== ws.OPEN) return
     const msg = rawMsg as ServerEvent
     if (msg.type === 'turn_complete' || msg.type === 'turn_error') {
-      ws.send(JSON.stringify({ ...msg, blocks: session.accumulator.getBlocks() }))
+      // Terminal turn state — always carries the authoritative full blocks.
+      trySend(ws, JSON.stringify({ ...msg, blocks: session.accumulator.getBlocks() }))
     } else {
-      ws.send(JSON.stringify(msg))
+      trySend(ws, JSON.stringify(msg))
       // Send blocks_update when accumulator state changes structurally:
       // - CONTENT_EVENTS: assistant_text, tool_use_start, assistant_thinking, user_message_echo
       // - content_block_start: creates the assistant block skeleton (needed for pendingText)
@@ -104,12 +136,19 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
         msg.type === 'stream_delta' &&
         (msg as { deltaType?: string }).deltaType === 'content_block_start'
       if (BLOCK_PRODUCING_EVENTS.has(msg.type) || isBlockStart) {
-        ws.send(
-          JSON.stringify({
-            type: 'blocks_update',
-            blocks: session.accumulator.getBlocks(),
-          }),
-        )
+        // Skip the (potentially large) full snapshot while the client is behind;
+        // a later under-limit event or the turn_complete above carries the latest
+        // state. The frontend merges blocks_update by id, so dropping intermediate
+        // snapshots converges to the same result (see mergeBlocks).
+        if (bufferedBytes(ws) <= WS_SNAPSHOT_SOFT_LIMIT_BYTES) {
+          trySend(
+            ws,
+            JSON.stringify({
+              type: 'blocks_update',
+              blocks: session.accumulator.getBlocks(),
+            }),
+          )
+        }
       }
     }
   }
