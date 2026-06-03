@@ -100,6 +100,18 @@ cargo generate-lockfile --quiet
 OPENAPI_JSON="$ROOT/packages/plugin/scripts/openapi.json"
 [ -f "$OPENAPI_JSON" ] && BUMPED_PKGS+=("$OPENAPI_JSON")
 
+# Keep bumped package.json files formatter-clean. The JSON.stringify bump above
+# expands short arrays (e.g. plugin "files") that biome collapses to a single
+# line, so an unformatted bump would fail the NEXT release's lint gate. Re-run
+# the same formatter the lint gate uses, on the package.json files only.
+PKG_JSONS=()
+for f in "${BUMPED_PKGS[@]}"; do
+  case "$f" in */package.json | package.json) PKG_JSONS+=("$f") ;; esac
+done
+if [ ${#PKG_JSONS[@]} -gt 0 ] && [ -x "$ROOT/node_modules/.bin/biome" ]; then
+  "$ROOT/node_modules/.bin/biome" format --write "${PKG_JSONS[@]}" >/dev/null 2>&1 || true
+fi
+
 # Commit and tag — include Cargo files + all bumped package.json files + site.ts
 git add Cargo.toml Cargo.lock "${BUMPED_PKGS[@]}"
 git commit -m "release: v${VERSION}"

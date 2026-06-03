@@ -400,7 +400,7 @@ function main() {
       // collapse to the last segment; any other non-alphanumeric chars become hyphens.
       const rawTag = (operation.tags?.[0] ?? 'misc').toLowerCase()
       const tag = rawTag.includes('::')
-        ? rawTag.split('::').pop()!
+        ? (rawTag.split('::').pop() ?? rawTag)
         : rawTag
             .replace(/[^a-z0-9-]/g, '-')
             .replace(/-+/g, '-')
