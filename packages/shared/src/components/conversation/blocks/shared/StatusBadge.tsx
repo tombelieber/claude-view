@@ -1,4 +1,4 @@
-type BadgeColor =
+export type BadgeColor =
   | 'gray'
   | 'green'
   | 'red'
