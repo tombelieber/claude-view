@@ -6,6 +6,7 @@ const path = require('path')
 const os = require('os')
 const https = require('https')
 const zlib = require('zlib')
+const { classifyExit, superviseServer } = require('./supervise')
 
 const VERSION = require('./package.json').version
 const REPO = 'tombelieber/claude-view'
@@ -213,37 +214,65 @@ async function main() {
     env.SIDECAR_DIR = sidecarDir
   }
 
-  // Run the server, forwarding signals and exit code.
+  // Run the server under a bounded crash-supervisor (see ./supervise.js).
   //
-  // Signal handling strategy:
-  // - SIGINT: Don't forward. Terminal sends SIGINT to the entire process group,
-  //   so the child already receives it. Forwarding would double-deliver, causing
-  //   the Rust server's graceful shutdown to see two SIGINTs from one Ctrl+C.
-  // - SIGTERM/SIGHUP: Forward. These may be sent to our PID only (e.g. from
-  //   `kill` or a process manager), so the child wouldn't get them otherwise.
-  const child = spawn(binaryPath, process.argv.slice(2), { stdio: 'inherit', env })
+  // The server is long-running; an abnormal death — a panic=abort SIGABRT, an
+  // OS out-of-memory SIGKILL, or a non-zero exit — used to leave the user with
+  // a dead app until they manually relaunched. We now restart it on an abnormal
+  // exit, bounded to MAX_RESTARTS within RESTART_WINDOW_MS so a hard crash-loop
+  // gives up loudly instead of thrashing.
+  //
+  // Signal handling (intent unchanged):
+  // - SIGINT: the terminal delivers it to the whole process group, so the child
+  //   already receives it. The wrapper ignores it (so Node doesn't exit first)
+  //   and treats the child's SIGINT death as a deliberate stop — never restart.
+  // - SIGTERM/SIGHUP: forward to whichever child is currently running (it may
+  //   not get them if they were sent to our PID only); also a deliberate stop.
+  const MAX_RESTARTS = 5
+  const RESTART_WINDOW_MS = 60_000
 
   // Prevent Node from exiting on SIGINT before the child does.
   const ignoreSigint = () => {}
   process.on('SIGINT', ignoreSigint)
 
-  // Forward SIGTERM/SIGHUP — child may not receive these from process group.
-  for (const sig of ['SIGTERM', 'SIGHUP']) {
-    process.on(sig, () => child.kill(sig))
-  }
+  const supervisor = superviseServer({
+    spawn: () => spawn(binaryPath, process.argv.slice(2), { stdio: 'inherit', env }),
+    maxRestarts: MAX_RESTARTS,
+    windowMs: RESTART_WINDOW_MS,
+    now: () => Date.now(),
+    log: (msg) => console.error(msg),
+    onExit: ({ code, signal }) => {
+      // Terminal disposition: restore default SIGINT behavior, then propagate
+      // the child's fate faithfully so the parent shell sees the right status.
+      process.removeListener('SIGINT', ignoreSigint)
 
-  child.on('exit', (code, signal) => {
-    // Remove our SIGINT handler so the re-signal below uses default behavior.
-    process.removeListener('SIGINT', ignoreSigint)
+      // Reaching here with a crash disposition means the supervisor exhausted
+      // its restart budget — point the user at the evidence instead of dying
+      // silently.
+      if (classifyExit(code, signal) === 'crash') {
+        const logDir = path.join(os.homedir(), '.claude-view', 'logs')
+        console.error(
+          `\nCheck ${path.join(logDir, 'crash-*.log')} for a panic backtrace, ` +
+            `or your system log for an out-of-memory (jetsam) kill.`,
+        )
+      }
 
-    if (signal) {
-      // Child was killed by signal — re-signal ourselves so the parent shell
-      // sees the correct exit status (128 + signal number).
-      process.kill(process.pid, signal)
-    } else {
-      process.exit(code ?? 1)
-    }
+      if (signal) {
+        // Re-signal ourselves so the parent shell sees 128 + signal number.
+        process.kill(process.pid, signal)
+      } else {
+        process.exit(code ?? 1)
+      }
+    },
   })
+
+  // Forward deliberate-stop signals to whichever child is currently running.
+  for (const sig of ['SIGTERM', 'SIGHUP']) {
+    process.on(sig, () => {
+      const child = supervisor.getChild()
+      if (child) child.kill(sig)
+    })
+  }
 }
 
 main()

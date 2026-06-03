@@ -42,11 +42,23 @@ where
 
     let skipped = Arc::new(AtomicUsize::new(0));
 
+    // Share the read-only lookup maps across all parse tasks via `Arc`.
+    //
+    // Previously each task captured `hints.clone()` + `existing_map.clone()`,
+    // i.e. a FULL deep clone of both session-keyed maps PER FILE. With N
+    // sessions that is O(N^2) peak heap (N spawned tasks each holding its own
+    // N-entry map), and it re-fires on every ~120s periodic re-scan — enough to
+    // OOM a low-RAM machine within minutes while a high-RAM dev box shrugs it
+    // off. The closures only READ these maps (`.get`), so one shared `Arc`
+    // (an O(1) refcount bump per task) gives identical behavior at O(N) heap.
+    let hints = Arc::new(hints.clone());
+    let existing_map = Arc::new(existing_map.clone());
+
     let mut handles = Vec::with_capacity(files.len());
     for (path, project_encoded, session_id) in files {
         let sem = semaphore.clone();
-        let hints = hints.clone();
-        let existing_map = existing_map.clone();
+        let hints = Arc::clone(&hints);
+        let existing_map = Arc::clone(&existing_map);
         let skipped = skipped.clone();
         let registry = registry.clone();
         let force_reindex = force_search_reindex;

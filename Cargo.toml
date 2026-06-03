@@ -154,7 +154,7 @@ claude-view-stats-rollup-derive = { path = "crates/stats-rollup-derive" }
 #
 # dev      — fastest compile, debug iteration
 # release  — fast optimized: thin LTO, parallel codegen, unwind-safe
-# dist     — ship-quality: fat LTO, PGO-ready, panic=abort, smallest+fastest
+# dist     — ship-quality: fat LTO, PGO-ready, panic=unwind (fault-isolated)
 # test     — light optimization for faster test execution
 #
 # Daily:   ./scripts/cq build --release
@@ -192,7 +192,15 @@ inherits = "release"
 opt-level = 3          # Maximum optimization — aggressive inlining, vectorization
 lto = true             # Fat LTO: single-threaded whole-program LLVM optimization
 codegen-units = 1      # Single codegen unit: maximum cross-function optimization scope
-panic = "abort"        # No unwinding tables (~2.9MB saved), no unwinding overhead
+# panic = "unwind" (inherited from release / Rust default). DO NOT set "abort".
+# This is a long-running local server that parses arbitrary user ~/.claude data
+# and runs many background tokio tasks (indexer, git-sync, file watcher, request
+# handlers). Under "abort" a panic in ANY single task SIGABRTs the whole process
+# — and since the npx launcher relayed that exit, the user's app went "down".
+# "unwind" lets tokio isolate a panicking task (logged via the panic hook) while
+# the server keeps serving. The ~2.9MB of unwind tables is a cheap price for not
+# turning one bad session record into a full-app crash. (Root cause of the
+# "stable on the dev box, dies on user machines" instability reports.)
 strip = true           # No debug symbols in shipped binary
 # trim-paths via RUSTFLAGS in build-dist.sh (not stable in Cargo.toml yet)
 
