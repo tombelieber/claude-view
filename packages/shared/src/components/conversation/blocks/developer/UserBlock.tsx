@@ -1,6 +1,7 @@
 import { Check, Loader2, X } from 'lucide-react'
 import type { UserBlock as UserBlockType } from '../../../../types/blocks'
 import { StatusBadge } from '../shared/StatusBadge'
+import { promptSourceDisplay } from '../shared/prompt-source'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
 import { EventCard } from './EventCard'
 import { RENDERED_KEYS as LINEAGE_KEYS, MessageLineageDetail } from './details/MessageLineageDetail'
@@ -30,6 +31,9 @@ function StatusDot({ status }: { status: UserBlockType['status'] }) {
 }
 
 export function DevUserBlock({ block }: UserBlockProps) {
+  // Debug view shows the prompt origin for every value (including the default
+  // "typed") — nothing is low-priority in the developer surface.
+  const promptSrc = promptSourceDisplay(block.promptSource)
   return (
     <EventCard
       dot={block.status === 'failed' ? 'red' : 'blue'}
@@ -41,6 +45,7 @@ export function DevUserBlock({ block }: UserBlockProps) {
       meta={
         <div className="flex items-center gap-1.5">
           {block.agentId && <StatusBadge label={`Agent: ${block.agentId}`} color="indigo" />}
+          {promptSrc && <StatusBadge label={`Source: ${promptSrc.label}`} color={promptSrc.color} />}
           <StatusDot status={block.status} />
         </div>
       }

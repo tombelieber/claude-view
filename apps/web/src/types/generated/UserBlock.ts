@@ -12,6 +12,12 @@ export type UserBlock = {
   parentUuid?: string | null
   isSidechain?: boolean | null
   agentId?: string | null
+  /**
+   * Origin of the prompt as tagged by the Claude Code CLI: "typed" (human),
+   * "sdk" (Agent SDK injected), or "system" (system-generated). Verbatim raw
+   * field — absent on older sessions. See block_accumulator::handlers.
+   */
+  promptSource?: string | null
   images?: Array<ImageContent>
   rawJson?: any
 }

@@ -178,6 +178,7 @@ fn regression_string_content_preserves_all_fields() {
         "permissionMode": "bypassPermissions",
         "isSidechain": true,
         "agentId": "agent-xyz",
+        "promptSource": "system",
         "timestamp": "2026-04-04T12:30:00.000Z"
     }));
     let blocks = acc.finalize();
@@ -189,11 +190,43 @@ fn regression_string_content_preserves_all_fields() {
         assert_eq!(u.permission_mode.as_deref(), Some("bypassPermissions"));
         assert_eq!(u.is_sidechain, Some(true));
         assert_eq!(u.agent_id.as_deref(), Some("agent-xyz"));
+        assert_eq!(u.prompt_source.as_deref(), Some("system"));
         assert!(u.images.is_empty());
         assert!(u.timestamp > 0.0);
     } else {
         panic!("Expected UserBlock");
     }
+}
+
+#[test]
+fn regression_prompt_source_parsed_from_array_content() {
+    // promptSource (CC prompt-origin tag: typed | sdk | system) must flow
+    // from the raw `user` record onto UserBlock via the array-content path,
+    // and be absent (None) when the CLI omits it (older sessions).
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({
+        "type": "user",
+        "uuid": "u-sdk",
+        "message": {"content": [{"type": "text", "text": "injected prompt"}]},
+        "promptSource": "sdk",
+        "timestamp": "2026-04-04T12:30:00.000Z"
+    }));
+    acc.process_line(&serde_json::json!({
+        "type": "user",
+        "uuid": "u-legacy",
+        "message": {"content": [{"type": "text", "text": "older session, no tag"}]},
+        "timestamp": "2026-04-04T12:31:00.000Z"
+    }));
+    let blocks = acc.finalize();
+    assert_eq!(blocks.len(), 2);
+    let sources: Vec<Option<&str>> = blocks
+        .iter()
+        .filter_map(|b| match b {
+            ConversationBlock::User(u) => Some(u.prompt_source.as_deref()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sources, vec![Some("sdk"), None]);
 }
 
 #[test]

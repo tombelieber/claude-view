@@ -56,6 +56,10 @@ impl BlockAccumulator {
                     .get("agentId")
                     .and_then(|a| a.as_str())
                     .map(String::from),
+                prompt_source: entry
+                    .get("promptSource")
+                    .and_then(|p| p.as_str())
+                    .map(String::from),
                 images: vec![],
                 raw_json: None,
             }));
@@ -144,6 +148,10 @@ impl BlockAccumulator {
             agent_id: entry
                 .get("agentId")
                 .and_then(|a| a.as_str())
+                .map(String::from),
+            prompt_source: entry
+                .get("promptSource")
+                .and_then(|p| p.as_str())
                 .map(String::from),
             images: blocks.images,
             raw_json: None,

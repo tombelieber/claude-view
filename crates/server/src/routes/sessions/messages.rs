@@ -341,6 +341,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            prompt_source: None,
             images: vec![],
             raw_json: None,
         });
@@ -355,6 +356,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            prompt_source: None,
             images: vec![],
             raw_json: None,
         });
@@ -418,6 +420,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            prompt_source: None,
             images: vec![],
             raw_json: None,
         });

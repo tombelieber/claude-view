@@ -81,6 +81,11 @@ pub struct UserBlock {
     pub is_sidechain: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
+    /// Origin of the prompt as tagged by the Claude Code CLI: "typed" (human),
+    /// "sdk" (Agent SDK injected), or "system" (system-generated). Verbatim raw
+    /// field — absent on older sessions. See block_accumulator::handlers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_source: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub images: Vec<ImageContent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -557,6 +562,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            prompt_source: None,
             images: Vec::new(),
             raw_json: None,
         });
@@ -588,6 +594,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            prompt_source: Some("sdk".into()),
             images: Vec::new(),
             raw_json: None,
         };
@@ -600,6 +607,12 @@ mod tests {
         assert_eq!(block.local_id, deserialized.local_id);
         assert_eq!(block.pending, deserialized.pending);
         assert_eq!(block.permission_mode, deserialized.permission_mode);
+        assert_eq!(block.prompt_source, deserialized.prompt_source);
+        // promptSource serializes camelCase and is omitted when None
+        assert_eq!(
+            serde_json::to_value(&block).unwrap()["promptSource"],
+            "sdk"
+        );
     }
 
     #[test]
@@ -615,6 +628,7 @@ mod tests {
             parent_uuid: Some("parent-msg-123".into()),
             is_sidechain: None,
             agent_id: None,
+            prompt_source: None,
             images: Vec::new(),
             raw_json: None,
         };
@@ -638,6 +652,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            prompt_source: None,
             images: Vec::new(),
             raw_json: None,
         };

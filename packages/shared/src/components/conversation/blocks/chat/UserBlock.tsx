@@ -1,11 +1,16 @@
 import type { UserBlock as UserBlockType } from '../../../../types/blocks'
-import { Bot, Check, GitBranch, Loader2, X } from 'lucide-react'
+import { Bot, Check, Code2, Cog, GitBranch, Loader2, type LucideIcon, X } from 'lucide-react'
 import { useConversationActions } from '../../../../contexts/conversation-actions-context'
 import { MessageTimestamp } from '../shared/MessageTimestamp'
+import { promptSourceDisplay } from '../shared/prompt-source'
 
 interface UserBlockProps {
   block: UserBlockType
 }
+
+// Icon per prompt origin for the chat pill. Unknown future origins fall back
+// to a generic glyph rather than disappearing (Zero Data Loss).
+const SOURCE_ICON: Record<string, LucideIcon> = { sdk: Code2, system: Cog }
 
 function StatusDot({ status }: { status: UserBlockType['status'] }) {
   switch (status) {
@@ -27,6 +32,11 @@ function StatusDot({ status }: { status: UserBlockType['status'] }) {
 export function ChatUserBlock({ block }: UserBlockProps) {
   const convActions = useConversationActions()
   const isSidechain = block.isSidechain === true
+  // Only surface non-default prompt origins (sdk/system). A human-typed prompt
+  // is the expected case and gets no pill — signal over noise.
+  const promptSrc = promptSourceDisplay(block.promptSource)
+  const showSrcPill = promptSrc?.chatVisible === true
+  const SourceIcon = (block.promptSource && SOURCE_ICON[block.promptSource]) || Code2
 
   return (
     <div
@@ -34,13 +44,22 @@ export function ChatUserBlock({ block }: UserBlockProps) {
       className={`flex justify-end ${isSidechain ? 'opacity-70 pl-6' : ''}`}
     >
       <div className="max-w-[80%]">
-        {/* Agent / sidechain badges */}
-        {(block.agentId || isSidechain) && (
+        {/* Agent / sidechain / prompt-origin badges */}
+        {(block.agentId || isSidechain || showSrcPill) && (
           <div className="flex items-center justify-end gap-1.5 mb-1 px-1">
             {isSidechain && (
               <span className="inline-flex items-center gap-0.5 text-xs text-purple-500 dark:text-purple-400">
                 <GitBranch className="w-2.5 h-2.5" />
                 sidechain
+              </span>
+            )}
+            {showSrcPill && promptSrc && (
+              <span
+                className="inline-flex items-center gap-0.5 text-xs font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded-full"
+                title={`Prompt origin: ${promptSrc.label}`}
+              >
+                <SourceIcon className="w-2.5 h-2.5" />
+                {promptSrc.label}
               </span>
             )}
             {block.agentId && (

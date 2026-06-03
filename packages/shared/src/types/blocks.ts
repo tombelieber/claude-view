@@ -66,6 +66,8 @@ export type UserBlock = {
   parentUuid?: string | null
   isSidechain?: boolean
   agentId?: string
+  /** CC prompt origin: "typed" (human) | "sdk" (Agent SDK) | "system". Absent on older sessions. */
+  promptSource?: string
   images?: ImageContent[]
   rawJson?: Record<string, unknown> | null
 }

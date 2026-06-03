@@ -167,9 +167,10 @@
       "forkedFrom.sessionId",
       "forkedFrom.messageUuid",
       "planContent",
-      "entrypoint"
+      "entrypoint",
+      "promptSource"
     ],
-    "consumed_by_parser_note": "Fields previously listed as intentionally_ignored that are now consumed by the block pipeline (TurnBoundary, Notice, UserBlock.permission_mode, forkedFrom, PlanContent, entrypoint).",
+    "consumed_by_parser_note": "Fields previously listed as intentionally_ignored that are now consumed by the block pipeline (TurnBoundary, Notice, UserBlock.permission_mode, forkedFrom, PlanContent, entrypoint, UserBlock.prompt_source). promptSource stays listed under intentionally_ignored (not moved to extracted) because it appears on only a fraction of sessions — keeping it out of the phantom-checked `extracted` set avoids false failures on corpora without recent SDK/system prompts; this array documents that the block pipeline does surface it.",
     "intentionally_ignored": [
       "sessionId",
       "parentUuid",
@@ -269,6 +270,6 @@
       "promptSource",
       "mcpMeta"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin metadata) is not surfaced by the block pipeline. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Surfacing promptSource/mcpMeta is a possible cc-compat follow-up."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin tag: typed | sdk | system) IS now surfaced — see consumed_by_parser (UserBlock.prompt_source → chat origin pill for sdk/system, developer badge for all values); it stays listed here rather than under `extracted` because it appears on only a fraction of sessions and must not trip the phantom-field check on corpora lacking it. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is the structured mirror of the tool_result content the timeline already renders, and is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Decision (settled, not a follow-up): mcpMeta stays unsurfaced — rendering opaque arbitrary per-tool JSON as a structured UI element adds no signal over the already-displayed result and would risk Trust-over-Accuracy."
   }
 }
