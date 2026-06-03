@@ -1,14 +1,11 @@
 {
   "name": "claude-view",
-  "version": "0.43.0",
+  "version": "0.44.0",
   "private": true,
   "description": "You have 10 Claude sessions running. What are they doing? Live dashboard for Claude Code — monitor every session, track costs, search history, see sub-agents. One command: npx claude-view",
   "type": "module",
   "packageManager": "bun@1.3.7",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "bash scripts/dev.sh",
     "dev:cleanup": "bash scripts/dev-cleanup.sh",
