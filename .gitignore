@@ -128,6 +128,14 @@ __pycache__/
 **/CLAUDE.md
 /CLAUDE.md
 
+# Codex / agent local config (skills, instructions) — twin of .claude/ + CLAUDE.md.
+# "How I build = secret" boundary: agent skills/instructions stay local-only,
+# never published to this public repo.
+.agents/
+.agents
+**/AGENTS.md
+/AGENTS.md
+
 # Lefthook local overrides (personal hooks, not committed)
 lefthook-local.yml
 
