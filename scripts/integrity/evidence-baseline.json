@@ -23,9 +23,10 @@
       "pr-link"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": ["mode"],
+    "silently_ignored": ["mode", "started", "result"],
+    "silently_ignored_note": "mode = output-style marker. started/result = sub-agent tool-result cache records ({type, key:'v2:<hash>', agentId, result}) — internal result-memoization bookkeeping, deliberately not rendered as conversation blocks. Matches block_accumulator::intentionally_ignored_record_types(); the parser has no match arm for them (skipped via the `_ => {}` catch-all).",
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
-    "removed_dead_code": ["result", "saved_hook_context", "summary"],
+    "removed_dead_code": ["saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []
   },
   "content_block_types": {
@@ -264,8 +265,10 @@
       "attributionMcpServer",
       "attributionMcpTool",
       "mode",
-      "pendingWorkflowCount"
+      "pendingWorkflowCount",
+      "promptSource",
+      "mcpMeta"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin metadata) is not surfaced by the block pipeline. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Surfacing promptSource/mcpMeta is a possible cc-compat follow-up."
   }
 }
