@@ -270,6 +270,11 @@ function truncateJson(value: Record<string, unknown>, maxBytes: number): Record<
 export class StreamAccumulator {
   private blocks: ConversationBlock[] = []
   private currentAssistant: AssistantBlock | null = null
+  /** toolUseId → its ToolExecution, for O(1) lookup from tool_use_result /
+   *  tool_progress / tool_summary. Previously these scanned every block and
+   *  allocated a fresh getBlocks() array per call — O(N) CPU + GC churn per
+   *  tool event on long sessions. Kept in sync on tool start and block eviction. */
+  private toolExecutionIndex = new Map<string, ToolExecution>()
   private pushCounter = 0
   private initialized = false
   private buffer: { event: ServerEvent | SequencedEvent; raw?: Record<string, unknown> }[] = []
@@ -290,7 +295,13 @@ export class StreamAccumulator {
     while (dropped < excess && this.blocks.length > 0) {
       const idx = this.blocks.findIndex((b) => b.type !== 'turn_boundary')
       if (idx === -1) break
-      this.blocks.splice(idx, 1)
+      const [removed] = this.blocks.splice(idx, 1)
+      // Drop evicted tool executions from the index so it can't outgrow MAX_BLOCKS.
+      if (removed?.type === 'assistant') {
+        for (const seg of removed.segments) {
+          if (seg.kind === 'tool') this.toolExecutionIndex.delete(seg.execution.toolUseId)
+        }
+      }
       dropped++
     }
     if (!this.evictionWarned && dropped > 0) {
@@ -349,6 +360,7 @@ export class StreamAccumulator {
     this.currentAssistant = null
     this.initialized = false
     this.buffer = []
+    this.toolExecutionIndex.clear()
   }
 
   private handleEvent(event: ServerEvent | SequencedEvent): void {
@@ -534,6 +546,7 @@ export class StreamAccumulator {
       status: 'running',
     }
     assistant.segments.push({ kind: 'tool', execution })
+    this.toolExecutionIndex.set(execution.toolUseId, execution)
   }
 
   private handleToolUseResult(event: ToolUseResult): void {
@@ -680,16 +693,10 @@ export class StreamAccumulator {
   }
 
   private findToolExecution(toolUseId: string): ToolExecution | undefined {
-    const allBlocks = this.getBlocks()
-    for (const block of allBlocks) {
-      if (block.type !== 'assistant') continue
-      for (const seg of block.segments) {
-        if (seg.kind === 'tool' && seg.execution.toolUseId === toolUseId) {
-          return seg.execution
-        }
-      }
-    }
-    return undefined
+    // O(1) lookup. Executions are inserted on tool_use_start (covering both the
+    // in-flight currentAssistant and finalized blocks, which share the same
+    // object reference) and removed on block eviction.
+    return this.toolExecutionIndex.get(toolUseId)
   }
 
   private pushInteraction(
