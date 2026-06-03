@@ -2264,6 +2264,59 @@ npx claude-view@latest
 Open the **Workflows** tab and pick your most recent run. If you've run anything ambitious lately, you'll finally get to see what all those agents were up to.
 
 
+--- blog/v0-43-0-no-more-mystery-crashes.mdx ---
+
+---
+title: "No More Mystery Crashes — and CLI→GUI Takeover"
+description: "v0.43.0 fixes the memory-creep crash that made claude-view quit on long sessions, adds a self-healing launcher, and lets you take over a terminal Claude session from the GUI."
+date: 2026-06-03
+author: claude-view team
+---
+
+You ran `npx claude-view`, it worked for a few minutes, and then the page went dead. You restarted it — fine again for a while — then dead again. Reinstalling didn't help. If that was you, v0.43.0 is the release you've been waiting for.
+
+## The problem: it worked on our machine
+
+Here's the uncomfortable truth: claude-view ran for *days* without a hiccup on our development machines, so the crash was nearly invisible to us. It only bit people on normal laptops — and it bit them within minutes.
+
+Two things conspired:
+
+- **A quadratic memory spike, every two minutes.** The background indexer re-scans your sessions on a timer. It was cloning its entire lookup tables once *per file* — O(N²) work that re-fired on every cycle. With thousands of sessions, each scan briefly allocated hundreds of megabytes. A 64GB dev box shrugs it off; a 16GB laptop climbs into swap and the operating system eventually kills the server. About ten minutes in.
+- **One bad record could kill everything.** The shipped binary was built so that a panic in *any* background task aborted the whole process. Our dev builds isolate those panics — which is exactly why we never saw it. So a single unusual entry in your history could take the entire dashboard down.
+
+And when the server died, the launcher just… exited. You got a dead page and a manual restart.
+
+## The fix: light, isolated, self-healing
+
+v0.43.0 attacks all three:
+
+- **The indexer is now O(N), not O(N²).** It shares its lookup tables across the scan instead of copying them per file. Big histories stay light on memory — no more sawtooth climb into a crash.
+- **A background hiccup stays contained.** Panics are isolated per task and logged, so one odd record can't abort the server.
+- **The dashboard self-heals.** If the server ever exits unexpectedly, the launcher restarts it automatically — bounded, so a genuine crash-loop gives up with an actionable message instead of thrashing. No more staring at a dead tab.
+
+Live chat got the same treatment: long conversations no longer re-serialize the whole transcript on every event, and a slow or backgrounded browser tab can't balloon the sidecar's memory.
+
+## Bonus: take over a CLI session from the GUI
+
+While you're updating — v0.43.0 also lets you **take over a running terminal Claude session from the dashboard.** Fork it into an interactive session and drive it from the GUI: answer permission prompts, steer the plan, switch models, all without losing history.
+
+Interaction prompts are trustworthy now, too. A permission request never silently auto-denies — the countdown becomes a calm "waiting for you" indicator that pauses while the tab is hidden. And if a response fails to send, you'll see "couldn't deliver — tap to retry" instead of the card optimistically clearing. It only resolves once the agent has actually consumed your decision. 寧願唔顯示，都唔顯示錯嘅嘢 — better to show nothing than something wrong.
+
+## What's next
+
+- Deeper take-over: richer mid-session control surfaces.
+- Surfacing more of Claude Code's newer metadata (prompt origin, MCP tool envelopes) in the timeline.
+- Continued work on the live-monitor experience for large workspaces.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+If claude-view ever quit on you mid-session, update and leave it running — it should now stay up as long as Claude Code does.
+
+
 --- blog/v0-5-0-mission-control.mdx ---
 
 ---
@@ -4275,6 +4328,43 @@ version: v0.42.0
 **Secrets are redacted before display.** Every preview the observability views render — scripts, results, agent transcripts, tool arguments, journal entries — runs through a redactor that scrubs provider key prefixes, JWTs, bearer tokens, PEM blocks, and `key: value` credentials, so a workflow that touched an API key doesn't leak it into the UI.
 
 **The legacy YAML workflow editor is retired.** The old workflow-definition editor and runner have been removed from the UI in favor of the observability experience.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.43.0.md ---
+
+---
+title: v0.43.0 — Rock-Solid Long Sessions & CLI Takeover
+date: 2026-06-03
+version: v0.43.0
+---
+
+## New features
+
+**Take over a CLI session from the dashboard.** Fork a running terminal Claude session into an interactive one and drive it from the GUI — answer permission prompts, steer the plan, change models — without losing the session's history.
+
+**Trustworthy interaction prompts.** Permission requests never silently auto-deny. The countdown becomes a calm "waiting for you" indicator that pauses while the tab is hidden, and a failed send is surfaced ("couldn't deliver — tap to retry") instead of optimistically clearing. A prompt only resolves once the agent has actually consumed your decision.
+
+**Live monitor first-run empty state.** A polished empty state greets new workspaces with a clear path into your session history, instead of a blank panel.
+
+**Self-maintaining Claude Code compatibility.** claude-view now tracks new Claude Code record and field types automatically, so a Claude Code update can't silently break parsing or hide your sessions.
+
+## Improvements
+
+**No more "runs a few minutes, then quits."** The indexer's periodic re-scan was rewritten from O(N²) to O(N), so workspaces with thousands of sessions stay light on memory instead of climbing until the operating system kills the server.
+
+**The dashboard self-heals.** If the server ever exits unexpectedly, the launcher restarts it automatically (bounded, with an actionable message if it keeps failing) — no more staring at a dead page until you manually restart.
+
+**One hiccup can't take down the whole app.** A panic in a background task is now isolated and logged instead of aborting the entire process.
+
+**Live chat stays responsive under load.** Long conversations no longer re-serialize the whole transcript on every event, and a slow or backgrounded browser tab can't balloon the sidecar's memory.
+
+**New models never show "Unavailable."** Pricing for a brand-new model falls back to the nearest same-family rate, so costs keep showing the moment a new model ships.
 
 ## Getting started
 
