@@ -1,14 +1,15 @@
 import type { DockviewApi } from 'dockview-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
-import { NewCliSessionButton } from '../components/cli-terminal'
 import { LiveMonitorSkeleton } from '../components/LoadingStates'
+import { NewCliSessionButton } from '../components/cli-terminal'
 import { CostTokenPopover } from '../components/live/CostTokenPopover'
 import { HarnessKanbanView } from '../components/live/HarnessKanbanView'
 import { KanbanView } from '../components/live/KanbanView'
 import { KeyboardShortcutHelp } from '../components/live/KeyboardShortcutHelp'
 import { ListView } from '../components/live/ListView'
 import { LiveFilterBar } from '../components/live/LiveFilterBar'
+import { LiveMonitorEmptyState } from '../components/live/LiveMonitorEmptyState'
 import { MobileTabBar } from '../components/live/MobileTabBar'
 import { MonitorView } from '../components/live/MonitorView'
 import { OAuthUsagePill } from '../components/live/OAuthUsagePill'
@@ -30,18 +31,18 @@ import {
   type LiveSummary,
   sessionTotalCost,
 } from '../components/live/use-live-sessions'
-import {
-  useActiveSessions,
-  useRecentlyClosed,
-  useLiveSummary,
-  useIsLiveConnected,
-  useIsLiveInitialized,
-  useLiveSessionStore,
-  useStalledSessions,
-} from '../store/live-session-store'
 import type { IndexingProgress } from '../hooks/use-indexing-progress'
 import { useTrackEvent } from '../hooks/use-track-event'
 import { useLiveCommandStore } from '../store/live-command-context'
+import {
+  useActiveSessions,
+  useIsLiveConnected,
+  useIsLiveInitialized,
+  useLiveSessionStore,
+  useLiveSummary,
+  useRecentlyClosed,
+  useStalledSessions,
+} from '../store/live-session-store'
 import { useMonitorStore } from '../store/monitor-store'
 
 function resolveInitialView(searchParams: URLSearchParams): LiveViewMode {
@@ -482,108 +483,94 @@ export function LiveMonitorPage() {
         <div
           className={`max-w-7xl mx-auto w-full ${viewMode === 'kanban' || viewMode === 'monitor' || viewMode === 'harness' ? 'flex-1 min-h-0 flex flex-col' : ''}`}
         >
-          {/* View content */}
-          {viewMode === 'grid' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {visibleSessions.map((session) => (
-                <div
-                  key={session.id}
-                  data-session-id={session.id}
-                  className={selectedId === session.id ? 'ring-2 ring-amber-500 rounded-lg' : ''}
-                >
-                  <SessionCard
-                    session={session}
-                    stalledSessions={stalledSessions}
-                    currentTime={currentTime}
-                    onClickOverride={() => handleSelectSession(session.id)}
-                  />
+          {/* View content — when there are no active sessions at all, show the
+              rich empty state in EVERY view (the default kanban view previously
+              shipped no first-run guidance); otherwise render the selected view. */}
+          {sessions.length === 0 && isConnected ? (
+            <LiveMonitorEmptyState processCount={serverSummary?.processCount ?? 0} />
+          ) : (
+            <>
+              {viewMode === 'grid' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {visibleSessions.map((session) => (
+                    <div
+                      key={session.id}
+                      data-session-id={session.id}
+                      className={
+                        selectedId === session.id ? 'ring-2 ring-amber-500 rounded-lg' : ''
+                      }
+                    >
+                      <SessionCard
+                        session={session}
+                        stalledSessions={stalledSessions}
+                        currentTime={currentTime}
+                        onClickOverride={() => handleSelectSession(session.id)}
+                      />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
+              )}
 
-          {viewMode === 'list' && (
-            <ListView
-              sessions={visibleSessions}
-              selectedId={selectedId}
-              onSelect={handleSelectSession}
-            />
-          )}
+              {viewMode === 'list' && (
+                <ListView
+                  sessions={visibleSessions}
+                  selectedId={selectedId}
+                  onSelect={handleSelectSession}
+                />
+              )}
 
-          {viewMode === 'kanban' && (
-            <KanbanView
-              sessions={visibleSessions}
-              selectedId={selectedId}
-              onSelect={handleSelectSession}
-              onCardClick={handleSelectSession}
-              stalledSessions={stalledSessions}
-              currentTime={currentTime}
-              groupBy={groupBy}
-              projectGroups={projectGroups}
-              isCollapsed={isCollapsed}
-              toggleCollapse={toggleCollapse}
-              recentlyClosed={recentlyClosed}
-              onDismiss={dismissSession}
-              onDismissAll={dismissAllClosed}
-              showClosed={showClosed}
-            />
-          )}
+              {viewMode === 'kanban' && (
+                <KanbanView
+                  sessions={visibleSessions}
+                  selectedId={selectedId}
+                  onSelect={handleSelectSession}
+                  onCardClick={handleSelectSession}
+                  stalledSessions={stalledSessions}
+                  currentTime={currentTime}
+                  groupBy={groupBy}
+                  projectGroups={projectGroups}
+                  isCollapsed={isCollapsed}
+                  toggleCollapse={toggleCollapse}
+                  recentlyClosed={recentlyClosed}
+                  onDismiss={dismissSession}
+                  onDismissAll={dismissAllClosed}
+                  showClosed={showClosed}
+                />
+              )}
 
-          {viewMode === 'monitor' && (
-            <MonitorView
-              sessions={visibleSessions}
-              onSelectSession={handleMonitorExpand}
-              onDockApiReady={(api) => {
-                dockviewApiRef.current = api
-              }}
-            />
-          )}
+              {viewMode === 'monitor' && (
+                <MonitorView
+                  sessions={visibleSessions}
+                  onSelectSession={handleMonitorExpand}
+                  onDockApiReady={(api) => {
+                    dockviewApiRef.current = api
+                  }}
+                />
+              )}
 
-          {viewMode === 'harness' && (
-            <HarnessKanbanView
-              sessions={visibleSessions}
-              selectedId={selectedId}
-              onSelect={handleSelectSession}
-              onCardClick={handleSelectSession}
-              stalledSessions={stalledSessions}
-              currentTime={currentTime}
-              groupBy={groupBy}
-              projectGroups={projectGroups}
-              isCollapsed={isCollapsed}
-              toggleCollapse={toggleCollapse}
-            />
-          )}
+              {viewMode === 'harness' && (
+                <HarnessKanbanView
+                  sessions={visibleSessions}
+                  selectedId={selectedId}
+                  onSelect={handleSelectSession}
+                  onCardClick={handleSelectSession}
+                  stalledSessions={stalledSessions}
+                  currentTime={currentTime}
+                  groupBy={groupBy}
+                  projectGroups={projectGroups}
+                  isCollapsed={isCollapsed}
+                  toggleCollapse={toggleCollapse}
+                />
+              )}
 
-          {/* Empty state — skip for kanban and harness (columns have their own emptyMessage) */}
-          {visibleSessions.length === 0 &&
-            isConnected &&
-            viewMode !== 'kanban' &&
-            viewMode !== 'harness' && (
-              <div className="text-center text-gray-400 dark:text-gray-500 py-16">
-                <div className="text-4xl mb-4">~</div>
-                {sessions.length === 0 ? (
-                  serverSummary && serverSummary.processCount > 0 ? (
-                    <>
-                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-green-500/10 text-green-500 text-sm font-medium mb-3">
-                        <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                        {serverSummary.processCount} Claude{' '}
-                        {serverSummary.processCount === 1 ? 'process' : 'processes'} detected
-                      </div>
-                      <div className="text-sm">Sessions appear as they report in via hooks.</div>
-                      <div className="text-xs mt-1 text-gray-500 dark:text-gray-600">
-                        Try sending a message in one of your Claude Code terminals.
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-sm">No active Claude Code sessions detected.</div>
-                      <div className="text-xs mt-1">
-                        Start a session in your terminal and it will appear here.
-                      </div>
-                    </>
-                  )
-                ) : (
-                  <>
+              {/* Filtered-empty — sessions exist but none match the active filters
+                  (kanban/harness columns render their own per-column emptyMessage). */}
+              {visibleSessions.length === 0 &&
+                isConnected &&
+                viewMode !== 'kanban' &&
+                viewMode !== 'harness' && (
+                  <div className="text-center text-gray-400 dark:text-gray-500 py-16">
+                    <div className="text-4xl mb-4">~</div>
                     <div className="text-sm">No sessions match your filters.</div>
                     <div className="text-xs mt-1">
                       <button
@@ -594,10 +581,10 @@ export function LiveMonitorPage() {
                         Clear filters
                       </button>
                     </div>
-                  </>
+                  </div>
                 )}
-              </div>
-            )}
+            </>
+          )}
 
           {/* Recently closed sessions — grid and list views only */}
           {(viewMode === 'grid' || viewMode === 'list') && (
