@@ -91,3 +91,5 @@ pre-push:
         ./scripts/cq test --workspace
     cq-nextest-routing:
       run: bash test/cq-nextest-routing.sh
+    post-merge-regen-types:
+      run: bash test/post-merge-regen-types.test.sh
