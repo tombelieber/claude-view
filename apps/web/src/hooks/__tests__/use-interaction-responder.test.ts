@@ -63,9 +63,13 @@ describe('useInteractionResponder', () => {
     expect(typeof result.current).toBe('function')
   })
 
-  it('returns a function when ownership tier is tmux', () => {
+  it('returns undefined when ownership is tmux-only (read-only — take over to drive)', () => {
+    // Control v2 PR-2 deliberately narrowed interactivity to SDK-controlled
+    // sessions only (was sdk||tmux). A tmux-owned-only CLI session is a
+    // read-only mirror — never inject a response into the CLI's lineage; take
+    // over (fork to SDK) to drive it. (寧願唔顯示，都唔顯示錯嘅嘢.)
     const { result } = renderHook(() => useInteractionResponder('sess-1', tmuxOwnership))
-    expect(typeof result.current).toBe('function')
+    expect(result.current).toBeUndefined()
   })
 
   it('calls fetch with correct URL and body', async () => {
