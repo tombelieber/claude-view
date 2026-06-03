@@ -60,6 +60,34 @@ function testNpxCliNoInstallStep() {
   console.log('PASS: npx-cli has no install step')
 }
 
+function testSupervisorWiring() {
+  console.log('E2E: Verifying crash-supervisor is wired and shipped...')
+
+  const npxCli = fs.readFileSync(path.join(__dirname, 'index.js'), 'utf-8')
+  assert.strictEqual(
+    npxCli.includes("require('./supervise')"),
+    true,
+    'index.js must require ./supervise',
+  )
+  assert.strictEqual(
+    npxCli.includes('superviseServer('),
+    true,
+    'index.js must call superviseServer',
+  )
+
+  // The publish trap: supervise.js MUST be in package.json files[] or the
+  // published npm package would throw MODULE_NOT_FOUND at launch.
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf-8'))
+  assert.strictEqual(
+    pkg.files.includes('supervise.js'),
+    true,
+    'package.json files[] must include supervise.js so it ships to npm',
+  )
+
+  console.log('PASS: supervisor wired into index.js and included in published files')
+}
+
 testSidecarSetup()
 testNpxCliNoInstallStep()
+testSupervisorWiring()
 console.log('\nAll E2E tests passed.')
