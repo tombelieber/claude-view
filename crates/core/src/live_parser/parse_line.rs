@@ -70,6 +70,7 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
                 pasted_paths: Vec::new(),
                 entrypoint: None,
                 ai_title: None,
+                goal: None,
                 content_byte_len: None,
             };
         }
@@ -96,6 +97,10 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
             .map(String::from),
         _ => None,
     };
+
+    // Extract the session `/goal` (the session-scoped Stop-hook condition) from whichever
+    // transcript carrier it rode in on. None on the vast majority of lines.
+    let goal = extract_goal(&parsed);
 
     // The nested message object (most fields live here in Claude Code JSONL)
     let msg = parsed.get("message");
@@ -388,7 +393,63 @@ pub fn parse_single_line(raw: &[u8], finders: &TailFinders) -> LiveLine {
         pasted_paths,
         entrypoint,
         ai_title,
+        goal,
         content_byte_len,
+    }
+}
+
+/// Extract the session `/goal` — the session-scoped Stop-hook condition — from a line, if present.
+///
+/// `/goal` writes no file; the goal text rides into the transcript on one of three carriers,
+/// each matched on an exact prefix to keep precision high:
+/// 1. `type:"queue-operation"` → `content`: `"Goal set: <text>"` (typed while the agent is busy)
+/// 2. `type:"attachment"` (`attachment.type:"queued_command"`) → `prompt`: `"Goal set: <text>"`
+///    (auto-continuation re-injection while the goal is still active)
+/// 3. `type:"user"` → `message.content`: `…condition: "<text>". Briefly acknowledge…`
+///    (the universal "Stop hook is now active" directive)
+///
+/// The accumulator keeps the last goal seen, since goals stack / supersede.
+fn extract_goal(parsed: &serde_json::Value) -> Option<String> {
+    const GOAL_SET_PREFIX: &str = "Goal set: ";
+    const HOOK_PREFIX: &str = "A session-scoped Stop hook is now active with condition: \"";
+    const HOOK_SUFFIX: &str = "\". Briefly acknowledge";
+    /// Max stored goal length in chars. Goals are a sentence or two; this only guards
+    /// against a pathological transcript bloating the live-session payload.
+    const MAX_GOAL_CHARS: usize = 2000;
+
+    fn clamp(s: &str) -> Option<String> {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.chars().take(MAX_GOAL_CHARS).collect())
+        }
+    }
+
+    match parsed.get("type").and_then(|t| t.as_str()) {
+        Some("queue-operation") => parsed
+            .get("content")
+            .and_then(|c| c.as_str())
+            .and_then(|c| c.strip_prefix(GOAL_SET_PREFIX))
+            .and_then(clamp),
+        Some("attachment") => parsed
+            .get("attachment")
+            .filter(|a| a.get("type").and_then(|t| t.as_str()) == Some("queued_command"))
+            .and_then(|a| a.get("prompt"))
+            .and_then(|p| p.as_str())
+            .and_then(|p| p.strip_prefix(GOAL_SET_PREFIX))
+            .and_then(clamp),
+        Some("user") => {
+            let content = parsed
+                .get("message")
+                .and_then(|m| m.get("content"))
+                .and_then(|c| c.as_str())
+                .or_else(|| parsed.get("content").and_then(|c| c.as_str()))?;
+            let rest = content.strip_prefix(HOOK_PREFIX)?;
+            let end = rest.find(HOOK_SUFFIX)?;
+            clamp(&rest[..end])
+        }
+        _ => None,
     }
 }
 

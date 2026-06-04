@@ -182,6 +182,11 @@ pub struct LiveLine {
     pub entrypoint: Option<String>,
     /// AI-generated session title from `ai-title` JSONL lines.
     pub ai_title: Option<String>,
+    /// The session's active `/goal` — the session-scoped Stop-hook condition, if set.
+    /// `/goal` persists no file; the text is written into the transcript via three
+    /// carriers (`queue-operation` "Goal set:", `attachment` queued_command, and the
+    /// `isMeta` "Stop hook is now active" user message). Last-set-wins at the accumulator.
+    pub goal: Option<String>,
     /// Original content byte length before truncation. None if no content extracted.
     pub content_byte_len: Option<usize>,
 }

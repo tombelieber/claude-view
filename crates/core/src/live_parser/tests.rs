@@ -1265,4 +1265,73 @@ mod tests {
         assert_eq!(parsed.usage_cache_creation_5m_tokens, Some(1000));
         assert_eq!(parsed.usage_cache_creation_1hr_tokens, Some(0));
     }
+
+    // ── `/goal` extraction (the session-scoped Stop-hook condition) ──
+    //
+    // `/goal` writes no file; the goal text lands in the transcript as one of three
+    // carriers. Each is matched on an exact prefix to keep precision high.
+
+    #[test]
+    fn test_goal_from_queue_operation() {
+        // Carrier 1: `/goal` typed while the agent is busy → enqueued.
+        let raw = br#"{"type":"queue-operation","operation":"enqueue","content":"Goal set: finish the e2e and verify it"}"#;
+        let line = parse_single_line(raw, &TailFinders::new());
+        assert_eq!(line.goal.as_deref(), Some("finish the e2e and verify it"));
+    }
+
+    #[test]
+    fn test_goal_from_ismeta_hook_active() {
+        // Carrier 2: the universal "hook is now active" directive (isMeta user message).
+        let raw = br#"{"type":"user","isMeta":true,"message":{"role":"user","content":"A session-scoped Stop hook is now active with condition: \"add the goal feature to the card\". Briefly acknowledge the goal, then immediately start (or continue) working toward it. The hook will block stopping until the condition holds."}}"#;
+        let line = parse_single_line(raw, &TailFinders::new());
+        assert_eq!(
+            line.goal.as_deref(),
+            Some("add the goal feature to the card")
+        );
+    }
+
+    #[test]
+    fn test_goal_from_attachment_queued_command() {
+        // Carrier 3: auto-continuation re-injection while the goal is still active.
+        let raw = br#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"Goal set: ship it","origin":{"kind":"auto-continuation"}}}"#;
+        let line = parse_single_line(raw, &TailFinders::new());
+        assert_eq!(line.goal.as_deref(), Some("ship it"));
+    }
+
+    #[test]
+    fn test_goal_absent_on_normal_user_line() {
+        // Precision: a plain user message that merely contains "Goal set:" is NOT a goal —
+        // only the queue-operation/attachment carriers use that prefix, never raw user text.
+        let raw = br#"{"type":"user","message":{"role":"user","content":"Goal set: this is just me talking about a goal"}}"#;
+        let line = parse_single_line(raw, &TailFinders::new());
+        assert_eq!(line.goal, None);
+    }
+
+    #[test]
+    fn test_goal_absent_when_assistant_quotes_directive() {
+        // Precision: the assistant echoing the directive text must not be mistaken for a goal
+        // (the type gate excludes assistant lines).
+        let raw = br#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"A session-scoped Stop hook is now active with condition: \"x\". Briefly acknowledge"}]}}"#;
+        let line = parse_single_line(raw, &TailFinders::new());
+        assert_eq!(line.goal, None);
+    }
+
+    #[test]
+    fn test_goal_multiline_preserved() {
+        // Goals can span lines (real corpus has `\n`); preserve the text faithfully.
+        let raw = br#"{"type":"queue-operation","operation":"enqueue","content":"Goal set: do A\nthen B"}"#;
+        let line = parse_single_line(raw, &TailFinders::new());
+        assert_eq!(line.goal.as_deref(), Some("do A\nthen B"));
+    }
+
+    #[test]
+    fn test_goal_capped_to_bound_payload() {
+        // A pathologically long goal is clamped so it can't bloat the live-session payload.
+        let long = "x".repeat(5000);
+        let raw = format!(
+            r#"{{"type":"queue-operation","operation":"enqueue","content":"Goal set: {long}"}}"#
+        );
+        let line = parse_single_line(raw.as_bytes(), &TailFinders::new());
+        assert_eq!(line.goal.as_ref().map(|g| g.chars().count()), Some(2000));
+    }
 }

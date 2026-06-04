@@ -155,6 +155,9 @@ pub(crate) struct SessionAccumulator {
     /// AI-generated session title from `ai-title` JSONL lines.
     /// Updated on each occurrence (last one wins).
     pub ai_title: Option<String>,
+    /// The session's active `/goal` (Stop-hook condition) extracted from the transcript.
+    /// Updated on each occurrence (last one wins — goals stack / supersede).
+    pub goal: Option<String>,
 }
 
 impl SessionAccumulator {
@@ -203,6 +206,7 @@ impl SessionAccumulator {
             phase_labels: Vec::new(),
             entrypoint: None,
             ai_title: None,
+            goal: None,
         }
     }
 }
@@ -237,6 +241,7 @@ pub(super) struct JsonlMetadata {
     pub phase: PhaseHistory,
     pub entrypoint: Option<String>,
     pub ai_title: Option<String>,
+    pub goal: Option<String>,
 }
 
 /// Build a skeleton LiveSession from a crash-recovery snapshot entry.
@@ -455,6 +460,11 @@ pub(super) fn apply_jsonl_metadata(
     if m.ai_title.is_some() {
         session.jsonl.ai_title = m.ai_title.clone();
     }
+    // Goal is sticky: only overwrite when the accumulator has a definitive value, so a later
+    // metadata-only poll never blanks out a goal that was already learned.
+    if m.goal.is_some() {
+        session.jsonl.goal = m.goal.clone();
+    }
     // Derive source from JSONL entrypoint (authoritative, no process classification needed)
     if let Some(ref ep) = m.entrypoint {
         let new_source = crate::live::process::entrypoint_to_source(ep);
@@ -554,5 +564,6 @@ pub(super) fn build_metadata_from_accumulator(
         },
         entrypoint: acc.entrypoint.clone(),
         ai_title: acc.ai_title.clone(),
+        goal: acc.goal.clone(),
     }
 }

@@ -259,3 +259,23 @@ describe('SessionCard interaction display', () => {
     expect(screen.queryByText(/Permission/i)).not.toBeInTheDocument()
   })
 })
+
+// The session's pinned `/goal` (the Stop-hook condition) must surface on the card so
+// you can see what each live session is driving toward — shown ONLY when actually set
+// (寧願唔顯示，都唔顯示錯嘅嘢: better nothing than a wrong/absent goal).
+describe('SessionCard goal', () => {
+  it('renders the goal text when session.goal is set', () => {
+    renderCard(createMockSession({ goal: 'finish the e2e and verify it in prod' }))
+    expect(screen.getByText('finish the e2e and verify it in prod')).toBeInTheDocument()
+  })
+
+  it('does NOT render a goal pill when session.goal is absent', () => {
+    renderCard(createMockSession({ goal: undefined }))
+    expect(screen.queryByText('finish the e2e and verify it in prod')).not.toBeInTheDocument()
+  })
+
+  it('does NOT render a goal pill when session.goal is null', () => {
+    renderCard(createMockSession({ goal: null }))
+    expect(screen.queryByText(/finish the e2e/)).not.toBeInTheDocument()
+  })
+})

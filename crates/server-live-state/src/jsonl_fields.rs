@@ -90,6 +90,10 @@ pub struct JsonlFields {
     /// AI-generated session title (from `ai-title` JSONL lines).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ai_title: Option<String>,
+    /// The session's active `/goal` — the session-scoped Stop-hook condition, if one is set.
+    /// Extracted from the transcript (no separate file). Absent ⟹ omitted from the payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal: Option<String>,
 }
 
 impl Default for JsonlFields {
@@ -118,6 +122,7 @@ impl Default for JsonlFields {
             source: None,
             phase: PhaseHistory::default(),
             ai_title: None,
+            goal: None,
         }
     }
 }

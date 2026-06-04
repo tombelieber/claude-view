@@ -53,6 +53,7 @@ mod tests {
             pasted_paths: Vec::new(),
             entrypoint: None,
             ai_title: None,
+            goal: None,
             content_byte_len: None,
         }
     }
