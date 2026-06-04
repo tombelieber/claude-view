@@ -78,9 +78,15 @@ impl LiveSessionManager {
             (transcript_path, closed)
         };
 
-        // Phase 1b: Push to bounded ring buffer (FIFO).
+        // Phase 1b: Push to bounded ring buffer (FIFO, set-keyed by id).
         {
             let mut ring = self.closed_ring.write().await;
+            // "Recently closed" is membership keyed by id, not an event log. A
+            // resurrected session (a real `--resume`, or re-created by a late
+            // event) can reach the reaper more than once; drop any prior entry
+            // so a re-close REPLACES it (most-recent wins) and moves it to the
+            // newest slot, instead of duplicating the card in the closed column.
+            ring.retain(|s| s.id != session_id);
             if ring.len() >= crate::live::state::CLOSED_RING_CAPACITY {
                 ring.pop_front(); // evict oldest
             }
@@ -472,6 +478,51 @@ mod tests {
         assert!(
             ring.iter().any(|s| s.id == "ring-1"),
             "ring-1 should survive (only oldest evicted)"
+        );
+    }
+
+    /// Regression (closed-column duplicate cards): a session that is
+    /// resurrected — re-inserted into the live map after being reaped, e.g. a
+    /// real `--resume` or a late JSONL flush — and then reaped again must NOT
+    /// create a second `closed_ring` entry. The ring is a SET keyed by session
+    /// id ("recently closed" is membership, not a log); re-closing REPLACES the
+    /// prior entry (most-recent close wins) and moves it to the newest slot.
+    #[tokio::test]
+    async fn test_resurrection_does_not_duplicate_closed_ring_entry() {
+        let (mgr, _rx, _snap_rx) = make_test_manager().await;
+        let session_id = "sess-resurrect";
+
+        // First life → reap #1.
+        let mut s1 = make_dead_session(session_id, DEAD_PID, "/tmp/res.jsonl");
+        s1.hook.title = "first life".into();
+        mgr.sessions
+            .write()
+            .await
+            .insert(session_id.to_string(), s1);
+        assert_eq!(mgr.reap_session(session_id).await, ReapResult::Reaped);
+
+        // Resurrection: the same id re-enters the live map, then dies again → reap #2.
+        let mut s2 = make_dead_session(session_id, DEAD_PID, "/tmp/res.jsonl");
+        s2.hook.title = "second life".into();
+        mgr.sessions
+            .write()
+            .await
+            .insert(session_id.to_string(), s2);
+        assert_eq!(mgr.reap_session(session_id).await, ReapResult::Reaped);
+
+        // Invariant: the ring holds this id AT MOST ONCE.
+        let ring = mgr.closed_ring.read().await;
+        let matches: Vec<_> = ring.iter().filter(|s| s.id == session_id).collect();
+        assert_eq!(
+            matches.len(),
+            1,
+            "closed_ring must contain a session id at most once (got {})",
+            matches.len()
+        );
+        // ...and the most-recent close wins.
+        assert_eq!(
+            matches[0].hook.title, "second life",
+            "re-close must replace the prior closed-ring entry (most-recent wins)"
         );
     }
 

@@ -1,6 +1,6 @@
+import type { LiveSession } from '@claude-view/shared/types/generated'
 import { useMemo } from 'react'
 import { create } from 'zustand'
-import type { LiveSession } from '@claude-view/shared/types/generated'
 
 export interface LiveSummary {
   needsYouCount: number
@@ -78,9 +78,23 @@ export const useLiveSessionStore = create<LiveSessionState>((set) => ({
       map.set(s.id, s)
       _eventTimes.set(s.id, now)
     }
+    // `recentlyClosed` is a SET keyed by id, disjoint from active sessions.
+    // Defensively normalize the server payload (truthful boundary): drop any id
+    // that is currently active, and keep one entry per id. We walk newest→oldest
+    // (server sends ring order, oldest first) so the most-recent close wins on a
+    // duplicate, then restore oldest→newest order.
+    const seen = new Set<string>()
+    const dedupedClosed: LiveSession[] = []
+    for (let i = recentlyClosed.length - 1; i >= 0; i--) {
+      const s = recentlyClosed[i]
+      if (map.has(s.id) || seen.has(s.id)) continue
+      seen.add(s.id)
+      dedupedClosed.push(s)
+    }
+    dedupedClosed.reverse()
     set({
       sessionsById: map,
-      recentlyClosed,
+      recentlyClosed: dedupedClosed,
       summary,
       isInitialized: true,
       lastUpdateTs: now,
@@ -92,7 +106,14 @@ export const useLiveSessionStore = create<LiveSessionState>((set) => ({
     set((state) => {
       const next = new Map(state.sessionsById)
       next.set(session.id, session)
-      return { sessionsById: next, lastUpdateTs: Date.now() }
+      // A session is active XOR recently-closed, never both. If it was closed
+      // and is now active again (resume / resurrection), pull it back out of the
+      // closed list. The `.some` guard keeps the array reference stable in the
+      // common case (no closed entry) to avoid needless re-renders.
+      const closed = state.recentlyClosed.some((s) => s.id === session.id)
+        ? state.recentlyClosed.filter((s) => s.id !== session.id)
+        : state.recentlyClosed
+      return { sessionsById: next, recentlyClosed: closed, lastUpdateTs: Date.now() }
     })
   },
 
@@ -101,12 +122,13 @@ export const useLiveSessionStore = create<LiveSessionState>((set) => ({
     set((state) => {
       const next = new Map(state.sessionsById)
       next.delete(sessionId)
-      // Prepend to closed list, cap at 100. Avoid spread when at capacity —
-      // splice is O(1) amortized vs spread's O(n) copy.
-      const closed =
-        state.recentlyClosed.length >= 100
-          ? [session, ...state.recentlyClosed.slice(0, 99)]
-          : [session, ...state.recentlyClosed]
+      // `recentlyClosed` is a SET keyed by id. A resurrected session (resumed,
+      // or re-created server-side by a late event) can be reaped twice; without
+      // this dedup the second remove would render a duplicate card. Drop any
+      // existing entry for this id, then prepend the freshest close so the
+      // most-recent close wins and floats to the top. Cap at 100.
+      const deduped = state.recentlyClosed.filter((s) => s.id !== sessionId)
+      const closed = [session, ...deduped].slice(0, 100)
       return { sessionsById: next, recentlyClosed: closed, lastUpdateTs: Date.now() }
     })
   },

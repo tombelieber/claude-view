@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { useLiveSessionStore, getLastEventTime, type LiveSummary } from './live-session-store'
 import type { LiveSession } from '@claude-view/shared/types/generated'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { type LiveSummary, getLastEventTime, useLiveSessionStore } from './live-session-store'
 
 /** Minimal LiveSession factory — only required fields. */
 function makeSession(id: string): LiveSession {
@@ -197,6 +197,76 @@ describe('useLiveSessionStore', () => {
       await useLiveSessionStore.getState().dismissAllClosed()
 
       expect(useLiveSessionStore.getState().recentlyClosed).toHaveLength(0)
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // Regression: duplicate cards in the Closed column.
+  //
+  // A session that is resurrected (re-activated after closing, e.g. a real
+  // `--resume` or a late JSONL flush server-side) and then closes again
+  // produced a SECOND closed card. Root cause: recentlyClosed was treated as
+  // an append log, not a set. "Recently closed" is membership keyed by id:
+  // a session is active XOR closed, and appears in the closed list AT MOST ONCE.
+  // -----------------------------------------------------------------------
+
+  describe('set invariant — closed column has no duplicates', () => {
+    it('handleRemove is idempotent: a session appears in recentlyClosed at most once', () => {
+      const s = makeSession('dup-1')
+      const store = useLiveSessionStore.getState()
+      store.handleRemove('dup-1', s) // close once
+      store.handleRemove('dup-1', s) // resurrected then closed again → second remove
+
+      const closed = useLiveSessionStore.getState().recentlyClosed
+      expect(closed.filter((c) => c.id === 'dup-1')).toHaveLength(1)
+    })
+
+    it('re-close replaces the prior entry (most-recent wins, moved to front)', () => {
+      const store = useLiveSessionStore.getState()
+      store.handleRemove('a', makeSession('a'))
+      store.handleRemove('b', makeSession('b'))
+      // 'a' closes again carrying fresher data.
+      const aNew = { ...makeSession('a'), title: 'a second life' } as LiveSession
+      store.handleRemove('a', aNew)
+
+      const closed = useLiveSessionStore.getState().recentlyClosed
+      expect(closed.filter((c) => c.id === 'a')).toHaveLength(1)
+      expect(closed[0].id).toBe('a') // newest close floats to the top
+      expect(closed.find((c) => c.id === 'a')?.title).toBe('a second life')
+    })
+
+    it('handleUpsert pulls a resumed session back out of recentlyClosed (active XOR closed)', () => {
+      const store = useLiveSessionStore.getState()
+      const s = makeSession('resumed')
+      store.handleRemove('resumed', s) // closed
+      expect(useLiveSessionStore.getState().recentlyClosed.some((c) => c.id === 'resumed')).toBe(
+        true,
+      )
+
+      store.handleUpsert(s) // resumed → active again
+      const state = useLiveSessionStore.getState()
+      expect(state.sessionsById.has('resumed')).toBe(true)
+      expect(state.recentlyClosed.some((c) => c.id === 'resumed')).toBe(false)
+    })
+
+    it('handleSnapshot dedups recentlyClosed by id (truthful boundary normalization)', () => {
+      const dup = makeSession('snap-dup')
+      useLiveSessionStore
+        .getState()
+        .handleSnapshot(emptySummary, [], [dup, makeSession('other'), dup])
+
+      const closed = useLiveSessionStore.getState().recentlyClosed
+      expect(closed.filter((c) => c.id === 'snap-dup')).toHaveLength(1)
+      expect(closed).toHaveLength(2) // snap-dup + other
+    })
+
+    it('handleSnapshot drops a closed id that is also active (active wins)', () => {
+      const both = makeSession('both')
+      useLiveSessionStore.getState().handleSnapshot(emptySummary, [both], [both])
+
+      const state = useLiveSessionStore.getState()
+      expect(state.sessionsById.has('both')).toBe(true)
+      expect(state.recentlyClosed.some((c) => c.id === 'both')).toBe(false)
     })
   })
 })
