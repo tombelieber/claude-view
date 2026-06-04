@@ -240,6 +240,7 @@ pub fn test_live_session(id: &str) -> LiveSession {
             source: None,
             phase: PhaseHistory::default(),
             ai_title: None,
+            goal: None,
         },
         session_kind: None,
         entrypoint: None,

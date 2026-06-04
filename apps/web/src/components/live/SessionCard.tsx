@@ -17,6 +17,7 @@ import {
   Power,
   Shield,
   Sparkles,
+  Target,
   Terminal,
   TreePine,
 } from 'lucide-react'
@@ -140,6 +141,45 @@ const FILE_KIND_ICON: Record<string, React.ReactNode> = {
   mention: <span className="text-emerald-500 dark:text-emerald-400 font-semibold">@</span>,
   ide: <span className="text-sky-500 dark:text-sky-400">↗</span>,
   pasted: <span className="text-violet-500 dark:text-violet-400">⎘</span>,
+}
+
+/**
+ * The session's pinned `/goal` — the Stop-hook condition the session is driving toward.
+ * Rendered as a single accented banner (distinct from the muted `✦` AI title) with the
+ * full goal text available on hover. Shown only when a goal is set; otherwise nothing.
+ */
+function GoalLine({ goal }: { goal: string }) {
+  const oneLine = cleanPreviewText(goal)
+  if (!oneLine) return null
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>
+        <div className="flex items-start gap-1.5 mb-1.5 rounded-md border border-indigo-200/80 dark:border-indigo-800/50 bg-indigo-50/60 dark:bg-indigo-950/30 px-2 py-1 cursor-default min-w-0">
+          <Target
+            className="w-3.5 h-3.5 mt-px shrink-0 text-indigo-500 dark:text-indigo-400"
+            aria-hidden="true"
+          />
+          <span className="text-xs font-medium leading-snug text-indigo-700 dark:text-indigo-300 line-clamp-2 min-w-0">
+            {oneLine}
+          </span>
+        </div>
+      </Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content className={TOOLTIP_CLS} sideOffset={5}>
+          <div className="flex items-start gap-1.5">
+            <Target
+              className="w-3.5 h-3.5 mt-px shrink-0 text-indigo-500 dark:text-indigo-400"
+              aria-hidden="true"
+            />
+            <span className="whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100">
+              {goal}
+            </span>
+          </div>
+          <Tooltip.Arrow className={ARROW_CLS} />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  )
 }
 
 function FilesLine({ files }: { files: NonNullable<LiveSession['userFiles']> }) {
@@ -435,6 +475,9 @@ export function SessionCard({
           </span>
         </CostTooltip>
       </div>
+
+      {/* ── Goal (the session's pinned /goal directive) ── */}
+      {session.goal && <GoalLine goal={session.goal} />}
 
       {/* ── AI title ── */}
       {aiTitle && (

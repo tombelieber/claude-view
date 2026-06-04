@@ -109,6 +109,12 @@ impl LiveSessionManager {
             acc.ai_title = Some(title.clone());
         }
 
+        // Track the session `/goal` (Stop-hook condition). Last-set-wins: a newer goal
+        // supersedes an older one, and auto-continuation re-injections keep it fresh.
+        if let Some(ref g) = line.goal {
+            acc.goal = Some(g.clone());
+        }
+
         // Track user messages
         if line.line_type == LineType::User {
             acc.user_turn_count += 1;

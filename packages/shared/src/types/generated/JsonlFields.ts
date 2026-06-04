@@ -120,4 +120,9 @@ export type JsonlFields = {
    * AI-generated session title (from `ai-title` JSONL lines).
    */
   aiTitle?: string | null
+  /**
+   * The session's active `/goal` — the session-scoped Stop-hook condition, if one is set.
+   * Extracted from the transcript (no separate file). Absent ⟹ omitted from the payload.
+   */
+  goal?: string | null
 }

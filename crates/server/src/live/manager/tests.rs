@@ -12,7 +12,10 @@ use crate::live::state::{
     SnapshotEntry,
 };
 
-use super::accumulator::{apply_jsonl_metadata, build_recovered_session, JsonlMetadata};
+use super::accumulator::{
+    apply_jsonl_metadata, build_metadata_from_accumulator, build_recovered_session, JsonlMetadata,
+    SessionAccumulator,
+};
 use super::helpers::{
     extract_project_info, extract_session_id, load_session_snapshot,
     load_session_snapshot_from_str, make_synthesized_event, parse_timestamp_to_unix,
@@ -1111,8 +1114,64 @@ fn minimal_jsonl_metadata() -> JsonlMetadata {
         edit_count: 0,
         phase: PhaseHistory::default(),
         ai_title: None,
+        goal: None,
         entrypoint: None,
     }
+}
+
+#[test]
+fn test_build_metadata_carries_goal_from_accumulator() {
+    // Wiring: a goal stored on the accumulator must survive into the JSONL metadata snapshot.
+    let mut acc = SessionAccumulator::new();
+    assert_eq!(acc.goal, None);
+    acc.goal = Some("make the live card show the goal".to_string());
+
+    let meta = build_metadata_from_accumulator(&acc, 0, None);
+    assert_eq!(
+        meta.goal.as_deref(),
+        Some("make the live card show the goal")
+    );
+}
+
+#[test]
+fn test_apply_jsonl_metadata_sets_goal_on_session() {
+    // Wiring: metadata.goal must land on session.jsonl.goal so the card can read it.
+    let mut session = minimal_live_session_for_branch_tests("goal-wiring");
+    assert_eq!(session.jsonl.goal, None);
+
+    let mut meta = minimal_jsonl_metadata();
+    meta.goal = Some("ship the goal feature to the live card".to_string());
+
+    apply_jsonl_metadata(
+        &mut session,
+        &meta,
+        "/tmp/test.jsonl",
+        "proj",
+        "proj",
+        "/tmp/proj",
+    );
+    assert_eq!(
+        session.jsonl.goal.as_deref(),
+        Some("ship the goal feature to the live card")
+    );
+}
+
+#[test]
+fn test_apply_jsonl_metadata_preserves_goal_when_metadata_has_none() {
+    // Stickiness: a metadata-only poll (goal None) must not blank an already-learned goal.
+    let mut session = minimal_live_session_for_branch_tests("goal-sticky");
+    session.jsonl.goal = Some("the original goal".to_string());
+
+    let meta = minimal_jsonl_metadata(); // goal: None
+    apply_jsonl_metadata(
+        &mut session,
+        &meta,
+        "/tmp/test.jsonl",
+        "proj",
+        "proj",
+        "/tmp/proj",
+    );
+    assert_eq!(session.jsonl.goal.as_deref(), Some("the original goal"));
 }
 
 #[test]
