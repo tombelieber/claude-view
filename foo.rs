@@ -1,1 +1,1 @@
-fn a() {}
+fn a() { /* changed */ }
