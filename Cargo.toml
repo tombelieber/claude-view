@@ -92,6 +92,7 @@ memmap2 = "0.9"
 memchr = "2"
 walkdir = "2"
 flate2 = "1"
+zstd = "0.13"
 sysinfo = "0.33"
 similar = "2"
 ts-rs = { version = "12", features = ["serde-compat", "serde-json-impl", "no-serde-warnings"] }
@@ -132,6 +133,7 @@ bytes = "1"
 # Internal crates
 claude-view-types = { path = "crates/types" }
 claude-view-core = { path = "crates/core" }
+claude-view-providers = { path = "crates/providers" }
 claude-view-db = { path = "crates/db" }
 claude-view-search = { path = "crates/search" }
 claude-view-server = { path = "crates/server" }

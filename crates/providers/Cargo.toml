@@ -1,0 +1,31 @@
+# crates/providers/Cargo.toml
+#
+# Multi-provider session ingestion: discovers and parses on-disk session
+# transcripts from foreign AI coding agents (Codex, Gemini CLI, Cursor,
+# OpenCode, …) into the shared ConversationBlock model.
+#
+# Format knowledge derived from agentsview (MIT © 2026 Kenn Software LLC) —
+# see README.md. Implementations are original Rust.
+
+[package]
+name = "claude-view-providers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+sha2 = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true }
+zstd = { workspace = true }
+claude-view-types = { workspace = true }
+workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[dev-dependencies]
+tempfile = { workspace = true }
