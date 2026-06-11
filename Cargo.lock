@@ -810,6 +810,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "claude-view-providers"
+version = "0.44.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "claude-view-types",
+ "dirs",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tracing",
+ "workspace-hack",
+ "zstd",
+]
+
+[[package]]
 name = "claude-view-relay"
 version = "0.44.0"
 dependencies = [
