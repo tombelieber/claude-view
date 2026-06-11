@@ -273,26 +273,14 @@ fn parser_match_arms_are_in_baseline_handled() {
         .map(|v| v.as_str().unwrap().to_string())
         .collect();
 
-    // These are the types the accumulator has explicit match arms for.
-    // IMPORTANT: when you add a new match arm to BlockAccumulator::push_entry,
-    // add the type string here too. This test will fail if you forget to update
-    // the baseline.
-    let parser_arms = [
-        "user",
-        "assistant",
-        "progress",
-        "system",
-        "queue-operation",
-        "file-history-snapshot",
-        "ai-title",
-        "last-prompt",
-        "worktree-state",
-        "pr-link",
-        "custom-title",
-        "agent-name",
-    ];
+    // The types the accumulator has explicit match arms for, taken directly
+    // from the parser's own declared coverage so this list can never drift
+    // from the code (a stale hardcoded copy here previously missed
+    // attachment/permission-mode/mode and let the baseline misclassify
+    // "mode" as silently_ignored for two CC compat cycles).
+    let parser_arms = claude_view_core::block_accumulator::handled_record_types();
 
-    for arm in &parser_arms {
+    for arm in parser_arms {
         assert!(
             !silently_ignored.contains(*arm),
             "Parser has a match arm for '{}' but baseline says it's silently_ignored. \
@@ -304,6 +292,63 @@ fn parser_match_arms_are_in_baseline_handled() {
             "Parser has a match arm for '{}' but it's not in baseline `handled` or `handled_as_progress`. \
              Add it to the correct category in evidence-baseline.json.",
             arm
+        );
+    }
+}
+
+/// The declared-ignored set must be identical in both sources of truth:
+/// `intentionally_ignored_record_types()` (code, consumed by the cc-compat oracle)
+/// and `top_level_types.silently_ignored` (baseline, consumed by the release-time
+/// block-pipeline audit). The two drifted for two CC compat cycles over "mode";
+/// equality here makes that drift class impossible.
+#[test]
+fn intentionally_ignored_types_match_baseline() {
+    let baseline_json =
+        std::fs::read_to_string(baseline_path()).expect("evidence-baseline.json must exist");
+    let baseline: serde_json::Value = serde_json::from_str(&baseline_json).unwrap();
+
+    let baseline_ignored: HashSet<String> = baseline["top_level_types"]["silently_ignored"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_str().unwrap().to_string())
+        .collect();
+
+    let code_ignored: HashSet<String> =
+        claude_view_core::block_accumulator::intentionally_ignored_record_types()
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+
+    assert_eq!(
+        code_ignored, baseline_ignored,
+        "intentionally_ignored_record_types() and evidence-baseline.json \
+         top_level_types.silently_ignored must stay in lockstep."
+    );
+}
+
+/// Every declared-ignored type must actually produce zero blocks — "ignored" is a
+/// promise, not a hope. bridge-session uses its real on-disk shape (CC >= 2.1.169
+/// Remote Control linkage; 64 live records share this exact 4-field form).
+#[test]
+fn intentionally_ignored_types_produce_no_blocks() {
+    for entry_type in claude_view_core::block_accumulator::intentionally_ignored_record_types() {
+        let jsonl = match *entry_type {
+            "bridge-session" => concat!(
+                r#"{"type":"bridge-session","sessionId":"00000000-0000-4000-8000-000000000001","#,
+                r#""bridgeSessionId":"cse_01Test000000000000000000","lastSequenceNum":0}"#
+            )
+            .to_string(),
+            other => format!(r#"{{"type":"{}","sessionId":"test"}}"#, other),
+        };
+        let blocks = parse_session_as_blocks(&jsonl);
+        assert!(
+            blocks.is_empty(),
+            "'{}' is declared intentionally-ignored but produced {} block(s). \
+             Either remove it from intentionally_ignored_record_types() and handle it, \
+             or fix the accumulator to skip it.",
+            entry_type,
+            blocks.len()
         );
     }
 }

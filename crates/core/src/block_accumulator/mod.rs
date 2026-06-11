@@ -244,13 +244,23 @@ pub fn handled_record_types() -> &'static [&'static str] {
 /// - `started` / `result`: the agent tool-result **cache** (`{type, key:"v2:<hash>",
 ///   agentId, result}`), an implementation detail of sub-agent result memoization,
 ///   not a message.
+/// - `bridge-session` (CC >= 2.1.169, Remote Control bridging): pure session-linkage
+///   metadata (`{sessionId, bridgeSessionId: "cse_<id>", lastSequenceNum}`) tying a
+///   local CLI session to a cloud bridge session. Live corpus: 64 records, one
+///   identical 4-field shape, `lastSequenceNum` = 0 in all — no conversational
+///   content. Revisit extracting `bridgeSessionId` as a remote-session join key only
+///   if CC ships user-facing remote-session surfacing.
 ///
 /// The cc-compat oracle subtracts these from "unhandled" so they aren't flagged as
 /// gaps every run. A genuinely-new CC record type will NOT be in this set, so it
 /// still surfaces. Revisit if Claude Code ever gives `started`/`result` user-facing
 /// meaning.
+///
+/// MUST stay in lockstep with `top_level_types.silently_ignored` in
+/// `scripts/integrity/evidence-baseline.json`; the
+/// `intentionally_ignored_types_match_baseline` invariant test enforces equality.
 pub fn intentionally_ignored_record_types() -> &'static [&'static str] {
-    &["started", "result"]
+    &["started", "result", "bridge-session"]
 }
 
 /// Session-level metadata extracted alongside blocks.
