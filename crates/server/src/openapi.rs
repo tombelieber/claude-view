@@ -33,6 +33,7 @@ use utoipa::OpenApi;
         crate::routes::sessions::session_activity_rich,
         // Multi-provider
         crate::routes::providers::list_providers,
+        crate::routes::providers::providers_usage,
         // Batch 1: Projects
         crate::routes::projects::list_projects,
         crate::routes::projects::list_project_sessions,
@@ -182,6 +183,8 @@ use utoipa::OpenApi;
         crate::routes::health::HealthResponse,
         crate::routes::providers::ProviderSummary,
         crate::routes::providers::ProvidersResponse,
+        crate::routes::providers::ProviderUsage,
+        crate::routes::providers::ProvidersUsageResponse,
         crate::routes::config::ConfigResponse,
         claude_view_core::telemetry_config::TelemetryStatus,
         claude_view_db::trends::IndexMetadata,

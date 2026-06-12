@@ -14,12 +14,21 @@ use crate::model::{ForeignSession, ForeignSessionMeta};
 use std::collections::HashMap;
 use std::sync::RwLock;
 
+/// Per-session searchable text cap. Transcripts are joined block text,
+/// lowercased and truncated — enough for honest full-text matching without
+/// holding whole corpora in memory (600 sessions × 64KB ≈ 38MB worst case).
+const SEARCH_TEXT_CAP: usize = 64 * 1024;
+
 #[derive(Default)]
 struct Inner {
     /// id → discovered row (refreshed wholesale).
     rows: HashMap<String, DiscoveredSession>,
     /// id → (fingerprint, parsed meta).
     stats: HashMap<String, ((f64, u64), ForeignSessionMeta)>,
+    /// id → lowercased transcript text (capped) for q= search. Built from
+    /// the blocks already in hand when a session is parsed for its meta —
+    /// no extra parse. Queried under the lock, never cloned out.
+    search_texts: HashMap<String, String>,
 }
 
 /// Thread-safe foreign-session index. One instance lives in server AppState.
@@ -49,6 +58,7 @@ impl ForeignCatalog {
         let mut inner = self.inner.write().expect("catalog lock poisoned");
         // Drop cache entries whose session vanished.
         inner.stats.retain(|id, _| rows.contains_key(id));
+        inner.search_texts.retain(|id, _| rows.contains_key(id));
         inner.rows = rows;
         n
     }
@@ -117,9 +127,24 @@ impl ForeignCatalog {
             if s.meta.id == row.id {
                 wanted = Some(s.meta.clone());
             }
+            inner
+                .search_texts
+                .insert(s.meta.id.clone(), searchable_text(&s.blocks));
             inner.stats.insert(s.meta.id.clone(), (fingerprint, s.meta));
         }
         wanted
+    }
+
+    /// True when the session's cached transcript text contains
+    /// `query_lower` (caller lowercases). Checked under the read lock —
+    /// the text never leaves the catalog.
+    pub fn transcript_matches(&self, id: &str, query_lower: &str) -> bool {
+        self.inner
+            .read()
+            .expect("catalog lock poisoned")
+            .search_texts
+            .get(id)
+            .is_some_and(|t| t.contains(query_lower))
     }
 
     /// Full parse (blocks included) for the messages route.
@@ -157,10 +182,92 @@ fn current_fingerprint(row: &DiscoveredSession) -> (f64, u64) {
     (row.mtime, row.size_bytes)
 }
 
+/// Join a transcript's visible text (user text, assistant text/thinking,
+/// tool names) into one lowercased haystack, capped at [`SEARCH_TEXT_CAP`].
+fn searchable_text(blocks: &[claude_view_types::block_types::ConversationBlock]) -> String {
+    use claude_view_types::block_types::{AssistantSegment, ConversationBlock};
+    let mut out = String::new();
+    let push = |out: &mut String, s: &str| {
+        if out.len() < SEARCH_TEXT_CAP && !s.is_empty() {
+            out.push_str(s);
+            out.push('\n');
+        }
+    };
+    for block in blocks {
+        match block {
+            ConversationBlock::User(u) => push(&mut out, &u.text),
+            ConversationBlock::Assistant(a) => {
+                if let Some(t) = &a.thinking {
+                    push(&mut out, t);
+                }
+                for seg in &a.segments {
+                    match seg {
+                        AssistantSegment::Text { text, .. } => push(&mut out, text),
+                        AssistantSegment::Tool { execution } => {
+                            push(&mut out, &execution.tool_name)
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        if out.len() >= SEARCH_TEXT_CAP {
+            break;
+        }
+    }
+    // Truncate on a char boundary — String::truncate panics mid-codepoint.
+    if out.len() > SEARCH_TEXT_CAP {
+        let mut cut = SEARCH_TEXT_CAP;
+        while !out.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        out.truncate(cut);
+    }
+    out.to_lowercase()
+}
+
 /// Providers visible in this build, for the settings/diagnostics surface.
 pub fn supported_providers() -> Vec<(ProviderKind, &'static str)> {
     registry()
         .iter()
         .map(|p| (p.kind(), p.kind().display_name()))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::blocks;
+
+    #[test]
+    fn searchable_text_joins_lowercases_and_caps() {
+        let blocks = vec![
+            blocks::user("u0".into(), "Fix the LOGIN bug".into(), None),
+            blocks::assistant(
+                "a0".into(),
+                vec![
+                    blocks::text_segment("Checking Auth.ts now".into()),
+                    blocks::tool_segment("Read".into(), serde_json::json!({}), "t1".into()),
+                ],
+                Some("the JWT path looks wrong".into()),
+                None,
+            ),
+        ];
+        let text = searchable_text(&blocks);
+        assert!(text.contains("fix the login bug"));
+        assert!(text.contains("checking auth.ts"));
+        assert!(text.contains("jwt path"));
+        assert!(text.contains("read"));
+        assert!(!text.contains("LOGIN"), "must be lowercased");
+    }
+
+    #[test]
+    fn searchable_text_truncates_on_char_boundary() {
+        // Multi-byte content larger than the cap must not panic.
+        let big = "界".repeat(SEARCH_TEXT_CAP); // 3 bytes per char
+        let blocks = vec![blocks::user("u0".into(), big, None)];
+        let text = searchable_text(&blocks);
+        assert!(text.len() <= SEARCH_TEXT_CAP);
+        assert!(text.contains('界'));
+    }
 }

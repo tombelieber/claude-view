@@ -23,6 +23,7 @@ import { resolveSessionBreakdown, scopeLabel } from '../lib/analytics-scope'
 import { buildSessionUrl } from '../lib/url-utils'
 import { cn } from '../lib/utils'
 import { AIGenerationStats } from './AIGenerationStats'
+import { ByAgentCard } from './analytics/ByAgentCard'
 import { CoachCard } from './CoachCard'
 import { ContributionSummaryCard } from './ContributionSummaryCard'
 import { DashboardMetricsGrid } from './DashboardMetricsGrid'
@@ -209,6 +210,9 @@ export function StatsDashboard() {
         {stats.trends && (
           <DashboardMetricsGrid trends={stats.trends} comparisonLabel={comparisonLabel} />
         )}
+
+        {/* By-agent usage — foreign agents only (Codex, OpenCode, …); renders nothing when none */}
+        <ByAgentCard days={30} />
 
         {/* Theme 4: Weekly Coach Insight */}
         <CoachCard />
