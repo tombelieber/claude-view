@@ -170,6 +170,9 @@ pub async fn list_sessions(
             ..Default::default()
         };
         let providers_for_task = providers_filter.clone();
+        // Degrade, never propagate: a panic anywhere in the foreign side
+        // (JoinError) must not take down the CC session list. Broken foreign
+        // data costs only its own rows.
         let foreign_infos = tokio::task::spawn_blocking(move || {
             foreign::list_foreign(
                 &state_for_foreign,
@@ -178,7 +181,10 @@ pub async fn list_sessions(
             )
         })
         .await
-        .map_err(|e| ApiError::Internal(format!("join error: {e}")))?;
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "foreign session listing panicked; serving CC sessions only");
+            Vec::new()
+        });
         enriched.extend(foreign_infos);
     }
 

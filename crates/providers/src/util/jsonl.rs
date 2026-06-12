@@ -24,8 +24,24 @@ pub struct JsonlRead {
     pub malformed: u32,
 }
 
+/// Total-bytes cap for one JSONL transcript (the per-line cap still
+/// applies). Oversized transcripts fail their own parse instead of
+/// consuming server memory.
+pub const MAX_TRANSCRIPT_BYTES: u64 = 512 * 1024 * 1024;
+
 /// Read every parseable JSON line from `path`.
 pub fn read_values(path: &Path) -> std::io::Result<JsonlRead> {
+    let len = std::fs::metadata(path)?.len();
+    if len > MAX_TRANSCRIPT_BYTES {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!(
+                "transcript {} is {len} bytes — exceeds the {}MB cap",
+                path.display(),
+                MAX_TRANSCRIPT_BYTES / (1024 * 1024)
+            ),
+        ));
+    }
     let file = File::open(path)?;
     read_values_from(BufReader::new(file))
 }

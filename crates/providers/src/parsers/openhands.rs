@@ -565,7 +565,7 @@ fn snapshot(dir: &Path) -> Option<(f64, u64)> {
 
 /// Read one JSON document; None for unreadable/invalid files.
 fn read_json(path: &Path) -> Option<Value> {
-    let data = std::fs::read_to_string(path).ok()?;
+    let data = crate::util::read_to_string_capped(path).ok()?;
     serde_json::from_str(&data).ok()
 }
 

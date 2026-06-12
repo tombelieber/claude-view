@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub(super) fn parse(path: &Path) -> anyhow::Result<Vec<ForeignSession>> {
-    let raw = std::fs::read_to_string(path)?;
+    let raw = crate::util::read_to_string_capped(path)?;
     let doc: Value = serde_json::from_str(&raw)?;
     let Some(history) = doc.get("history").and_then(Value::as_array) else {
         return Ok(Vec::new());
@@ -176,7 +176,7 @@ fn resolve_assistant(
     let Some(path) = exec_index.get(exec_id) else {
         return empty;
     };
-    let Ok(raw) = std::fs::read_to_string(path) else {
+    let Ok(raw) = crate::util::read_to_string_capped(path) else {
         return empty;
     };
     let Ok(doc) = serde_json::from_str::<Value>(&raw) else {

@@ -211,7 +211,7 @@ fn legacy_raw_id(path: &Path, sidecar: Option<&Value>) -> Option<String> {
 
 /// Companion `<uuid>.json` metadata for a legacy `<uuid>.jsonl` file.
 fn load_sidecar(jsonl_path: &Path) -> Option<Value> {
-    let data = std::fs::read_to_string(jsonl_path.with_extension("json")).ok()?;
+    let data = crate::util::read_to_string_capped(jsonl_path.with_extension("json")).ok()?;
     serde_json::from_str::<Value>(&data)
         .ok()
         .filter(Value::is_object)

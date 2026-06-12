@@ -231,12 +231,16 @@ export function ConversationView() {
         handleExportPdf()
       } else if (modifierKey && e.shiftKey && e.key.toLowerCase() === 'r') {
         e.preventDefault()
-        handleResume()
+        // `claude --resume` only exists for native CC sessions — copying a
+        // fabricated command for a foreign session would be wrong data.
+        if (!isForeignSession) {
+          handleResume()
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleExportHtml, handleExportPdf, handleResume])
+  }, [handleExportHtml, handleExportPdf, handleResume, isForeignSession])
 
   // Cmd+F / Escape for find bar
   useEffect(() => {
@@ -445,12 +449,18 @@ export function ConversationView() {
           >
             <PanelRight className="w-4 h-4" />
           </button>
-          <ShareModal
-            sessionId={sessionId as string}
-            messages={session?.messages}
-            projectName={projectName}
-          />
-          {/* Continue / Resume dropdown */}
+          {/* Share / Continue / Resume are CC-only surfaces: share + export
+              run through the legacy /parsed transcript and `claude --resume`
+              does not exist for foreign agents. Hidden (not disabled) for
+              foreign sessions until the blocks-based export ships. */}
+          {!isForeignSession && (
+            <ShareModal
+              sessionId={sessionId as string}
+              messages={session?.messages}
+              projectName={projectName}
+            />
+          )}
+          {!isForeignSession && (
           <div className="relative" ref={resumeMenuRef}>
             <button
               type="button"
@@ -523,6 +533,7 @@ export function ConversationView() {
               </div>
             )}
           </div>
+          )}
           {/* Export dropdown */}
           <div className="relative" ref={exportMenuRef}>
             <button

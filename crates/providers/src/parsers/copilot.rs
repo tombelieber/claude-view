@@ -360,7 +360,7 @@ fn workspace_title(events_path: &Path) -> Option<String> {
         return None;
     }
     let yaml = events_path.parent()?.join("workspace.yaml");
-    let data = std::fs::read_to_string(yaml).ok()?;
+    let data = crate::util::read_to_string_capped(yaml).ok()?;
     data.lines()
         .filter_map(|line| line.strip_prefix("name: "))
         .map(str::trim)

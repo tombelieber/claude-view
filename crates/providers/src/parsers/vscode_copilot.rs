@@ -90,7 +90,7 @@ impl Provider for VscodeChatProvider {
             };
             (doc, read.malformed + op_malformed)
         } else {
-            let raw = std::fs::read_to_string(path)?;
+            let raw = crate::util::read_to_string_capped(path)?;
             (serde_json::from_str(&raw)?, 0)
         };
 
@@ -467,7 +467,7 @@ fn derive_project(path: &Path) -> String {
 }
 
 fn read_workspace_manifest(hash_dir: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(hash_dir.join("workspace.json")).ok()?;
+    let raw = crate::util::read_to_string_capped(hash_dir.join("workspace.json")).ok()?;
     let doc: Value = serde_json::from_str(&raw).ok()?;
     let uri = doc
         .get("folder")

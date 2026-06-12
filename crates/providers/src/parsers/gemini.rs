@@ -18,8 +18,9 @@
 //       (streaming updates) — only the final revision is rendered/counted.
 //
 // Tokens are per-message: thoughts bill at the output rate (output +=
-// thoughts), `cached` → cache_read_input_tokens, and `input` is taken
-// verbatim (Gemini keeps input and cached separate; nothing to subtract).
+// thoughts), `cached` → cache_read_input_tokens, and `input` INCLUDES the
+// cached portion (verified against real sessions: input+output+thoughts+tool
+// == total while cached is NOT added) — so uncached input = input − cached.
 //
 // Project display names: SHA-256-hash every path known to
 // `<root>/projects.json` and `<root>/trustedFolders.json` (Gemini CLI's own
@@ -101,7 +102,7 @@ impl Provider for GeminiProvider {
         let mut meta = ForeignSessionMeta::new(ProviderKind::Gemini, &raw_id, path.to_path_buf());
         meta.project = project_for_path(path);
 
-        let raw = std::fs::read_to_string(path)?;
+        let raw = crate::util::read_to_string_capped(path)?;
         // Sniff: a whole-file JSON document with messages[]/sessionId is the
         // legacy object format; otherwise multi-line input is JSONL.
         let doc = serde_json::from_str::<Value>(&raw).ok().filter(|d| {
@@ -304,13 +305,20 @@ fn append_assistant(
     let model = msg.get("model").and_then(Value::as_str).unwrap_or("");
     meta.record_model(model);
     if let Some(tok) = msg.get("tokens").filter(|t| t.is_object()) {
+        // Gemini's `input` (promptTokenCount) INCLUDES the cached portion —
+        // verified against real sessions: input+output+thoughts+tool == total
+        // while `cached` is NOT added, so cached ⊆ input. Billing input
+        // verbatim would double-charge cache reads (up to ~10x per turn).
+        // `tool` (toolUsePromptTokenCount) bills as input, so it adds in.
+        let cached = token_count(tok, "cached");
         meta.usage.record(
             model,
             UsageTotals {
-                input_tokens: token_count(tok, "input"),
+                input_tokens: token_count(tok, "input").saturating_sub(cached)
+                    + token_count(tok, "tool"),
                 // Thoughts tokens bill at the output rate.
                 output_tokens: token_count(tok, "output") + token_count(tok, "thoughts"),
-                cache_read_input_tokens: token_count(tok, "cached"),
+                cache_read_input_tokens: cached,
                 cache_creation_input_tokens: 0,
             },
         );
@@ -470,7 +478,7 @@ fn project_for_path(path: &Path) -> String {
 }
 
 fn read_json(path: &Path) -> Option<Value> {
-    serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()
+    serde_json::from_str(&crate::util::read_to_string_capped(path).ok()?).ok()
 }
 
 #[cfg(test)]
@@ -549,11 +557,14 @@ mod tests {
         assert_eq!(s.meta.ended_at, Some(1704103505.0));
         assert_eq!(s.meta.models, vec!["gemini-2.5-pro".to_string()]);
         assert!(s.meta.usage.has_usage);
-        assert_eq!(s.meta.usage.totals.input_tokens, 3500);
+        // `input` INCLUDES cached (real-data invariant: input+output+thoughts
+        // +tool == total) — uncached input = (1500−100)+(2000−50) = 3350.
+        // Billing input verbatim would double-charge the cached portion.
+        assert_eq!(s.meta.usage.totals.input_tokens, 3350);
         // Thoughts bill at the output rate: (200+50) + (300+100).
         assert_eq!(s.meta.usage.totals.output_tokens, 650);
         assert_eq!(s.meta.usage.totals.cache_read_input_tokens, 150);
-        assert_eq!(s.meta.usage.per_model["gemini-2.5-pro"].input_tokens, 3500);
+        assert_eq!(s.meta.usage.per_model["gemini-2.5-pro"].input_tokens, 3350);
         assert_eq!(s.blocks.len(), 4);
         let ConversationBlock::User(u) = &s.blocks[0] else {
             panic!("expected user block")

@@ -73,7 +73,7 @@ pub(super) fn parse_jsonl(path: &Path) -> anyhow::Result<TranscriptDoc> {
 
 /// Parse a `session_<id>.json` envelope.
 pub(super) fn parse_json(path: &Path) -> anyhow::Result<TranscriptDoc> {
-    let raw = std::fs::read_to_string(path)?;
+    let raw = crate::util::read_to_string_capped(path)?;
     let root: Value = serde_json::from_str(&raw)?;
     let Some(obj) = root.as_object() else {
         anyhow::bail!("hermes: {} is not a JSON object", path.display());
