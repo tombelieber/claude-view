@@ -76,6 +76,9 @@ pub struct SessionsListQuery {
     pub project: Option<String>,
     /// Include archived sessions (queries `sessions` table instead of `valid_sessions` view)
     pub show_archived: Option<bool>,
+    /// Comma-separated provider ids to include ("claude-code" = native CC
+    /// sessions; "codex", "cursor", … = foreign agents). Absent = all.
+    pub providers: Option<String>,
 }
 
 /// Response for GET /api/sessions with pagination

@@ -98,4 +98,9 @@ export type SessionDetail = {
   totalCostUsd?: number | null
   slug?: string | null
   entrypoint?: string | null
+  /**
+   * Source agent for foreign sessions (kebab id, e.g. "codex", "cursor").
+   * `None` = Claude Code (the native pipeline).
+   */
+  provider?: string | null
 }

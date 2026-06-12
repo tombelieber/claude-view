@@ -446,6 +446,7 @@ fn make_session(id: &str, project: &str, modified_at: i64) -> claude_view_core::
         total_cost_usd: None,
         slug: None,
         entrypoint: None,
+        provider: None,
     }
 }
 

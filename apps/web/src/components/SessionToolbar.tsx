@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GroupBy, SessionFilters, SessionSort, ViewMode } from '../hooks/use-session-filters'
 import { countActiveFilters } from '../hooks/use-session-filters'
 import { cn } from '../lib/utils'
-import { FilterPopover } from './FilterPopover'
+import { FilterPopover, type ProviderOption } from './FilterPopover'
 
 interface SessionToolbarProps {
   filters: SessionFilters
@@ -15,6 +15,8 @@ interface SessionToolbarProps {
   branches?: string[]
   /** Available model IDs from indexed session data (data-driven) */
   models?: string[]
+  /** Providers with session counts (data-driven from /api/providers) */
+  providers?: ProviderOption[]
 }
 
 interface DropdownProps {
@@ -192,6 +194,7 @@ export function SessionToolbar({
   groupByDisabled,
   branches = [],
   models = [],
+  providers = [],
 }: SessionToolbarProps) {
   const activeFilterCount = countActiveFilters(filters)
   const hasNonDefaults =
@@ -233,6 +236,7 @@ export function SessionToolbar({
           activeCount={activeFilterCount}
           branches={branches}
           models={models}
+          providers={providers}
         />
 
         {/* Sort dropdown */}

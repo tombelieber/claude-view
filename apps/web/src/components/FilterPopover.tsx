@@ -5,6 +5,12 @@ import type { SessionFilters } from '../hooks/use-session-filters'
 import { formatModelName } from '../lib/format-model'
 import { cn } from '../lib/utils'
 
+export interface ProviderOption {
+  id: string
+  displayName: string
+  count: number
+}
+
 interface FilterPopoverProps {
   filters: SessionFilters
   onChange: (filters: SessionFilters) => void
@@ -14,6 +20,8 @@ interface FilterPopoverProps {
   branches: string[]
   /** Available model IDs from indexed session data (data-driven) */
   models?: string[]
+  /** Providers with session counts from GET /api/providers (data-driven) */
+  providers?: ProviderOption[]
 }
 
 export function FilterPopover({
@@ -23,6 +31,7 @@ export function FilterPopover({
   activeCount,
   branches = [],
   models = [],
+  providers = [],
 }: FilterPopoverProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [branchSearch, setBranchSearch] = useState('')
@@ -244,6 +253,40 @@ export function FilterPopover({
                       />
                       <span className="ml-2 text-xs text-gray-700 dark:text-gray-300" title={model}>
                         {formatModelName(model)}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Provider filter — only offered when more than one source
+                agent has sessions (Claude-Code-only machines see nothing) */}
+            {providers.length > 1 && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Agent
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {providers.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex items-center px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.providers.includes(p.id)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...filters.providers, p.id]
+                            : filters.providers.filter((x) => x !== p.id)
+                          onChange({ ...filters, providers: next })
+                        }}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                        {p.displayName}
+                        <span className="ml-1 text-gray-400 dark:text-gray-500">{p.count}</span>
                       </span>
                     </label>
                   ))}

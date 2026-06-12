@@ -124,6 +124,7 @@ fn create_app_with_telemetry(
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
         session_catalog: legacy_catalog,
+        foreign_catalog: Arc::new(claude_view_providers::ForeignCatalog::new()),
         session_catalog_adapter,
         jwks: None,
         auth_session: Arc::new(tokio::sync::RwLock::new(None)),
@@ -250,6 +251,7 @@ pub fn create_app_with_git_sync(db: Database, git_sync: Arc<GitSyncState>) -> Ro
         sidecar: Arc::new(sidecar::SidecarManager::new()),
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
         session_catalog: legacy_catalog,
+        foreign_catalog: Arc::new(claude_view_providers::ForeignCatalog::new()),
         session_catalog_adapter,
         jwks: None,
         auth_session: Arc::new(tokio::sync::RwLock::new(None)),
@@ -658,6 +660,7 @@ pub fn create_app_full(
         sidecar,
         terminal_manager: Arc::new(crate::routes::cli_sessions::terminal::TerminalManager::new()),
         session_catalog: legacy_catalog,
+        foreign_catalog: Arc::new(claude_view_providers::ForeignCatalog::new()),
         session_catalog_adapter,
         jwks,
         auth_session: auth_session_holder.clone(),
@@ -762,6 +765,34 @@ pub fn create_app_full(
                     }
                     _ = shutdown.changed() => {
                         tracing::debug!("Session catalog reconcile loop shutting down");
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    // Spawn the foreign-provider discovery loop (Codex, Cursor, OpenCode, …).
+    // Initial refresh runs immediately so foreign sessions appear on first
+    // page load; discovery is stat-level walks (no parsing), so 60s is a
+    // comfortable cadence. Metadata parses lazily on the list route with a
+    // fingerprint cache.
+    {
+        let foreign = Arc::clone(&state.foreign_catalog);
+        let mut shutdown = state.shutdown.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let catalog = Arc::clone(&foreign);
+                        match tokio::task::spawn_blocking(move || catalog.refresh()).await {
+                            Ok(n) => tracing::debug!(sessions = n, "foreign catalog refreshed"),
+                            Err(e) => tracing::warn!(error = %e, "foreign catalog refresh task failed"),
+                        }
+                    }
+                    _ = shutdown.changed() => {
+                        tracing::debug!("Foreign catalog refresh loop shutting down");
                         break;
                     }
                 }

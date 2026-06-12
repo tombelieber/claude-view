@@ -26,6 +26,7 @@ use crate::error::{ApiError, ApiResult};
 use crate::state::AppState;
 
 use super::enrichment::{fetch_enrichments, SessionEnrichment};
+use super::foreign;
 use super::helpers::build_session_info;
 use super::types::{SessionsListQuery, SessionsListResponse, VALID_FILTERS, VALID_SORTS};
 
@@ -82,16 +83,26 @@ pub async fn list_sessions(
         _ => None,
     };
 
+    // Provider filter: "claude-code" addresses the native pipeline; any
+    // other id addresses a foreign agent (codex, cursor, …).
+    let providers_filter = foreign::parse_providers_param(query.providers.as_deref());
+    let include_claude = providers_filter
+        .as_deref()
+        .is_none_or(|list| list.iter().any(|p| p == foreign::CLAUDE_PROVIDER_ID));
+
     // 1. Catalog filter (project, time window). Catalog rows are in memory.
     let cat_filter = CatFilter {
         project_id: query.project.clone(),
         min_last_ts: query.time_after,
         max_last_ts: query.time_before,
     };
-    let mut candidate_rows =
+    let mut candidate_rows = if include_claude {
         state
             .session_catalog
-            .list(&cat_filter, CatSort::LastTsDesc, usize::MAX);
+            .list(&cat_filter, CatSort::LastTsDesc, usize::MAX)
+    } else {
+        Vec::new()
+    };
 
     // 2. Optional text search via grep — intersect IDs with catalog.
     if let Some(q_trimmed) = query.q.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -145,6 +156,31 @@ pub async fn list_sessions(
                 .map(|stats| build_session_info(row, &stats, pricing))
         })
         .collect();
+
+    // 3b. Foreign-provider sessions (Codex, Cursor, OpenCode, …) — parsed
+    //     via the ForeignCatalog's fingerprint cache; spawn_blocking keeps
+    //     first-population file I/O off the async runtime.
+    {
+        let state_for_foreign = Arc::clone(&state);
+        let query_for_foreign = SessionsListQuery {
+            project: query.project.clone(),
+            time_after: query.time_after,
+            time_before: query.time_before,
+            q: query.q.clone(),
+            ..Default::default()
+        };
+        let providers_for_task = providers_filter.clone();
+        let foreign_infos = tokio::task::spawn_blocking(move || {
+            foreign::list_foreign(
+                &state_for_foreign,
+                &query_for_foreign,
+                providers_for_task.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| ApiError::Internal(format!("join error: {e}")))?;
+        enriched.extend(foreign_infos);
+    }
 
     // 4. Layer DB-only fields (archive, commits, skills, reedit_rate).
     let candidate_ids: Vec<String> = enriched.iter().map(|s| s.id.clone()).collect();

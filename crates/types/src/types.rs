@@ -434,6 +434,10 @@ pub struct SessionInfo {
     // Entrypoint: how the session was launched (cli, claude-vscode, sdk-ts)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub entrypoint: Option<String>,
+    /// Source agent for foreign sessions (kebab id, e.g. "codex", "cursor").
+    /// `None` = Claude Code (the native pipeline).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 impl SessionInfo {
@@ -1250,6 +1254,7 @@ mod tests {
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         };
         let json = serde_json::to_string(&session).unwrap();
 
@@ -1426,6 +1431,7 @@ mod tests {
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         }
     }
 

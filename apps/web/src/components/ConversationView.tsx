@@ -21,6 +21,7 @@ import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
+import { isForeignSessionId } from '../lib/providers'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
 import {
@@ -66,8 +67,15 @@ export function ConversationView() {
   const project = summaries.find((p) => p.name === projectDir)
   const projectName = project?.displayName || projectDir
 
-  // Full session for export (loads in background)
-  const { data: session, error: sessionError } = useSession(sessionId || null)
+  // Foreign-provider sessions (codex:…, cursor:…) have no CC JSONL: the
+  // legacy /parsed endpoint (used for export + file-gone detection) does
+  // not apply — blocks are the only transcript source.
+  const isForeignSession = !!sessionId && isForeignSessionId(sessionId)
+
+  // Full session for export (loads in background; CC sessions only)
+  const { data: session, error: sessionError } = useSession(
+    isForeignSession ? null : sessionId || null,
+  )
 
   // Rich data + hook events for the side panel
   const { data: sessionsPage } = useProjectSessions(projectDir || undefined, { limit: 500 })
@@ -88,8 +96,9 @@ export function ConversationView() {
     dispatch({ type: 'LOAD_OLDER_HISTORY' })
   }, [dispatch])
 
-  // Detect missing JSONL (session in DB but file deleted)
-  const isFileGone = !!sessionDetail && isNotFoundError(sessionError)
+  // Detect missing JSONL (session in DB but file deleted). Never fires for
+  // foreign sessions — they have no JSONL to lose.
+  const isFileGone = !isForeignSession && !!sessionDetail && isNotFoundError(sessionError)
 
   // Loading: gate on sessionDetail only (blocks arrive async from new hook)
   const isLoading = isFileGone ? false : !sessionDetail && !detailError

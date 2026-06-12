@@ -257,6 +257,7 @@ pub(crate) mod test_helpers {
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         }
     }
 

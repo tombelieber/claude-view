@@ -53,6 +53,11 @@ pub async fn get_session_messages_by_id(
     Path(session_id): Path<String>,
     Query(query): Query<SessionMessagesQuery>,
 ) -> ApiResult<Json<serde_json::Value>> {
+    // Foreign sessions (codex:…, cursor:…) parse via their provider —
+    // they never have a CC JSONL file to resolve.
+    if super::foreign::is_foreign_id(&session_id) {
+        return super::foreign::foreign_messages(&state, &session_id, &query).await;
+    }
     let path = resolve_session_file_path(&state, &session_id).await?;
 
     if query.format.as_deref() == Some("block") {

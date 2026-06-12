@@ -243,6 +243,7 @@ mod tests {
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         };
         db.insert_session(&session, "project-a", "Project A")
             .await

@@ -5,6 +5,7 @@ mod archive;
 mod cost;
 mod detail;
 pub(crate) mod enrichment;
+pub(crate) mod foreign;
 pub(crate) mod helpers;
 mod list;
 mod messages;
