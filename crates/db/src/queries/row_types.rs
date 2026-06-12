@@ -479,6 +479,9 @@ impl SessionRow {
             slug: self.slug,
             // Entrypoint
             entrypoint: self.entrypoint,
+            // DB-indexed sessions are always native Claude Code; foreign
+            // sessions never enter the indexer.
+            provider: None,
         }
     }
 }

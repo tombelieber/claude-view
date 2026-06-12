@@ -35,6 +35,7 @@ export interface SessionFilters {
   // Multi-select filters
   branches: string[]
   models: string[]
+  providers: string[]
 
   // Boolean filters
   hasCommits: 'any' | 'yes' | 'no'
@@ -53,6 +54,7 @@ export const DEFAULT_FILTERS: SessionFilters = {
   viewMode: 'timeline',
   branches: [],
   models: [],
+  providers: [],
   hasCommits: 'any',
   hasSkills: 'any',
   minDuration: null,
@@ -73,6 +75,7 @@ function parseFilters(searchParams: URLSearchParams): SessionFilters {
     // Parse comma-separated lists
     branches: searchParams.get('branches')?.split(',').filter(Boolean) || [],
     models: searchParams.get('models')?.split(',').filter(Boolean) || [],
+    providers: searchParams.get('providers')?.split(',').filter(Boolean) || [],
 
     // Parse boolean filters
     hasCommits: (searchParams.get('hasCommits') || 'any') as 'any' | 'yes' | 'no',
@@ -99,6 +102,7 @@ const FILTER_KEYS = [
   'viewMode',
   'branches',
   'models',
+  'providers',
   'hasCommits',
   'hasSkills',
   'minDuration',
@@ -143,6 +147,10 @@ function serializeFilters(filters: SessionFilters, existing: URLSearchParams): U
     params.set('models', filters.models.join(','))
   }
 
+  if (filters.providers.length > 0) {
+    params.set('providers', filters.providers.join(','))
+  }
+
   if (filters.hasCommits !== 'any') {
     params.set('hasCommits', filters.hasCommits)
   }
@@ -178,6 +186,7 @@ export function countActiveFilters(filters: SessionFilters): number {
 
   if (filters.branches.length > 0) count++
   if (filters.models.length > 0) count++
+  if (filters.providers.length > 0) count++
   if (filters.hasCommits !== 'any') count++
   if (filters.hasSkills !== 'any') count++
   if (filters.minDuration !== null) count++

@@ -42,25 +42,30 @@ struct LongContextPricing {
 pub fn load_pricing() -> HashMap<String, ModelPricing> {
     PRICING_CACHE
         .get_or_init(|| {
-            let file: PricingFile = serde_json::from_str(PRICING_JSON).expect(
+            parse_pricing_file(PRICING_JSON).expect(
                 "embedded anthropic-pricing.json is invalid — fix data/anthropic-pricing.json",
-            );
-
-            let mut map = HashMap::with_capacity(file.models.len() + file.aliases.len());
-
-            for (model_id, jm) in &file.models {
-                map.insert(model_id.clone(), convert_model(jm));
-            }
-
-            for (alias, target) in &file.aliases {
-                if let Some(mp) = map.get(target) {
-                    map.insert(alias.clone(), mp.clone());
-                }
-            }
-
-            map
+            )
         })
         .clone()
+}
+
+/// Parse a pricing JSON document (the `{models, aliases}` schema shared by
+/// anthropic-pricing.json and foreign-pricing.json) into a pricing map with
+/// aliases flattened in.
+pub(super) fn parse_pricing_file(
+    json: &str,
+) -> Result<HashMap<String, ModelPricing>, serde_json::Error> {
+    let file: PricingFile = serde_json::from_str(json)?;
+    let mut map = HashMap::with_capacity(file.models.len() + file.aliases.len());
+    for (model_id, jm) in &file.models {
+        map.insert(model_id.clone(), convert_model(jm));
+    }
+    for (alias, target) in &file.aliases {
+        if let Some(mp) = map.get(target) {
+            map.insert(alias.clone(), mp.clone());
+        }
+    }
+    Ok(map)
 }
 
 fn convert_model(jm: &JsonModel) -> ModelPricing {

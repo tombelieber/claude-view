@@ -117,6 +117,7 @@ mod tests {
                 crate::routes::cli_sessions::terminal::TerminalManager::new(),
             ),
             session_catalog: legacy_catalog,
+            foreign_catalog: std::sync::Arc::new(claude_view_providers::ForeignCatalog::new()),
             session_catalog_adapter,
             jwks: None,
             auth_session: Arc::new(tokio::sync::RwLock::new(None)),

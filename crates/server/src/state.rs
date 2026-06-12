@@ -134,6 +134,11 @@ pub struct AppState {
     /// `project_dir_exists` checks) and serves as the fallback source
     /// for rows that haven't been reindexed since migration 66.
     pub session_catalog: claude_view_core::session_catalog::SessionCatalog,
+    /// Foreign-provider session catalog (Codex, Cursor, OpenCode, …).
+    /// Discovery refreshed by a background task in `create_app_full`;
+    /// metadata parsed lazily with a fingerprint-keyed cache. Foreign
+    /// sessions never touch the CC pipeline.
+    pub foreign_catalog: Arc<claude_view_providers::ForeignCatalog>,
     /// Phase 3 read-side adapter over `session_stats`. Route handlers
     /// use this as the sole read surface (CQRS Phase 7.d retired the
     /// `CLAUDE_VIEW_USE_LEGACY_SESSIONS_READ` escape hatch). Clone is
@@ -340,6 +345,7 @@ impl AppStateBuilder {
                 .unwrap_or_else(|| Arc::new(SidecarManager::new())),
             terminal_manager: Arc::new(TerminalManager::new()),
             session_catalog: legacy_catalog,
+            foreign_catalog: Arc::new(claude_view_providers::ForeignCatalog::new()),
             session_catalog_adapter,
             jwks: None,
             auth_session: Arc::new(tokio::sync::RwLock::new(None)),

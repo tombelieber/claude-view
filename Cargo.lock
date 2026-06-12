@@ -898,6 +898,7 @@ dependencies = [
  "claude-view-core",
  "claude-view-db",
  "claude-view-observability",
+ "claude-view-providers",
  "claude-view-search",
  "claude-view-server-insights",
  "claude-view-server-jobs",

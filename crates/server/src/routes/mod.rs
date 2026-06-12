@@ -40,6 +40,7 @@ pub mod plugins;
 pub mod processes;
 pub mod projects;
 pub mod prompts;
+pub mod providers;
 pub mod reports;
 pub mod score;
 pub mod search;
@@ -133,6 +134,7 @@ pub fn api_routes(state: Arc<AppState>) -> Router {
         .nest("/api", config::router())
         .nest("/api", health::router())
         .nest("/api", projects::router())
+        .nest("/api", providers::router())
         .nest("/api", sessions::router())
         .nest("/api", indexing::router())
         .nest("/api", invocables::router())

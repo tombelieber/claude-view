@@ -35,6 +35,11 @@ pub async fn get_session_detail(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<String>,
 ) -> ApiResult<Json<SessionDetail>> {
+    // Foreign sessions resolve through the ForeignCatalog (no CC JSONL,
+    // commits, tasks, or plans).
+    if super::foreign::is_foreign_id(&session_id) {
+        return super::foreign::foreign_detail(&state, &session_id).await;
+    }
     // Phase 3 PR 3.3: try session_stats first (single indexed SELECT);
     // fall back to SessionCatalog + JSONL parse if the adapter returns
     // None (not-yet-indexed, env-var override, DB error).

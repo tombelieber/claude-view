@@ -96,6 +96,7 @@ async fn test_state_with_session(session_id: &str, file_path: &str) -> Arc<AppSt
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         session_catalog: legacy_catalog,
+        foreign_catalog: std::sync::Arc::new(claude_view_providers::ForeignCatalog::new()),
         session_catalog_adapter,
     });
 
@@ -345,6 +346,7 @@ async fn ws_unknown_session_returns_error() {
         tmux_index: Arc::new(crate::routes::cli_sessions::TmuxSessionIndex::new()),
         born_waiters: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         session_catalog: legacy_catalog,
+        foreign_catalog: std::sync::Arc::new(claude_view_providers::ForeignCatalog::new()),
         session_catalog_adapter,
     });
 

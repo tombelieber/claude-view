@@ -224,6 +224,7 @@ async fn get_project_sessions(
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         });
     }
 
@@ -461,6 +462,7 @@ mod tests {
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         }
     }
 }

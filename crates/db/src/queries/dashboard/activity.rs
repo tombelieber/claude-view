@@ -271,6 +271,7 @@ mod rich_activity_tests {
             total_cost_usd: Some(0.05),
             slug: None,
             entrypoint: None,
+            provider: None,
         }
     }
 

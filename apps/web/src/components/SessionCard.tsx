@@ -26,6 +26,7 @@ import { CategoryBadge } from './CategoryBadge'
 import { WeightIndicator } from './WeightIndicator'
 import { WorkTypeBadge } from './WorkTypeBadge'
 import { TeamMemberPills } from './live/TeamMemberPills'
+import { ProviderBadge } from './shared/ProviderBadge'
 import { SourceBadge } from './shared/SourceBadge'
 import { SessionSpinner, formatDurationCompact, pickPastVerb } from './spinner'
 
@@ -309,8 +310,12 @@ export function SessionCard({
           <div className="flex items-center justify-between gap-2 mb-1">
             <div className="flex items-center gap-1.5 min-w-0">
               <WeightIndicator tier={weightTier} />
-              {session.entrypoint && (
-                <SourceBadge source={sourceFromEntrypoint(session.entrypoint)} />
+              {session.provider ? (
+                <ProviderBadge provider={session.provider} />
+              ) : (
+                session.entrypoint && (
+                  <SourceBadge source={sourceFromEntrypoint(session.entrypoint)} />
+                )
               )}
               {projectLabel && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-medium text-gray-700 dark:text-gray-300 rounded shrink-0">

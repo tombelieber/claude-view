@@ -282,6 +282,21 @@ export function HistoryView() {
     return [...set].sort()
   }, [sessionsWithLiveCost])
 
+  // Providers with session counts — drives the Agent filter section.
+  // The popover hides the section when only Claude Code has sessions.
+  const { data: availableProviders = [] } = useQuery({
+    queryKey: ['providers-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/providers')
+      if (!res.ok) return []
+      const body = (await res.json()) as {
+        providers: Array<{ id: string; displayName: string; count: number }>
+      }
+      return body.providers.filter((p) => p.count > 0)
+    },
+    staleTime: 60_000,
+  })
+
   const isFiltered = !!(
     debouncedSearch ||
     sidebarProject ||
@@ -475,6 +490,7 @@ export function HistoryView() {
               groupByDisabled={tooManyToGroup}
               branches={availableBranches}
               models={availableModels}
+              providers={availableProviders}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />

@@ -325,6 +325,7 @@ mod tests {
             total_cost_usd: None,
             slug: None,
             entrypoint: None,
+            provider: None,
         }
     }
 

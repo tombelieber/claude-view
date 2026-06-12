@@ -273,6 +273,7 @@ pub(super) fn make_session(id: &str, project: &str, modified_at: i64) -> Session
         total_cost_usd: None,
         slug: None,
         entrypoint: None,
+        provider: None,
     }
 }
 

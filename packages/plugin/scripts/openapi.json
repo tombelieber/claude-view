@@ -2861,6 +2861,27 @@
         }
       }
     },
+    "/api/providers": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "GET /api/providers — providers with session counts (count > 0 only,\nClaude Code always first).",
+        "operationId": "list_providers",
+        "responses": {
+          "200": {
+            "description": "Providers with session counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/reports": {
       "get": {
         "tags": [
@@ -3370,6 +3391,18 @@
             "schema": {
               "type": [
                 "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "providers",
+            "in": "query",
+            "description": "Comma-separated provider ids to include (\"claude-code\" = native CC\nsessions; \"codex\", \"cursor\", … = foreign agents). Absent = all.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
                 "null"
               ]
             }
@@ -12104,6 +12137,43 @@
           }
         }
       },
+      "ProviderSummary": {
+        "type": "object",
+        "description": "One provider with at least one discovered session.",
+        "required": [
+          "id",
+          "displayName",
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string",
+            "description": "Kebab id used in the `providers` filter param (\"claude-code\", \"codex\", …)."
+          }
+        }
+      },
+      "ProvidersResponse": {
+        "type": "object",
+        "description": "Response for GET /api/providers.",
+        "required": [
+          "providers"
+        ],
+        "properties": {
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderSummary"
+            }
+          }
+        }
+      },
       "QrPayload": {
         "type": "object",
         "description": "QR payload served to the web UI. The `url` field is the QR-encoded value;\nthe rest are duplicates for frontends that prefer named fields.",
@@ -12973,6 +13043,13 @@
           },
           "projectPath": {
             "type": "string"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Source agent for foreign sessions (kebab id, e.g. \"codex\", \"cursor\").\n`None` = Claude Code (the native pipeline)."
           },
           "reeditedFilesCount": {
             "type": "integer",

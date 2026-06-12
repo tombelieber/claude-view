@@ -6,6 +6,7 @@
 mod audit;
 mod calculate;
 mod extract;
+mod foreign;
 mod loader;
 mod lookup;
 mod types;
@@ -13,6 +14,7 @@ mod types;
 pub use audit::scan_unpriced_models;
 pub use calculate::{calculate_cost, calculate_cost_usd, finalize_cost_breakdown};
 pub use extract::extract_usage_tokens;
+pub use foreign::{cost_for_totals, lookup_foreign_pricing};
 pub use loader::load_pricing;
 pub use lookup::{lookup_pricing, resolve_model_alias, resolve_pricing, Family, MatchKind};
 pub use types::{

@@ -73,6 +73,7 @@ fn make_unclassified_session(id: &str, modified_at: i64) -> SessionInfo {
         total_cost_usd: None,
         slug: None,
         entrypoint: None,
+        provider: None,
     }
 }
 
