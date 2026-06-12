@@ -2882,6 +2882,43 @@
         }
       }
     },
+    "/api/providers/usage": {
+      "get": {
+        "tags": [
+          "providers"
+        ],
+        "summary": "GET /api/providers/usage — token/cost aggregates per foreign provider\nwithin a trailing window. Claude Code is NOT included: CC usage comes\nfrom the existing rollup pipeline; this endpoint reads the foreign\ncatalog's cached metadata (no files parsed beyond the cache fill).",
+        "operationId": "providers_usage",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "description": "Time window in days (default 30, max 365).",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Per-provider usage aggregates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProvidersUsageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/reports": {
       "get": {
         "tags": [
@@ -12159,6 +12196,71 @@
           }
         }
       },
+      "ProviderUsage": {
+        "type": "object",
+        "description": "Per-provider usage aggregates for the analytics \"By agent\" surface.\nCost semantics (trust gate): `cost_usd` sums ONLY sessions whose every\ntoken resolved to a priced model; `priced_sessions`/`usage_sessions`\nmake the coverage explicit so the UI never implies a complete total.",
+        "required": [
+          "id",
+          "displayName",
+          "sessions",
+          "inputTokens",
+          "outputTokens",
+          "cacheReadTokens",
+          "cacheCreationTokens",
+          "usageSessions",
+          "pricedSessions"
+        ],
+        "properties": {
+          "cacheCreationTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "cacheReadTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "costUsd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Sum over priced sessions only; `None` when no session priced."
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "inputTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "outputTokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "pricedSessions": {
+            "type": "integer",
+            "description": "Sessions whose full usage resolved to priced models.",
+            "minimum": 0
+          },
+          "sessions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "usageSessions": {
+            "type": "integer",
+            "description": "Sessions that carried any token accounting at all.",
+            "minimum": 0
+          }
+        }
+      },
       "ProvidersResponse": {
         "type": "object",
         "description": "Response for GET /api/providers.",
@@ -12170,6 +12272,27 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProviderSummary"
+            }
+          }
+        }
+      },
+      "ProvidersUsageResponse": {
+        "type": "object",
+        "description": "Response for GET /api/providers/usage.",
+        "required": [
+          "days",
+          "providers"
+        ],
+        "properties": {
+          "days": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "providers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProviderUsage"
             }
           }
         }

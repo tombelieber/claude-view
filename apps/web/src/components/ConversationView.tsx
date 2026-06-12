@@ -21,6 +21,7 @@ import { useProjectSessions } from '../hooks/use-projects'
 import type { ProjectSummary } from '../hooks/use-projects'
 import { useRichSessionData } from '../hooks/use-rich-session-data'
 import { isNotFoundError, useSession } from '../hooks/use-session'
+import { blocksToMessages } from '../lib/blocks-to-messages'
 import { isForeignSessionId } from '../lib/providers'
 import { useSessionDetail } from '../hooks/use-session-detail'
 import type { SessionOwnership } from '@claude-view/shared/types/generated/SessionOwnership'
@@ -145,7 +146,14 @@ export function ConversationView() {
     return qs ? `/sessions?${qs}` : '/sessions'
   }, [searchParams])
 
-  const exportsReady = !!session
+  // Export source: CC sessions use the legacy /parsed transcript; foreign
+  // sessions (codex:…) have no /parsed — convert their blocks instead.
+  const exportMessages = useMemo(() => {
+    if (isForeignSession) return blocks.length > 0 ? blocksToMessages(blocks) : null
+    return session?.messages ?? null
+  }, [isForeignSession, blocks, session])
+
+  const exportsReady = !!exportMessages
 
   const exportMeta: ExportMetadata | undefined = useMemo(() => {
     if (!sessionDetail) return undefined
@@ -157,7 +165,7 @@ export function ConversationView() {
       durationSeconds: sessionDetail.durationSeconds,
       totalInputTokens: sessionDetail.totalInputTokens,
       totalOutputTokens: sessionDetail.totalOutputTokens,
-      messageCount: session?.messages?.length ?? 0,
+      messageCount: exportMessages?.length ?? 0,
       userPromptCount: sessionDetail.userPromptCount,
       toolCallCount: sessionDetail.toolCallCount,
       filesEditedCount: sessionDetail.filesEditedCount,
@@ -166,35 +174,35 @@ export function ConversationView() {
       gitBranch: sessionDetail.gitBranch,
       exportDate: new Date().toISOString(),
     }
-  }, [sessionDetail, sessionId, projectName, session])
+  }, [sessionDetail, sessionId, projectName, exportMessages])
 
   const handleExportHtml = useCallback(() => {
-    if (!session) return
-    const html = generateStandaloneHtml(session.messages, exportMeta)
+    if (!exportMessages) return
+    const html = generateStandaloneHtml(exportMessages, exportMeta)
     downloadHtml(html, `conversation-${sessionId}.html`)
-  }, [session, sessionId, exportMeta])
+  }, [exportMessages, sessionId, exportMeta])
 
   const handleExportPdf = useCallback(() => {
-    if (!session) return
-    exportToPdf(session.messages, exportMeta)
-  }, [session, exportMeta])
+    if (!exportMessages) return
+    exportToPdf(exportMessages, exportMeta)
+  }, [exportMessages, exportMeta])
 
   const handleExportMarkdown = useCallback(() => {
-    if (!session) return
-    const markdown = generateMarkdown(session.messages, projectName, sessionId)
+    if (!exportMessages) return
+    const markdown = generateMarkdown(exportMessages, projectName, sessionId)
     downloadMarkdown(markdown, `conversation-${sessionId}.md`)
-  }, [session, projectName, sessionId])
+  }, [exportMessages, projectName, sessionId])
 
   const handleCopyMarkdown = useCallback(async () => {
-    if (!session) return
-    const markdown = generateMarkdown(session.messages, projectName, sessionId)
+    if (!exportMessages) return
+    const markdown = generateMarkdown(exportMessages, projectName, sessionId)
     const ok = await copyToClipboard(markdown)
     if (ok) {
       toast.success('Markdown copied to clipboard', { duration: TOAST_DURATION.micro })
     } else {
       toast.error('Copy failed', { description: 'Check browser permissions' })
     }
-  }, [session, projectName, sessionId])
+  }, [exportMessages, projectName, sessionId])
 
   const handleResume = useCallback(async () => {
     const projectPath = sessionDetail?.projectPath
@@ -449,10 +457,11 @@ export function ConversationView() {
           >
             <PanelRight className="w-4 h-4" />
           </button>
-          {/* Share / Continue / Resume are CC-only surfaces: share + export
-              run through the legacy /parsed transcript and `claude --resume`
+          {/* Share / Continue / Resume are CC-only surfaces: share runs
+              through the legacy /parsed transcript and `claude --resume`
               does not exist for foreign agents. Hidden (not disabled) for
-              foreign sessions until the blocks-based export ships. */}
+              foreign sessions. Export works for both: CC via /parsed,
+              foreign via blocksToMessages(blocks). */}
           {!isForeignSession && (
             <ShareModal
               sessionId={sessionId as string}
@@ -461,78 +470,78 @@ export function ConversationView() {
             />
           )}
           {!isForeignSession && (
-          <div className="relative" ref={resumeMenuRef}>
-            <button
-              type="button"
-              onClick={() => setResumeMenuOpen(!resumeMenuOpen)}
-              disabled={!exportsReady}
-              aria-label="Continue options"
-              aria-expanded={resumeMenuOpen}
-              aria-haspopup="menu"
-              className={cn(
-                'flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
-                exportsReady
-                  ? 'border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer'
-                  : 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400',
-              )}
-            >
-              <Terminal className="w-4 h-4" />
-              <span>Continue</span>
-              <ChevronDown
-                className={cn('w-3.5 h-3.5 transition-transform', resumeMenuOpen && 'rotate-180')}
-                aria-hidden="true"
-              />
-            </button>
-            {resumeMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
-                {/* Model selector */}
-                <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
-                  <span className="text-xs text-gray-500 dark:text-gray-400 block mb-1.5">
-                    Model
-                  </span>
-                  <ModelSelector model={resumeModel} onModelChange={handleResumeModelChange} />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigate(`/chat/${sessionId}`)
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Terminal className="w-4 h-4" />
-                  Resume in Browser
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleCopyMarkdown()
-                    setResumeMenuOpen(false)
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Copy className="w-4 h-4" />
-                  Copy Full Transcript
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleResume()
-                    setResumeMenuOpen(false)
-                  }}
-                  title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
-                  className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
-                >
-                  <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
-                  <span className="flex flex-col items-start">
-                    <span>Resume Command</span>
-                    <span className="text-xs text-gray-400 dark:text-gray-500 max-w-[180px] truncate">
-                      {sessionDetail?.projectPath ?? ''}
+            <div className="relative" ref={resumeMenuRef}>
+              <button
+                type="button"
+                onClick={() => setResumeMenuOpen(!resumeMenuOpen)}
+                disabled={!exportsReady}
+                aria-label="Continue options"
+                aria-expanded={resumeMenuOpen}
+                aria-haspopup="menu"
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1',
+                  exportsReady
+                    ? 'border-blue-500 dark:border-blue-400 text-blue-700 dark:text-blue-300 bg-white dark:bg-gray-800 hover:bg-blue-50 dark:hover:bg-blue-900/30 cursor-pointer'
+                    : 'opacity-50 cursor-not-allowed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-400',
+                )}
+              >
+                <Terminal className="w-4 h-4" />
+                <span>Continue</span>
+                <ChevronDown
+                  className={cn('w-3.5 h-3.5 transition-transform', resumeMenuOpen && 'rotate-180')}
+                  aria-hidden="true"
+                />
+              </button>
+              {resumeMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg z-50 py-1">
+                  {/* Model selector */}
+                  <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                    <span className="text-xs text-gray-500 dark:text-gray-400 block mb-1.5">
+                      Model
                     </span>
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+                    <ModelSelector model={resumeModel} onModelChange={handleResumeModelChange} />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate(`/chat/${sessionId}`)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  >
+                    <Terminal className="w-4 h-4" />
+                    Resume in Browser
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleCopyMarkdown()
+                      setResumeMenuOpen(false)
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  >
+                    <Copy className="w-4 h-4" />
+                    Copy Full Transcript
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleResume()
+                      setResumeMenuOpen(false)
+                    }}
+                    title={`claude --resume ${sessionId}\nProject: ${sessionDetail?.projectPath ?? 'unknown'}`}
+                    className="w-full flex items-start gap-2 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer"
+                  >
+                    <Terminal className="w-4 h-4 mt-0.5 shrink-0" />
+                    <span className="flex flex-col items-start">
+                      <span>Resume Command</span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500 max-w-[180px] truncate">
+                        {sessionDetail?.projectPath ?? ''}
+                      </span>
+                    </span>
+                  </button>
+                </div>
+              )}
+            </div>
           )}
           {/* Export dropdown */}
           <div className="relative" ref={exportMenuRef}>

@@ -39,7 +39,7 @@ pub fn parse_providers_param(raw: Option<&str>) -> Option<Vec<String>> {
 /// Total session cost in USD — `Some` only when EVERY token in the session
 /// is attributable to a priced model (per-model coverage must equal the
 /// session totals). A partial cost is never emitted (trust gate).
-fn foreign_cost_usd(
+pub(crate) fn foreign_cost_usd(
     meta: &ForeignSessionMeta,
     pricing: &claude_view_core::pricing::PricingTable,
 ) -> Option<f64> {
@@ -170,7 +170,9 @@ pub fn list_foreign(
                 meta.project
             )
             .to_lowercase();
-            if !haystack.contains(q) {
+            // Metadata first (cheap), then the catalog's cached transcript
+            // text (built during the same parse that produced the meta).
+            if !haystack.contains(q) && !state.foreign_catalog.transcript_matches(&row.id, q) {
                 continue;
             }
         }
