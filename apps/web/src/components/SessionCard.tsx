@@ -591,8 +591,9 @@ export function SessionCard({
             </div>
 
             <div className="flex items-center gap-2">
-              {/* Resume button (only when handler provided) */}
-              {onResumeClick && session.id && (
+              {/* Resume button (CC sessions only — `claude --resume` does
+                  not exist for foreign agents' sessions) */}
+              {onResumeClick && session.id && !session.provider && (
                 <button
                   type="button"
                   onClick={(e) => {

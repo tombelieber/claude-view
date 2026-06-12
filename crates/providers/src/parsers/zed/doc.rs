@@ -112,6 +112,12 @@ fn sum_request_usage(doc: &Value) -> (UsageTotals, bool) {
         if let Some(output) = entry.get("output_tokens").and_then(Value::as_f64) {
             totals.output_tokens += output.max(0.0) as u64;
         }
+        if let Some(cr) = entry.get("cache_read_input_tokens").and_then(Value::as_f64) {
+            totals.cache_read_input_tokens += cr.max(0.0) as u64;
+        }
+        if let Some(cc) = entry.get("cache_creation_input_tokens").and_then(Value::as_f64) {
+            totals.cache_creation_input_tokens += cc.max(0.0) as u64;
+        }
     }
     (totals, has_usage)
 }

@@ -129,7 +129,7 @@ impl Provider for KiroIdeProvider {
 
 /// First entry's workspaceDirectory from a sessions.json index.
 fn first_workspace_dir(sessions_json: &Path) -> Option<String> {
-    let raw = std::fs::read_to_string(sessions_json).ok()?;
+    let raw = crate::util::read_to_string_capped(sessions_json).ok()?;
     let doc: Value = serde_json::from_str(&raw).ok()?;
     let ws = doc
         .as_array()?

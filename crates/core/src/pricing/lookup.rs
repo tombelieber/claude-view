@@ -164,13 +164,32 @@ pub fn resolve_pricing<'a>(
             });
         }
     }
-    // Reverse prefix: model_id is a prefix of a table key.
-    for (key, p) in pricing {
-        if key.starts_with(model_id) {
-            return Some(PricingMatch {
-                pricing: p,
-                kind: MatchKind::Prefix,
+    // Reverse prefix: model_id is a prefix of a table key. HashMap iteration
+    // order is nondeterministic, so this branch is trust-gated: it only
+    // answers when ALL matching keys agree on the rate (e.g. a bare
+    // "claude-sonnet-4-6" matching its dated variants). An ambiguous prefix
+    // like "claude-opus-4" (matches $15 opus-4-2025… AND $5 opus-4-6) falls
+    // through to the family fallback, which picks the newest deterministic
+    // rate instead of a coin flip.
+    {
+        let matches: Vec<&ModelPricing> = pricing
+            .iter()
+            .filter(|(key, _)| key.starts_with(model_id))
+            .map(|(_, p)| p)
+            .collect();
+        if let Some(first) = matches.first() {
+            let consistent = matches.iter().all(|p| {
+                p.input_cost_per_token == first.input_cost_per_token
+                    && p.output_cost_per_token == first.output_cost_per_token
+                    && p.cache_read_cost_per_token == first.cache_read_cost_per_token
+                    && p.cache_creation_cost_per_token == first.cache_creation_cost_per_token
             });
+            if consistent {
+                return Some(PricingMatch {
+                    pricing: first,
+                    kind: MatchKind::Prefix,
+                });
+            }
         }
     }
     // Family-nearest-version fallback: a brand-new point release inherits the

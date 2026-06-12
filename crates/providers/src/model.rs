@@ -22,11 +22,17 @@ pub struct UsageTotals {
 }
 
 impl UsageTotals {
+    /// Saturating accumulation — token counts come from untrusted foreign
+    /// files; corrupt values must never panic (dev overflow checks) or wrap.
     pub fn add(&mut self, other: &UsageTotals) {
-        self.input_tokens += other.input_tokens;
-        self.output_tokens += other.output_tokens;
-        self.cache_read_input_tokens += other.cache_read_input_tokens;
-        self.cache_creation_input_tokens += other.cache_creation_input_tokens;
+        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
+        self.cache_read_input_tokens = self
+            .cache_read_input_tokens
+            .saturating_add(other.cache_read_input_tokens);
+        self.cache_creation_input_tokens = self
+            .cache_creation_input_tokens
+            .saturating_add(other.cache_creation_input_tokens);
     }
 
     pub fn is_zero(&self) -> bool {

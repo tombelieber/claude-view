@@ -245,7 +245,7 @@ fn line_cwd(line: &Value) -> Option<String> {
 /// Sidecar `<id>.meta.json` → title + fallback cwd.
 fn apply_sidecar_meta(path: &Path, meta: &mut ForeignSessionMeta) {
     let meta_path = path.with_extension("meta.json");
-    let Ok(raw) = std::fs::read_to_string(&meta_path) else {
+    let Ok(raw) = crate::util::read_to_string_capped(&meta_path) else {
         return;
     };
     let Ok(doc) = serde_json::from_str::<Value>(&raw) else {

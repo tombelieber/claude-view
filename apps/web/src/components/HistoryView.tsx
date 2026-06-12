@@ -310,7 +310,8 @@ export function HistoryView() {
     filters.minFiles !== null ||
     filters.minTokens !== null ||
     filters.branches.length > 0 ||
-    filters.models.length > 0
+    filters.models.length > 0 ||
+    filters.providers.length > 0
   )
 
   const tooManyToGroup = shouldDisableGrouping(sessionsWithLiveCost.length)

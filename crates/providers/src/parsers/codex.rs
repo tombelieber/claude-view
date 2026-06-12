@@ -192,14 +192,16 @@ impl Builder {
         }
     }
 
-    fn finish(mut self) -> Vec<ForeignSession> {
+    fn finish(self) -> Vec<ForeignSession> {
         // Sessions with zero contentful messages are non-interactive noise.
         if self.meta.message_count == 0 {
             return Vec::new();
         }
-        if !self.raw_id.is_empty() {
-            self.meta.id = ProviderKind::Codex.session_id(&self.raw_id);
-        }
+        // The session id stays the FILENAME-derived id from discovery —
+        // overriding it with session_meta.payload.id would orphan the
+        // catalog row (lookup-by-id misses) and defeat the stats cache
+        // whenever the two differ. payload.id was still validated during
+        // parsing; it just isn't the identity.
         vec![ForeignSession {
             meta: self.meta,
             blocks: self.blocks,
@@ -603,8 +605,10 @@ mod tests {
         );
         assert_eq!(sessions.len(), 1);
         let s = sessions.remove(0);
-        // session_meta payload.id is authoritative over the filename UUID.
-        assert_eq!(s.meta.id, "codex:abc-123");
+        // Identity stays the FILENAME-derived id — discovery and parse must
+        // agree or the catalog row is orphaned (session hidden, cache
+        // defeated). session_meta payload.id is metadata, not identity.
+        assert_eq!(s.meta.id, "codex:0196fdb4-1234-4abc-8def-0123456789ab");
         assert_eq!(s.meta.project, "my-api");
         assert_eq!(s.meta.cwd.as_deref(), Some("/Users/alice/code/my-api"));
         assert_eq!(s.meta.git_branch.as_deref(), Some("main"));

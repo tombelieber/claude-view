@@ -15,7 +15,7 @@ use serde_json::Value;
 use std::path::Path;
 
 pub(super) fn parse(path: &Path) -> anyhow::Result<Vec<ForeignSession>> {
-    let raw = std::fs::read_to_string(path)?;
+    let raw = crate::util::read_to_string_capped(path)?;
     let doc: Value = serde_json::from_str(&raw)?;
     let Some(chat) = doc.get("chat").and_then(Value::as_array) else {
         return Ok(Vec::new());

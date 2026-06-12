@@ -68,7 +68,7 @@ impl Provider for CortexProvider {
     }
 
     fn parse(&self, path: &Path) -> anyhow::Result<Vec<ForeignSession>> {
-        let raw = std::fs::read_to_string(path)?;
+        let raw = crate::util::read_to_string_capped(path)?;
         let doc: Value = serde_json::from_str(&raw)?;
         let raw_id = doc
             .get("session_id")

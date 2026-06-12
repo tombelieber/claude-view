@@ -62,7 +62,7 @@ impl Provider for AmpProvider {
     }
 
     fn parse(&self, path: &Path) -> anyhow::Result<Vec<ForeignSession>> {
-        let raw = std::fs::read_to_string(path)?;
+        let raw = crate::util::read_to_string_capped(path)?;
         let doc: Value = serde_json::from_str(&raw)?;
         // Thread id comes from the filename stem so lookup-by-id matches
         // discovery; the JSON `id` field is only a fallback.

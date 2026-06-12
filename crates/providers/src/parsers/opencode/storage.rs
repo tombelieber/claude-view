@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub(super) fn parse_session_file(path: &Path) -> anyhow::Result<Vec<ForeignSession>> {
-    let raw = std::fs::read_to_string(path)?;
+    let raw = crate::util::read_to_string_capped(path)?;
     let doc: Value = serde_json::from_str(&raw)
         .map_err(|e| anyhow::anyhow!("decoding opencode session file {}: {e}", path.display()))?;
     let Some(id) = doc
@@ -102,7 +102,7 @@ fn load_messages(root: &Path, session_id: &str) -> anyhow::Result<Vec<MessageRow
     let dir = root.join("storage").join("message").join(session_id);
     let mut msgs = Vec::new();
     for path in json_files(&dir)? {
-        let raw = std::fs::read_to_string(&path)?;
+        let raw = crate::util::read_to_string_capped(&path)?;
         let data: Value = serde_json::from_str(&raw).map_err(|e| {
             anyhow::anyhow!("decoding opencode message file {}: {e}", path.display())
         })?;
@@ -127,7 +127,7 @@ fn load_parts(root: &Path, msgs: &[MessageRow]) -> anyhow::Result<HashMap<String
     for msg in msgs {
         let dir = root.join("storage").join("part").join(&msg.id);
         for path in json_files(&dir)? {
-            let raw = std::fs::read_to_string(&path)?;
+            let raw = crate::util::read_to_string_capped(&path)?;
             let data: Value = serde_json::from_str(&raw).map_err(|e| {
                 anyhow::anyhow!("decoding opencode part file {}: {e}", path.display())
             })?;

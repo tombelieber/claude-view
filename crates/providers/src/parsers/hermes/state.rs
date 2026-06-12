@@ -31,7 +31,11 @@ pub(super) struct StateSession {
 }
 
 pub(super) fn open_ro(db: &Path) -> rusqlite::Result<Connection> {
-    Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY)
+    let conn = Connection::open_with_flags(db, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+    // Hermes holds the DB live — without a busy timeout a transient lock
+    // silently drops every Hermes session from the catalog refresh.
+    conn.busy_timeout(std::time::Duration::from_millis(3000))?;
+    Ok(conn)
 }
 
 /// Enumerate session ids for discovery (cheap; no message parsing).
