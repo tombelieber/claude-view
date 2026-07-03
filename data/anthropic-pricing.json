@@ -3,6 +3,18 @@
   "last_verified": "2026-06-02",
   "unit": "usd_per_million_tokens",
   "models": {
+    "claude-fable-5": {
+      "display_name": "Claude Fable 5",
+      "input": 10.0,
+      "output": 50.0,
+      "cache_write_5m": 12.5,
+      "cache_write_1hr": 20.0,
+      "cache_read": 1.0,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "long_context_pricing": null,
+      "tokenizer_note": "Fable 5 uses the same tokenizer as Opus 4.8; token counts are roughly unchanged vs Opus 4.7/4.8."
+    },
     "claude-opus-4-8": {
       "display_name": "Claude Opus 4.8",
       "input": 5.0,
@@ -37,6 +49,18 @@
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
       "long_context_pricing": null
+    },
+    "claude-sonnet-5": {
+      "display_name": "Claude Sonnet 5",
+      "input": 3.0,
+      "output": 15.0,
+      "cache_write_5m": 3.75,
+      "cache_write_1hr": 6.0,
+      "cache_read": 0.3,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "long_context_pricing": null,
+      "tokenizer_note": "Sonnet 5 uses a new tokenizer (~30% more tokens for the same text vs Sonnet 4.6). Introductory pricing of $2/$10 per MTok applies through 2026-08-31; sticker is $3/$15."
     },
     "claude-sonnet-4-6": {
       "display_name": "Claude Sonnet 4.6",
