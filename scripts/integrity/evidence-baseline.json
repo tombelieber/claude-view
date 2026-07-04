@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "audit_date": "2026-06-01",
+  "audit_date": "2026-07-04",
   "methodology": "jq structural JSON parsing only — never text grep — to avoid miscategorizing message content as structural fields",
   "corpus_stats": {
     "files": 14194,
@@ -23,8 +23,8 @@
       "pr-link"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": ["mode", "started", "result"],
-    "silently_ignored_note": "mode = output-style marker. started/result = sub-agent tool-result cache records ({type, key:'v2:<hash>', agentId, result}) — internal result-memoization bookkeeping, deliberately not rendered as conversation blocks. Matches block_accumulator::intentionally_ignored_record_types(); the parser has no match arm for them (skipped via the `_ => {}` catch-all).",
+    "silently_ignored": ["mode", "started", "result", "bridge-session"],
+    "silently_ignored_note": "mode = output-style marker. started/result = sub-agent tool-result cache records ({type, key:'v2:<hash>', agentId, result}) — internal result-memoization bookkeeping, deliberately not rendered as conversation blocks. bridge-session = a mobile/remote bridge pointer record ({type, sessionId, bridgeSessionId, lastSequenceNum}, no content/message/uuid) that links a local session to its bridge-side counterpart; pure routing/sequencing bookkeeping, not conversation content. Matches block_accumulator::intentionally_ignored_record_types(); the parser has no match arm for them (skipped via the `_ => {}` catch-all).",
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
     "removed_dead_code": ["saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []
@@ -269,8 +269,15 @@
       "pendingWorkflowCount",
       "promptSource",
       "mcpMeta",
-      "interruptedMessageId"
+      "interruptedMessageId",
+      "sessionKind",
+      "bridgeSessionId",
+      "lastSequenceNum",
+      "toolEndsTurn",
+      "hookAdditionalContext",
+      "session_id",
+      "pendingBackgroundAgentCount"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin tag: typed | sdk | system) IS now surfaced — see consumed_by_parser (UserBlock.prompt_source → chat origin pill for sdk/system, developer badge for all values); it stays listed here rather than under `extracted` because it appears on only a fraction of sessions and must not trip the phantom-field check on corpora lacking it. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is the structured mirror of the tool_result content the timeline already renders, and is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Decision (settled, not a follow-up): mcpMeta stays unsurfaced — rendering opaque arbitrary per-tool JSON as a structured UI element adds no signal over the already-displayed result and would risk Trust-over-Accuracy. interruptedMessageId (top-level on a user record; the id of the assistant message a user interrupt aborted) is internal interruption bookkeeping — a message-id back-reference the parser does not consume and the block pipeline does not surface."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin tag: typed | sdk | system) IS now surfaced — see consumed_by_parser (UserBlock.prompt_source → chat origin pill for sdk/system, developer badge for all values); it stays listed here rather than under `extracted` because it appears on only a fraction of sessions and must not trip the phantom-field check on corpora lacking it. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is the structured mirror of the tool_result content the timeline already renders, and is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Decision (settled, not a follow-up): mcpMeta stays unsurfaced — rendering opaque arbitrary per-tool JSON as a structured UI element adds no signal over the already-displayed result and would risk Trust-over-Accuracy. interruptedMessageId (top-level on a user record; the id of the assistant message a user interrupt aborted) is internal interruption bookkeeping — a message-id back-reference the parser does not consume and the block pipeline does not surface. The mobile/remote bridge + background-session fields (added by newer Claude Code releases) are internal routing/sequencing/classification metadata, not conversation content: sessionKind (value 'bg' — marks background/bridge-spawned sessions, on user/assistant/attachment/system records; a classifier not yet surfaced in the UI, same status as attribution*), bridgeSessionId + lastSequenceNum (only on the bridge-session pointer record — the bridge-side id and its sync sequence counter), toolEndsTurn (a boolean turn-boundary hint on user tool-result records — claude-view computes turn boundaries itself via TurnBoundary, so this CC-side flag is redundant), and hookAdditionalContext (a list on system records holding text a hook injected into the prompt — opaque, potentially arbitrary/PII-bearing, and not modeled as a conversation block). session_id is the snake_case mirror of sessionId (already ignored) — claude-view derives the canonical session id from the JSONL filename, so both casings are redundant. pendingBackgroundAgentCount is a transient live counter on system records, the background-agent sibling of pendingWorkflowCount — session metadata, not surfaced by the block pipeline."
   }
 }

@@ -244,13 +244,15 @@ pub fn handled_record_types() -> &'static [&'static str] {
 /// - `started` / `result`: the agent tool-result **cache** (`{type, key:"v2:<hash>",
 ///   agentId, result}`), an implementation detail of sub-agent result memoization,
 ///   not a message.
+/// - `bridge-session`: a mobile/remote bridge pointer record (`{type, sessionId,
+///   bridgeSessionId, lastSequenceNum}` — no content/message/uuid) linking a local
+///   session to its bridge-side counterpart. Pure routing/sequencing bookkeeping.
 ///
 /// The cc-compat oracle subtracts these from "unhandled" so they aren't flagged as
 /// gaps every run. A genuinely-new CC record type will NOT be in this set, so it
-/// still surfaces. Revisit if Claude Code ever gives `started`/`result` user-facing
-/// meaning.
+/// still surfaces. Revisit if Claude Code ever gives any of them user-facing meaning.
 pub fn intentionally_ignored_record_types() -> &'static [&'static str] {
-    &["started", "result"]
+    &["started", "result", "bridge-session"]
 }
 
 /// Session-level metadata extracted alongside blocks.
