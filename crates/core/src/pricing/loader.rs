@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 17 models + 3 aliases = 20 entries
-        assert_eq!(pricing.len(), 20);
+        // 19 models + 3 aliases = 22 entries
+        assert_eq!(pricing.len(), 22);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -112,9 +112,11 @@ mod tests {
     /// list is the CI gate: if a dev forgets the pricing update, the test below
     /// fails with a pointer to the fix.
     const ACTIVE_MODELS: &[&str] = &[
+        "claude-fable-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
+        "claude-sonnet-5",
         "claude-sonnet-4-6",
         "claude-sonnet-4-5-20250929",
         "claude-haiku-4-5-20251001",
@@ -159,6 +161,41 @@ mod tests {
             opus48.cache_creation_cost_per_token_1hr,
             opus47.cache_creation_cost_per_token_1hr
         );
+    }
+
+    #[test]
+    fn test_fable_5_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-07-04:
+        // Fable 5 is $10 in / $50 out / $12.50 5m-cache / $20 1h-cache / $1 read.
+        // (Above Opus tier — Fable is a new family with no priced sibling to
+        // inherit from, so an exact entry is the only thing preventing "Unavailable".)
+        let pricing = load_pricing();
+        let f = pricing
+            .get("claude-fable-5")
+            .expect("Fable 5 must be in the pricing table");
+        assert!((f.input_cost_per_token - 10e-6).abs() < 1e-15);
+        assert!((f.output_cost_per_token - 50e-6).abs() < 1e-15);
+        assert!((f.cache_creation_cost_per_token - 12.5e-6).abs() < 1e-15);
+        assert!((f.cache_read_cost_per_token - 1e-6).abs() < 1e-15);
+        assert!((f.cache_creation_cost_per_token_1hr.unwrap() - 20e-6).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_sonnet_5_priced_at_introductory_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-07-04:
+        // Sonnet 5 INTRODUCTORY pricing ($2 in / $10 out / $2.50 5m / $4 1h / $0.20 read)
+        // is in effect through 2026-08-31. This is what sessions are actually billed
+        // right now, so it's what we display — showing the $3/$15 sticker today would
+        // over-report cost by 50%. Flip to sticker on 2026-09-01 (see tokenizer_note).
+        let pricing = load_pricing();
+        let s = pricing
+            .get("claude-sonnet-5")
+            .expect("Sonnet 5 must be in the pricing table");
+        assert!((s.input_cost_per_token - 2e-6).abs() < 1e-15);
+        assert!((s.output_cost_per_token - 10e-6).abs() < 1e-15);
+        assert!((s.cache_creation_cost_per_token - 2.5e-6).abs() < 1e-15);
+        assert!((s.cache_read_cost_per_token - 0.2e-6).abs() < 1e-15);
+        assert!((s.cache_creation_cost_per_token_1hr.unwrap() - 4e-6).abs() < 1e-15);
     }
 
     #[test]

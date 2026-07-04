@@ -24,6 +24,7 @@ pub fn resolve_model_alias(alias: &str) -> Option<&'static str> {
 /// fallback safe for a brand-new release whose exact rate isn't in the table yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
+    Fable,
     Opus,
     Sonnet,
     Haiku,
@@ -32,6 +33,7 @@ pub enum Family {
 impl Family {
     fn from_token(token: &str) -> Option<Self> {
         match token {
+            "fable" => Some(Family::Fable),
             "opus" => Some(Family::Opus),
             "sonnet" => Some(Family::Sonnet),
             "haiku" => Some(Family::Haiku),
@@ -273,6 +275,21 @@ mod tests {
         );
         assert!(lookup_pricing("claude-sonnet-9-9", &pricing).is_some());
         assert!(lookup_pricing("claude-haiku-9-9", &pricing).is_some());
+
+        // A future Fable release must inherit Fable 5's rate ($10/$50), not fall
+        // through to "Unavailable". Fable is a distinct family from Opus — before
+        // it was added to the Family enum this returned None.
+        let fable_future = lookup_pricing("claude-fable-6", &pricing)
+            .expect("future fable release must resolve via family fallback");
+        let fable5 = pricing.get("claude-fable-5").unwrap();
+        assert_eq!(
+            fable_future.input_cost_per_token,
+            fable5.input_cost_per_token
+        );
+        assert_eq!(
+            fable_future.output_cost_per_token,
+            fable5.output_cost_per_token
+        );
     }
 
     #[test]
@@ -281,6 +298,11 @@ mod tests {
         assert_eq!(
             parse_claude_model("claude-opus-4-8"),
             Some((Family::Opus, (4, 8)))
+        );
+        // Fable family (Claude 5): single version component → minor defaults to 0.
+        assert_eq!(
+            parse_claude_model("claude-fable-5"),
+            Some((Family::Fable, (5, 0)))
         );
         assert_eq!(
             parse_claude_model("claude-sonnet-4-6"),
@@ -355,8 +377,14 @@ mod tests {
             "expected newest opus input rate $5/MTok, got {}",
             p.input_cost_per_token * 1e6
         );
-        // Sonnet future inherits $3/$15.
+        // Sonnet future inherits the NEWEST sonnet rate. That is now Sonnet 5
+        // ($2/MTok intro through 2026-08-31), which outranks Sonnet 4.6's $3 —
+        // exactly the "nearest preceding, not oldest" guarantee this test names.
         let s = lookup_pricing("claude-sonnet-9-9", &pricing).unwrap();
-        assert!((s.input_cost_per_token - 3e-6).abs() < 1e-15);
+        assert!(
+            (s.input_cost_per_token - 2e-6).abs() < 1e-15,
+            "expected newest sonnet (Sonnet 5) input rate $2/MTok, got {}",
+            s.input_cost_per_token * 1e6
+        );
     }
 }

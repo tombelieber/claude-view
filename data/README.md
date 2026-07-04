@@ -2,7 +2,7 @@
 
 ## `anthropic-pricing.json`
 
-Static pricing table for Claude models. Embedded into the binary at compile time — no network dependency, no runtime fetch. Verified against [official Anthropic pricing](https://platform.claude.com/docs/en/docs/about-claude/pricing) on 2026-04-14.
+Static pricing table for Claude models. Embedded into the binary at compile time — no network dependency, no runtime fetch. Verified against [official Anthropic pricing](https://platform.claude.com/docs/en/docs/about-claude/pricing) on 2026-07-04.
 
 ### Architecture
 
@@ -106,11 +106,16 @@ When Anthropic updates pricing or launches a new model:
 1. Check the [official pricing page](https://platform.claude.com/docs/en/docs/about-claude/pricing)
 2. Edit `anthropic-pricing.json` — add/update the model entry
 3. Update `last_verified` to today's date
-4. Rebuild — no Rust code changes needed
+4. Changing an existing model's *rates only* needs no Rust changes. **Adding a new
+   model** also requires, in `crates/core/src/pricing/`: bump the entry count in
+   `loader.rs::test_load_pricing_parses_all_models`, add the id to `ACTIVE_MODELS`,
+   and — if it's a brand-new family (e.g. Fable) — add a `Family` variant + token in
+   `lookup.rs` so future point releases inherit the rate instead of showing "Unavailable".
+5. Rebuild and run the pricing tests
 
 ### Verification
 
-20 tests covering all models, tiering, aliases, cache savings, and unpriced tracking:
+The pricing module's tests cover all models, tiering, aliases, cache savings, family-nearest fallback, and unpriced tracking:
 
 ```sh
 cargo test -p claude-view-core -- pricing
