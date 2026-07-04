@@ -155,6 +155,9 @@ Show team activity, members, and currently active sessions.
 | `prompts_list_prompts` | List prompt history with optional search/filter. |
 | `prompts_get_prompt_stats` | Aggregate prompt statistics. |
 | `prompts_get_prompt_templates` | Detected prompt templates. |
+| **Providers Tools** | |
+| `providers_list_providers` | providers with session counts (count > 0 only, Claude Code always first). |
+| `providers_usage` | token/cost aggregates per foreign provider within a trailing window |
 | **Reports Tools** | |
 | `reports_list_reports` | List all saved reports. |
 | `reports_get_preview` | Aggregate preview stats for a date range. |
