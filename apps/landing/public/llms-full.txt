@@ -2361,6 +2361,57 @@ npx claude-view@latest
 Update, open a session that used the SDK or ran background tasks, and you'll see at a glance exactly which prompts were yours.
 
 
+--- blog/v0-45-0-every-agent-one-place.mdx ---
+
+---
+title: "See Every AI Coding Agent in One Place"
+description: "v0.45.0 ingests sessions from 25 AI coding agents alongside Claude Code — one timeline, one cost view, one history for every agent you run."
+date: 2026-07-04
+author: claude-view team
+---
+
+Most people who use Claude Code don't *only* use Claude Code. You reach for Codex on one task, Amp on another, and half a dozen other agents show up over a month. Each one keeps its own history, in its own format, in its own corner of your disk. To answer a simple question — "how much did I actually spend on AI coding this week?" — you'd have to open five different tools and add it up by hand.
+
+v0.45.0 fixes that. claude-view now reads them all.
+
+## One history, whatever ran it
+
+claude-view ingests sessions from **25 other AI coding agents** — Amp, Codex, and more — right next to your Claude Code sessions. Same timeline. Same search. Same cost breakdown. You open one app and see everything, regardless of which agent did the work.
+
+That unlocks the questions you actually care about:
+
+- **Where does my spend go?** Cross-provider usage analytics break token and cost totals down per provider, so you can see at a glance whether that expensive run was Claude, Codex, or something else.
+- **Where did I do that thing?** Full-text transcript search now spans every provider at once — no more guessing which tool you had open. Find it, then export it.
+
+## Cost you can trust — including the newest models
+
+A history is only useful if the numbers are right. Two pieces of this release are about exactly that.
+
+First, sessions on the newest Claude 5-family models — **Claude Fable 5 and Claude Sonnet 5** — now show real cost instead of "Unavailable." Sonnet 5 is priced at its current introductory rate, which means the figure claude-view shows you is the figure you're actually billed today, not a list price you're not paying. When the introductory period ends, the number updates with it. 寧願唔顯示，都唔顯示錯嘅嘢 — better to show nothing than something wrong, and better still to show the true number.
+
+Second, if you spin up agents in the background, their **goals now ride along on the live card**. A running session shows what it's working toward without you having to open it.
+
+## Under the hood
+
+Reading 25 formats without turning claude-view into a pile of special cases meant normalizing every provider into the same internal session shape the Claude Code pipeline already uses — so cost, search, and the timeline all work identically no matter the source. Claude Code's own path is untouched; the other providers plug into the same rails.
+
+We also taught the parser about Claude Code's newer bridge and background-session records, so a CLI update can't quietly slip a new field past the schema guard — and added a session check that flags exposure to the active Shai-Hulud / Miasma / Hades npm worm campaign going after AI-tool developers.
+
+## What's next
+
+- Deeper per-provider insights — trends and comparisons, not just totals.
+- More agents as their formats stabilize.
+- Richer live monitoring for background and bridged sessions.
+
+## Update now
+
+```bash
+npx claude-view@latest
+```
+
+Update, then open claude-view — if you've used any agent besides Claude Code, its sessions are already there waiting for you.
+
+
 --- blog/v0-5-0-mission-control.mdx ---
 
 ---
@@ -4436,6 +4487,41 @@ version: v0.44.0
 **Steadier file-watch tests.** Live-streaming tests now tolerate file-system event latency under the larger test suite, so releases don't flake on timing.
 
 **Parser keeps up with Claude Code.** Added coverage for a new Claude Code metadata field so a CLI update can't silently slip past the schema guard.
+
+## Getting started
+
+```bash
+npx claude-view@latest
+```
+
+
+--- changelog/v0.45.0.md ---
+
+---
+title: v0.45.0 — Every AI Coding Agent in One Place
+date: 2026-07-04
+version: v0.45.0
+---
+
+## New features
+
+**Multi-provider sessions.** claude-view now ingests sessions from 25 other AI coding agents — Amp, Codex, and more — right alongside Claude Code. One history, one timeline, one place to look, no matter which agent did the work.
+
+**Cross-provider usage analytics.** See token and cost aggregates broken down per provider, so you can compare where your AI spend actually goes.
+
+**Search and export across providers.** Full-text transcript search now spans every provider, and you can export the results.
+
+**Goals on live cards.** A running session's `/goal` shows right on its live card, so you can see what each agent is working toward at a glance.
+
+**Supply-chain malware check.** A built-in session check flags exposure to the active Shai-Hulud / Miasma / Hades npm worm campaign targeting AI-tool developers.
+
+## Improvements
+
+**Accurate cost for Claude Fable 5 and Sonnet 5.** Sessions on the newest Claude 5-family models now show real cost instead of "Unavailable" — Sonnet 5 at its current introductory rate, so the number matches what you're actually billed today.
+
+**No more duplicate Closed cards.** Resuming a session no longer leaves a doubled card in the Closed column.
+
+**Parser keeps up with Claude Code.** Added coverage for Claude Code's newer bridge and background-session records, so a CLI update can't silently slip past the schema guard.
 
 ## Getting started
 
