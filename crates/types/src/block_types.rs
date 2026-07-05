@@ -93,6 +93,21 @@ pub struct UserBlock {
     pub raw_json: Option<serde_json::Value>,
 }
 
+// ── Model fallback ──────────────────────────────────────────────────
+
+/// A mid-turn model switch recorded by the Claude Code harness as a
+/// `{type:"fallback", from:{model}, to:{model}}` block inside an assistant
+/// message's `content[]` (e.g. `claude-fable-5` → `claude-opus-4-8` when the
+/// requested model falls back). Carried verbatim so model attribution within a
+/// turn is not silently lost; TurnBoundary usage only aggregates per-model totals.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
+#[cfg_attr(feature = "codegen", ts(export))]
+#[serde(rename_all = "camelCase")]
+pub struct ModelFallback {
+    pub from_model: String,
+    pub to_model: String,
+}
+
 // ── Assistant ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -112,6 +127,11 @@ pub struct AssistantBlock {
     pub is_sidechain: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_id: Option<String>,
+    /// Mid-turn model fallbacks (`fallback` content blocks). Empty for the
+    /// common no-fallback case; skip-serialized so existing payloads are
+    /// byte-identical. See [`ModelFallback`].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub model_fallbacks: Vec<ModelFallback>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(type = "any")]
     pub raw_json: Option<serde_json::Value>,
@@ -609,10 +629,7 @@ mod tests {
         assert_eq!(block.permission_mode, deserialized.permission_mode);
         assert_eq!(block.prompt_source, deserialized.prompt_source);
         // promptSource serializes camelCase and is omitted when None
-        assert_eq!(
-            serde_json::to_value(&block).unwrap()["promptSource"],
-            "sdk"
-        );
+        assert_eq!(serde_json::to_value(&block).unwrap()["promptSource"], "sdk");
     }
 
     #[test]
@@ -674,6 +691,7 @@ mod tests {
             parent_uuid: Some("parent-msg-456".into()),
             is_sidechain: None,
             agent_id: None,
+            model_fallbacks: Vec::new(),
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -718,6 +736,7 @@ mod tests {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            model_fallbacks: Vec::new(),
             raw_json: None,
         };
         let json = serde_json::to_value(&block).unwrap();
@@ -725,6 +744,51 @@ mod tests {
         assert_eq!(json["segments"].as_array().unwrap().len(), 2);
         assert_eq!(json["segments"][0]["kind"], "text");
         assert_eq!(json["segments"][1]["kind"], "tool");
+    }
+
+    #[test]
+    fn assistant_block_model_fallbacks_round_trip_and_omit_when_empty() {
+        // Empty → field omitted (existing payloads stay byte-identical).
+        let empty = AssistantBlock {
+            id: "a1".into(),
+            segments: vec![],
+            thinking: None,
+            streaming: false,
+            timestamp: None,
+            parent_uuid: None,
+            is_sidechain: None,
+            agent_id: None,
+            model_fallbacks: Vec::new(),
+            raw_json: None,
+        };
+        let json = serde_json::to_value(&empty).unwrap();
+        assert!(
+            json.get("modelFallbacks").is_none(),
+            "empty model_fallbacks must be omitted"
+        );
+
+        // Populated → camelCase field + camelCase inner keys, round-trips.
+        let with_fb = AssistantBlock {
+            model_fallbacks: vec![ModelFallback {
+                from_model: "claude-fable-5".into(),
+                to_model: "claude-opus-4-8".into(),
+            }],
+            ..empty
+        };
+        let json = serde_json::to_value(&with_fb).unwrap();
+        assert_eq!(json["modelFallbacks"][0]["fromModel"], "claude-fable-5");
+        assert_eq!(json["modelFallbacks"][0]["toModel"], "claude-opus-4-8");
+        let back: AssistantBlock = serde_json::from_value(json).unwrap();
+        assert_eq!(back.model_fallbacks.len(), 1);
+        assert_eq!(back.model_fallbacks[0].from_model, "claude-fable-5");
+    }
+
+    #[test]
+    fn assistant_block_without_model_fallbacks_field_deserializes() {
+        // Backward-compat: older serialized blocks have no modelFallbacks key.
+        let json_str = r#"{"id":"a1","segments":[],"streaming":false}"#;
+        let block: AssistantBlock = serde_json::from_str(json_str).unwrap();
+        assert!(block.model_fallbacks.is_empty());
     }
 
     #[test]

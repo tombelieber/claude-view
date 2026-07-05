@@ -74,6 +74,12 @@ export type UserBlock = {
 
 // ── AssistantBlock ──────────────────────────────────────────────────────────
 
+/** A mid-turn model switch (`fallback` content block: from one model to another). */
+export type ModelFallback = {
+  fromModel: string
+  toModel: string
+}
+
 export type AssistantBlock = {
   type: 'assistant'
   id: string // messageId from first event in this block
@@ -85,6 +91,8 @@ export type AssistantBlock = {
   parentUuid?: string | null
   isSidechain?: boolean
   agentId?: string
+  /** Mid-turn model fallbacks; empty/absent for the common no-fallback case. */
+  modelFallbacks?: ModelFallback[]
   rawJson?: Record<string, unknown> | null
 }
 

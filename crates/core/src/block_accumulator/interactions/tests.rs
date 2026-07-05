@@ -21,6 +21,7 @@ fn assistant_block(id: &str, segments: Vec<AssistantSegment>) -> ConversationBlo
         parent_uuid: None,
         is_sidechain: None,
         agent_id: None,
+        model_fallbacks: Vec::new(),
         raw_json: None,
     })
 }

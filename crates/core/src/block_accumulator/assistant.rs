@@ -18,6 +18,7 @@ pub struct AssistantBlockBuilder {
     parent_uuid: Option<String>,
     is_sidechain: Option<bool>,
     agent_id: Option<String>,
+    model_fallbacks: Vec<ModelFallback>,
     raw_json: Option<serde_json::Value>,
     has_ask_question: bool,
 }
@@ -32,6 +33,7 @@ impl AssistantBlockBuilder {
             parent_uuid: None,
             is_sidechain: None,
             agent_id: None,
+            model_fallbacks: Vec::new(),
             raw_json: None,
             has_ask_question: false,
         }
@@ -115,6 +117,12 @@ impl AssistantBlockBuilder {
         self.thinking = Some(thinking);
     }
 
+    /// Record mid-turn model fallbacks (`fallback` content blocks). Appended so
+    /// multiple `assistant` entries merged into one block keep every switch.
+    pub fn add_model_fallbacks(&mut self, fallbacks: Vec<ModelFallback>) {
+        self.model_fallbacks.extend(fallbacks);
+    }
+
     /// Returns `true` if `new_message_id` differs from current (signals need to flush).
     pub fn should_flush(&self, new_message_id: &str) -> bool {
         self.message_id != new_message_id
@@ -156,6 +164,7 @@ impl AssistantBlockBuilder {
             parent_uuid: self.parent_uuid,
             is_sidechain: self.is_sidechain,
             agent_id: self.agent_id,
+            model_fallbacks: self.model_fallbacks,
             raw_json: self.raw_json,
         }
     }
@@ -234,6 +243,18 @@ mod tests {
             None,
         );
         assert!(builder.has_ask_user_question());
+    }
+
+    #[test]
+    fn builder_records_model_fallbacks() {
+        let mut builder = AssistantBlockBuilder::new("msg-1".into(), None);
+        builder.add_model_fallbacks(vec![ModelFallback {
+            from_model: "claude-fable-5".into(),
+            to_model: "claude-opus-4-8".into(),
+        }]);
+        let block = builder.finalize();
+        assert_eq!(block.model_fallbacks.len(), 1);
+        assert_eq!(block.model_fallbacks[0].to_model, "claude-opus-4-8");
     }
 
     #[test]
