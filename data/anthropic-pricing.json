@@ -1,6 +1,6 @@
 {
   "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
-  "last_verified": "2026-07-04",
+  "last_verified": "2026-07-08",
   "unit": "usd_per_million_tokens",
   "models": {
     "claude-fable-5": {
@@ -13,7 +13,19 @@
       "max_input_tokens": 1000000,
       "max_output_tokens": 128000,
       "long_context_pricing": null,
-      "tokenizer_note": "Anthropic's most capable widely-released model; prices above Opus tier. Shares Opus 4.8's tokenizer (the Opus 4.7+ tokenizer, ~30% more tokens for the same text vs Sonnet 4.6 and earlier). Full 1M context at a flat rate; 128K max output. Claude Mythos 5 (claude-mythos-5, Project Glasswing limited availability) has identical pricing but is invitation-only and not added here."
+      "tokenizer_note": "Anthropic's most capable widely-released model; prices above Opus tier. Shares Opus 4.8's tokenizer (the Opus 4.7+ tokenizer, ~30% more tokens for the same text vs Sonnet 4.6 and earlier). Full 1M context at a flat rate; 128K max output. Claude Mythos 5 (claude-mythos-5) shares this exact pricing and is listed separately below (limited availability — Project Glasswing)."
+    },
+    "claude-mythos-5": {
+      "display_name": "Claude Mythos 5",
+      "input": 10.0,
+      "output": 50.0,
+      "cache_write_5m": 12.5,
+      "cache_write_1hr": 20.0,
+      "cache_read": 1.0,
+      "max_input_tokens": 1000000,
+      "max_output_tokens": 128000,
+      "long_context_pricing": null,
+      "tokenizer_note": "LIMITED AVAILABILITY (invitation-only, Project Glasswing — https://anthropic.com/glasswing). Now listed in the public Model pricing table with identical rates to Claude Fable 5 ($10 in / $50 out, cache 12.5/20/1.0 per MTok); batch $5/$25. Uses the new Opus-4.7+ tokenizer (~30% more tokens for the same text vs Sonnet 4.6 and earlier). Full 1M context at a flat rate; 128K max output. Verified against platform.claude.com/docs/.../pricing on 2026-07-08."
     },
     "claude-opus-4-8": {
       "display_name": "Claude Opus 4.8",
