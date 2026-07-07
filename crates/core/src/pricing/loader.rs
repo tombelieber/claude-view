@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 19 models + 3 aliases = 22 entries
-        assert_eq!(pricing.len(), 22);
+        // 20 models + 3 aliases = 23 entries
+        assert_eq!(pricing.len(), 23);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -113,6 +113,7 @@ mod tests {
     /// fails with a pointer to the fix.
     const ACTIVE_MODELS: &[&str] = &[
         "claude-fable-5",
+        "claude-mythos-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
@@ -178,6 +179,30 @@ mod tests {
         assert!((f.cache_creation_cost_per_token - 12.5e-6).abs() < 1e-15);
         assert!((f.cache_read_cost_per_token - 1e-6).abs() < 1e-15);
         assert!((f.cache_creation_cost_per_token_1hr.unwrap() - 20e-6).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_mythos_5_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-07-08:
+        // Claude Mythos 5 (limited availability, Project Glasswing) is now listed in
+        // the public Model pricing table with rates IDENTICAL to Fable 5 —
+        // $10 in / $50 out / $12.50 5m-cache / $20 1h-cache / $1 read. Mythos is a
+        // distinct family (see lookup::Family::Mythos), so an exact entry is what
+        // prevents "Unavailable" for the exact id; the Family variant covers future
+        // mythos point releases.
+        let pricing = load_pricing();
+        let m = pricing
+            .get("claude-mythos-5")
+            .expect("Mythos 5 must be in the pricing table");
+        assert!((m.input_cost_per_token - 10e-6).abs() < 1e-15);
+        assert!((m.output_cost_per_token - 50e-6).abs() < 1e-15);
+        assert!((m.cache_creation_cost_per_token - 12.5e-6).abs() < 1e-15);
+        assert!((m.cache_read_cost_per_token - 1e-6).abs() < 1e-15);
+        assert!((m.cache_creation_cost_per_token_1hr.unwrap() - 20e-6).abs() < 1e-15);
+        // Identical to Fable 5, as the official table shows.
+        let f = pricing.get("claude-fable-5").unwrap();
+        assert_eq!(m.input_cost_per_token, f.input_cost_per_token);
+        assert_eq!(m.output_cost_per_token, f.output_cost_per_token);
     }
 
     #[test]
