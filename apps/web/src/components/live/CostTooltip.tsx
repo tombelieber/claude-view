@@ -1,10 +1,10 @@
+import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
 import { Minimize2 } from 'lucide-react'
 import { type ReactNode, useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { formatCostUsd, formatTokenCount } from '../../lib/format-utils'
 import { COST_CATEGORY_COLORS } from '../../theme'
 import type { SubAgentInfo } from '../../types/generated/SubAgentInfo'
-import type { TeamMemberSidechain } from '@claude-view/shared/types/generated/TeamMemberSidechain'
 import {
   hasUnavailableCost,
   pricedCoveragePercent,
@@ -257,11 +257,13 @@ export function CostTooltip({
 /**
  * Anthropic pricing verification date.
  *
- * Hardcoded for simplicity — matches the "update manually" philosophy in
- * `data/README.md`. When bumping `last_verified` in `data/anthropic-pricing.json`,
- * update this constant in the same commit.
+ * Hardcoded rather than imported so the whole pricing table doesn't land in the
+ * browser bundle for one date string. The comment alone was not enough — this
+ * silently drifted a month behind `data/anthropic-pricing.json` (showing users
+ * a staler date than the rates actually were), so the pairing is now enforced
+ * by `__tests__/CostTooltip.pricing-date.test.ts`.
  */
-const PRICING_LAST_VERIFIED = '2026-06-02'
+export const PRICING_LAST_VERIFIED = '2026-07-19'
 
 function CostRow({
   label,

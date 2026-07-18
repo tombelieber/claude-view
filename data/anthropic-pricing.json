@@ -1,6 +1,6 @@
 {
   "source": "https://docs.anthropic.com/en/docs/about-claude/pricing",
-  "last_verified": "2026-07-04",
+  "last_verified": "2026-07-19",
   "unit": "usd_per_million_tokens",
   "models": {
     "claude-fable-5": {
