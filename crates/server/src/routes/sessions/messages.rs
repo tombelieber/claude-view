@@ -411,6 +411,7 @@ mod tests {
                 parent_uuid: None,
                 is_sidechain: None,
                 agent_id: None,
+                model_fallbacks: vec![],
                 raw_json: None,
             });
         // User's tool_result comes back
@@ -440,6 +441,7 @@ mod tests {
                 parent_uuid: None,
                 is_sidechain: None,
                 agent_id: None,
+                model_fallbacks: vec![],
                 raw_json: None,
             });
 

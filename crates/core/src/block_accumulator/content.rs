@@ -1,12 +1,19 @@
-use crate::block_types::ImageContent;
+use crate::block_types::{ImageContent, ModelFallback};
 
 /// The `message.content[].type` values the content extractors handle —
-/// `extract_content_blocks` (text/tool_use/thinking/image) plus
+/// `extract_content_blocks` (text/tool_use/thinking/image/fallback) plus
 /// `extract_tool_results` (tool_result). The cc-compat oracle diffs this against
 /// the content-block types present in real ~/.claude data; anything missing is a
 /// dropped block type (the `image` finding was exactly this class).
 pub fn handled_content_block_types() -> &'static [&'static str] {
-    &["text", "tool_use", "tool_result", "thinking", "image"]
+    &[
+        "text",
+        "tool_use",
+        "tool_result",
+        "thinking",
+        "image",
+        "fallback",
+    ]
 }
 
 /// Extracted content blocks from a JSONL message.content[] array.
@@ -15,6 +22,7 @@ pub struct ContentBlocks {
     pub tool_uses: Vec<ToolUseBlock>,
     pub thinking: Option<String>,
     pub images: Vec<ImageContent>,
+    pub model_fallbacks: Vec<ModelFallback>,
 }
 
 pub struct TextSegment {
@@ -45,6 +53,7 @@ pub fn extract_content_blocks(content: &[serde_json::Value]) -> ContentBlocks {
         tool_uses: Vec::new(),
         thinking: None,
         images: Vec::new(),
+        model_fallbacks: Vec::new(),
     };
 
     for item in content {
@@ -111,6 +120,20 @@ pub fn extract_content_blocks(content: &[serde_json::Value]) -> ContentBlocks {
                         data,
                     });
                 }
+            }
+            "fallback" => {
+                // Mid-turn model switch: {type:"fallback", from:{model}, to:{model}}.
+                let model_at = |key: &str| {
+                    item.get(key)
+                        .and_then(|m| m.get("model"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string()
+                };
+                blocks.model_fallbacks.push(ModelFallback {
+                    from_model: model_at("from"),
+                    to_model: model_at("to"),
+                });
             }
             _ => {
                 // Unknown block type — skip silently for forward compatibility
@@ -228,6 +251,20 @@ mod tests {
         assert_eq!(blocks.text_segments.len(), 2);
         assert_eq!(blocks.tool_uses.len(), 1);
         assert_eq!(blocks.thinking, Some("hmm".to_string()));
+    }
+
+    #[test]
+    fn extract_fallback_block() {
+        let content = serde_json::json!([
+            {"type": "text", "text": "before"},
+            {"type": "fallback", "from": {"model": "claude-fable-5"}, "to": {"model": "claude-opus-4-8"}}
+        ]);
+        let blocks = extract_content_blocks(content.as_array().unwrap());
+        assert_eq!(blocks.model_fallbacks.len(), 1);
+        assert_eq!(blocks.model_fallbacks[0].from_model, "claude-fable-5");
+        assert_eq!(blocks.model_fallbacks[0].to_model, "claude-opus-4-8");
+        // Real content still extracted alongside.
+        assert_eq!(blocks.text_segments.len(), 1);
     }
 
     #[test]

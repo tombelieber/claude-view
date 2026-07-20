@@ -610,5 +610,60 @@ fn unknown_record_type_is_not_in_handled_surface_and_drops() {
     );
 }
 
+/// CC 2.1.191+ fork/rewind lineage pointer: recognized as deliberately-ignored
+/// bookkeeping (like `bridge-session`), NOT silently dropped as an unknown gap.
+#[test]
+fn fork_context_ref_is_intentionally_ignored_not_dropped_as_unknown() {
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({
+        "type": "fork-context-ref",
+        "agentId": "ac11b33f323fbbc29",
+        "parentSessionId": "9184fcc3-16d2-4aa6-9f91-90f30e61c054",
+        "parentLastUuid": "5b2ea007-4ca0-4560-a2ca-48b89fe34cdb",
+        "contextLength": 3328
+    }));
+    // A lineage pointer produces no conversation block …
+    assert!(
+        acc.finalize().is_empty(),
+        "fork-context-ref must not emit a block"
+    );
+    // … but it is DECLARED-ignored, so the oracle won't flag it as a live gap,
+    // and it is NOT in the handled-dispatch surface.
+    assert!(intentionally_ignored_record_types().contains(&"fork-context-ref"));
+    assert!(!handled_record_types().contains(&"fork-context-ref"));
+}
+
+/// CC 2.1.178+ mid-turn model fallback (`{type:"fallback", from, to}` inside
+/// assistant `content[]`) must reach the AssistantBlock, not be dropped.
+#[test]
+fn fallback_content_block_reaches_assistant_block() {
+    let mut acc = BlockAccumulator::new();
+    acc.process_line(&serde_json::json!({
+        "type": "assistant",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {"type": "text", "text": "working on it"},
+                {"type": "fallback", "from": {"model": "claude-fable-5"}, "to": {"model": "claude-opus-4-8"}}
+            ]
+        }
+    }));
+    let blocks = acc.finalize();
+    let assistant = blocks
+        .iter()
+        .find_map(|b| match b {
+            ConversationBlock::Assistant(a) => Some(a),
+            _ => None,
+        })
+        .expect("expected an assistant block");
+    assert_eq!(
+        assistant.model_fallbacks.len(),
+        1,
+        "fallback block was dropped"
+    );
+    assert_eq!(assistant.model_fallbacks[0].from_model, "claude-fable-5");
+    assert_eq!(assistant.model_fallbacks[0].to_model, "claude-opus-4-8");
+}
+
 #[path = "tests_regression.rs"]
 mod tests_regression;
