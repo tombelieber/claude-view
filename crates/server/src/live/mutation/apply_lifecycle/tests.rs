@@ -33,6 +33,24 @@ fn prompt_increments_turn_count() {
     assert_eq!(hook.turn_count, 2);
 }
 
+// CC 2.1.214+ reports source "fork" for forked sessions (was "resume").
+#[test]
+fn start_source_fork_shows_forked_label() {
+    let mut hook = make_hook_fields();
+    let event = LifecycleEvent::Start {
+        cwd: None,
+        model: None,
+        source: Some("fork".into()),
+        pid: None,
+        transcript_path: None,
+    };
+    apply_lifecycle(&mut hook, &event, 1000);
+    assert_eq!(hook.agent_state.state, "idle");
+    assert!(matches!(hook.agent_state.group, AgentStateGroup::NeedsYou));
+    assert!(hook.agent_state.label.contains("fork"));
+    assert_eq!(hook.current_activity, hook.agent_state.label);
+}
+
 #[test]
 fn prompt_sets_title_if_empty() {
     let mut hook = make_hook_fields();
