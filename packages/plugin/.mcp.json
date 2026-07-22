@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "claude-view": {
-      "command": "npx",
-      "args": ["-y", "-p", "@claude-view/plugin", "claude-view-mcp"]
-    }
-  }
-}
