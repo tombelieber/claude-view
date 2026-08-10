@@ -62,10 +62,23 @@ impl ClaudeCliStatus {
     /// macOS-specific paths (/opt/homebrew, /Applications) are intentionally excluded.
     /// They are discovered by which_via_shell (step 1 of the waterfall) via the
     /// user's login shell PATH.
+    #[cfg(unix)]
     pub(crate) const KNOWN_CLI_PATHS: &[&str] = &[
         ".local/bin/claude",     // $HOME-relative (XDG)
         "/usr/local/bin/claude", // locally-compiled (FHS)
         "/usr/bin/claude",       // system package (FHS)
+    ];
+
+    /// Known fallback paths for Claude CLI discovery on Windows.
+    ///
+    /// All are `%USERPROFILE%`-relative and point at the real `.exe`, not the
+    /// `claude` / `claude.cmd` shims npm puts on PATH — `std::process::Command`
+    /// goes through CreateProcess, which cannot launch those.
+    #[cfg(windows)]
+    pub(crate) const KNOWN_CLI_PATHS: &[&str] = &[
+        r"AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe",
+        r"AppData\Local\Programs\claude-code\claude.exe",
+        r".local\bin\claude.exe",
     ];
 
     /// Detect Claude CLI installation and status.
@@ -160,6 +173,7 @@ impl ClaudeCliStatus {
     }
 
     /// Resolve `claude` via the server's inherited PATH.
+    #[cfg(unix)]
     fn which_direct() -> Option<String> {
         let output = Self::run_with_timeout(Command::new("which").arg("claude"))?;
         if output.status.success() {
@@ -171,16 +185,43 @@ impl ClaudeCliStatus {
         None
     }
 
+    /// Resolve `claude` via the server's inherited PATH.
+    ///
+    /// ponytail: Windows has no `which` — `where.exe` is the equivalent, and it
+    /// can return several hits (npm ships `claude`, `claude.cmd` and the real
+    /// `.exe`). Only an `.exe` is usable here, because `std::process::Command`
+    /// goes through CreateProcess and cannot launch shell shims. If PATH offers
+    /// nothing but shims, `scan_known_paths` finds the real binary.
+    #[cfg(windows)]
+    fn which_direct() -> Option<String> {
+        let output = Self::run_with_timeout(Command::new("where.exe").arg("claude"))?;
+        if !output.status.success() {
+            return None;
+        }
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        stdout
+            .lines()
+            .map(str::trim)
+            .find(|p| p.to_ascii_lowercase().ends_with(".exe") && std::path::Path::new(p).exists())
+            .map(str::to_string)
+    }
+
     /// Scan known installation locations on the filesystem.
     fn scan_known_paths() -> Option<String> {
-        let home = std::env::var("HOME").ok().unwrap_or_default();
+        // Windows has no HOME; fall back to USERPROFILE.
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .unwrap_or_default();
         Self::KNOWN_CLI_PATHS
             .iter()
             .map(|p| {
-                if p.starts_with('/') {
+                if std::path::Path::new(p).is_absolute() {
                     p.to_string()
                 } else {
-                    format!("{home}/{p}")
+                    std::path::Path::new(&home)
+                        .join(p)
+                        .to_string_lossy()
+                        .into_owned()
                 }
             })
             .find(|p| std::path::Path::new(p).exists())
@@ -197,7 +238,14 @@ impl ClaudeCliStatus {
             if trimmed.is_empty() {
                 return None;
             }
-            // Take the last whitespace-separated token as the version
+            // Take the first token that starts with a digit: "2.1.226 (Claude Code)"
+            // → "2.1.226". Falls back to the last token for bare "claude version 1.0.12".
+            if let Some(v) = trimmed
+                .split_whitespace()
+                .find(|t| t.chars().next().is_some_and(|c| c.is_ascii_digit()))
+            {
+                return Some(v.to_string());
+            }
             if let Some(v) = trimmed.split_whitespace().last() {
                 return Some(v.to_string());
             }
@@ -228,10 +276,11 @@ impl ClaudeCliStatus {
     /// when the server runs inside a Claude Code session (the subprocess is
     /// killed before it can produce any output).
     fn check_auth_from_credentials() -> (bool, Option<String>) {
-        let home = match std::env::var("HOME") {
+        // Windows has no HOME; fall back to USERPROFILE.
+        let home = match std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
             Ok(h) => h,
             Err(_) => {
-                tracing::warn!("CLI auth: HOME not set, cannot read credentials");
+                tracing::warn!("CLI auth: neither HOME nor USERPROFILE set, cannot read credentials");
                 return (false, None);
             }
         };
