@@ -15427,6 +15427,30 @@
               "null"
             ],
             "format": "int64"
+          },
+          "toolInputPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "toolNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "toolResultPreview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "toolUseId": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -15461,6 +15485,18 @@
             ]
           },
           "lastProgressAt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastToolName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastToolSummary": {
             "type": [
               "string",
               "null"

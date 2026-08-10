@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -22,13 +22,15 @@ vi.mock('react-virtuoso', () => ({
   Virtuoso: ({
     data = [],
     itemContent,
+    ...props
   }: {
     data?: unknown[]
     itemContent: (index: number, item: unknown) => ReactElement
+    [key: string]: unknown
   }) => (
-    <div data-testid="virtuoso">
+    <div data-testid={(props['data-testid'] as string | undefined) ?? 'virtuoso'}>
       {data.map((item, index) => (
-        <div key={index}>{itemContent(index, item)}</div>
+        <div key={JSON.stringify(item)}>{itemContent(index, item)}</div>
       ))}
     </div>
   ),
@@ -145,6 +147,8 @@ const agent: WorkflowAgentSummary = {
   durationMs: 12_000,
   promptPreview: 'Inspect Claude Code artifacts',
   resultPreview: 'Found workflow JSONL files',
+  lastToolName: 'Read',
+  lastToolSummary: '/repo/src/main.rs',
   eventsAvailable: true,
 }
 
@@ -214,6 +218,14 @@ describe('WorkflowsPage', () => {
   })
 })
 
+function agentSummary(index: number): WorkflowAgentSummary {
+  return {
+    ...agent,
+    agentId: `agent-${index}`,
+    label: `Agent ${index}`,
+  }
+}
+
 describe('WorkflowRunDetailPage', () => {
   it('renders phases, agent detail, script, result, and parent session link', () => {
     mockState.runDetail = {
@@ -232,7 +244,16 @@ describe('WorkflowRunDetailPage', () => {
       promptPreview: 'Prompt text from workflow JSONL',
       resultPreview: 'Result text from workflow JSONL',
       events: [
-        { kind: 'tool_call', role: 'assistant', preview: 'Tool call preview', timestamp: null },
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Tool call preview',
+          timestamp: null,
+          toolUseId: null,
+          toolNames: ['Read'],
+          toolInputPreview: 'Read: file_path=/repo/src/main.rs',
+          toolResultPreview: null,
+        },
       ],
       metaPreview: null,
     }
@@ -251,7 +272,438 @@ describe('WorkflowRunDetailPage', () => {
     expect(screen.getByText(/console\.log/)).toBeInTheDocument()
     expect(screen.getByText('Workflow completed with mapped artifacts.')).toBeInTheDocument()
     expect(screen.getByText('Prompt text from workflow JSONL')).toBeInTheDocument()
-    expect(screen.getByText('Tool call preview')).toBeInTheDocument()
+    expect(screen.getAllByText('Read').length).toBeGreaterThan(0)
+    expect(screen.getByText('Read: file_path=/repo/src/main.rs')).toBeInTheDocument()
+    expect(screen.getByText('Last tool')).toBeInTheDocument()
+    expect(screen.getByText('/repo/src/main.rs')).toBeInTheDocument()
+  })
+
+  it('keeps the main agent list virtualized above the original row threshold', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: Array.from({ length: 31 }, (_, index) => agentSummary(index + 1)),
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: agentSummary(1),
+      promptPreview: null,
+      resultPreview: null,
+      events: [],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    expect(screen.getByTestId('workflow-agent-list-virtuoso')).toBeInTheDocument()
+  })
+
+  it('renders legacy tool events without dumping JSON wrappers', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: [agent],
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: { ...agent, lastToolName: 'Bash', lastToolSummary: 'python3 scripts/check.py' },
+      promptPreview: null,
+      resultPreview: null,
+      events: [
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'tool_use Bash',
+          timestamp: null,
+          toolUseId: null,
+          toolNames: [],
+          toolInputPreview: null,
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview:
+            '{"content":"{\\"status\\":\\"OK\\",\\"search_mode_used\\":\\"entity_similarity\\",\\"entity_count\\":8,\\"relation_count\\":0,\\"result_file\\":\\"/tmp/workflow-demo/cases/case-04/work/recall.json\\",\\"summary_file\\":\\"/tmp/workflow-demo/cases/case-04/work/summary.md\\",\\"attempt_count\\":1}","is_error":false,"tool_use_id":"call_1","type":"tool_result"}',
+          timestamp: null,
+          toolUseId: 'call_1',
+          toolNames: [],
+          toolInputPreview: null,
+          toolResultPreview: null,
+        },
+      ],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    expect(screen.getAllByText('Bash').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Tool calls')).not.toBeInTheDocument()
+    expect(screen.getByText('Events')).toBeInTheDocument()
+    expect(screen.getByText('Input')).toBeInTheDocument()
+    expect(screen.getByText('Output')).toBeInTheDocument()
+    expect(
+      screen.getByText('Bash input details are not available from this server response.'),
+    ).toBeInTheDocument()
+    expect(screen.getAllByText('Bash · completed').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/status: OK/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/search_mode_used: entity_similarity/).length).toBeGreaterThan(0)
+    expect(
+      screen.getAllByText(/summary_file: \/tmp\/workflow-demo\/cases\/case-04\/work\/summary\.md/)
+        .length,
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText('Key results')).not.toBeInTheDocument()
+    expect(screen.queryByText('Bash started')).not.toBeInTheDocument()
+    expect(screen.queryByText('tool_use Bash')).not.toBeInTheDocument()
+    expect(screen.queryByText(/tool_use_id/)).not.toBeInTheDocument()
+  })
+
+  it('uses structured tool input as the paired event input when available', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: [agent],
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: { ...agent, lastToolName: 'Bash', lastToolSummary: 'python3 scripts/check.py' },
+      promptPreview: null,
+      resultPreview: null,
+      events: [
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash',
+          timestamp: null,
+          toolUseId: 'call_1',
+          toolNames: ['Bash'],
+          toolInputPreview:
+            'Bash: python3 /repo/scripts/query_case_punishments.py --case-dir /tmp/case-04',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'status: completed',
+          timestamp: null,
+          toolUseId: 'call_1',
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'status: completed\nmatched_ticket_count: 0',
+        },
+      ],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    expect(screen.queryByText('Tool calls')).not.toBeInTheDocument()
+    expect(screen.getByText('Input')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Bash: python3 /repo/scripts/query_case_punishments.py --case-dir /tmp/case-04',
+      ),
+    ).toBeInTheDocument()
+    expect(screen.getByText(/matched_ticket_count: 0/)).toBeInTheDocument()
+  })
+
+  it('pairs multiple structured tool events by tool_use_id instead of adjacency', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: [agent],
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: { ...agent, lastToolName: 'Bash', lastToolSummary: 'python3 scripts/second.py' },
+      promptPreview: null,
+      resultPreview: null,
+      events: [
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash: python3 scripts/first.py',
+          timestamp: null,
+          toolUseId: 'call_first',
+          toolNames: ['Bash'],
+          toolInputPreview: 'Bash: python3 scripts/first.py',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash: python3 scripts/second.py',
+          timestamp: null,
+          toolUseId: 'call_second',
+          toolNames: ['Bash'],
+          toolInputPreview: 'Bash: python3 scripts/second.py',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'first output',
+          timestamp: null,
+          toolUseId: 'call_first',
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'first output',
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'second output',
+          timestamp: null,
+          toolUseId: 'call_second',
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'second output',
+        },
+      ],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    const cards = screen.getAllByTestId('workflow-event-card')
+    const firstCard = cards.find((card) => card.textContent?.includes('python3 scripts/first.py'))
+    const secondCard = cards.find((card) => card.textContent?.includes('python3 scripts/second.py'))
+    if (!firstCard || !secondCard) {
+      throw new Error('Expected separate cards for both Bash tool calls')
+    }
+    expect(within(firstCard).getByText('first output')).toBeInTheDocument()
+    expect(within(firstCard).queryByText('second output')).not.toBeInTheDocument()
+    expect(within(secondCard).getByText('second output')).toBeInTheDocument()
+    expect(within(secondCard).queryByText('first output')).not.toBeInTheDocument()
+  })
+
+  it('keeps id-based tool pairing when a message appears between input and output', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: [agent],
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: { ...agent, lastToolName: 'Bash', lastToolSummary: 'python3 scripts/first.py' },
+      promptPreview: null,
+      resultPreview: null,
+      events: [
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash: python3 scripts/first.py',
+          timestamp: null,
+          toolUseId: 'call_first',
+          toolNames: ['Bash'],
+          toolInputPreview: 'Bash: python3 scripts/first.py',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'message',
+          role: 'assistant',
+          preview: 'I will interpret the result after the command finishes.',
+          timestamp: null,
+          toolUseId: null,
+          toolNames: [],
+          toolInputPreview: null,
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'first output',
+          timestamp: null,
+          toolUseId: 'call_first',
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'first output',
+        },
+      ],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    const cards = screen.getAllByTestId('workflow-event-card')
+    const toolCard = cards.find((card) => card.textContent?.includes('python3 scripts/first.py'))
+    if (!toolCard) {
+      throw new Error('Expected a card for the Bash tool input')
+    }
+    expect(within(toolCard).getByText('first output')).toBeInTheDocument()
+    expect(
+      screen.getByText('I will interpret the result after the command finishes.'),
+    ).toBeInTheDocument()
+  })
+
+  it('does not pair an id-bearing result with the wrong pending tool input', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: [agent],
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: { ...agent, lastToolName: 'Bash', lastToolSummary: 'python3 scripts/second.py' },
+      promptPreview: null,
+      resultPreview: null,
+      events: [
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash: python3 scripts/first.py',
+          timestamp: null,
+          toolUseId: 'call_first',
+          toolNames: ['Bash'],
+          toolInputPreview: 'Bash: python3 scripts/first.py',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash: python3 scripts/second.py',
+          timestamp: null,
+          toolUseId: 'call_second',
+          toolNames: ['Bash'],
+          toolInputPreview: 'Bash: python3 scripts/second.py',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'orphan output',
+          timestamp: null,
+          toolUseId: 'call_missing',
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'orphan output',
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'second output',
+          timestamp: null,
+          toolUseId: 'call_second',
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'second output',
+        },
+      ],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    const cards = screen.getAllByTestId('workflow-event-card')
+    const firstCard = cards.find((card) => card.textContent?.includes('python3 scripts/first.py'))
+    const secondCard = cards.find((card) => card.textContent?.includes('python3 scripts/second.py'))
+    if (!firstCard || !secondCard) {
+      throw new Error('Expected separate cards for both Bash tool calls')
+    }
+    expect(within(firstCard).queryByText('orphan output')).not.toBeInTheDocument()
+    expect(within(secondCard).getByText('second output')).toBeInTheDocument()
+  })
+
+  it('does not use legacy adjacency fallback for modern id-bearing tool inputs', () => {
+    mockState.runDetail = {
+      summary: baseRuns[0],
+      phases: [phase],
+      agents: [agent],
+      script: null,
+      result: null,
+      journal: [],
+      artifactRelativePath: 'projects/project/sess-hermes/workflows/wf_hermes.json',
+    }
+    mockState.agentDetail = {
+      summary: { ...agent, lastToolName: 'Bash', lastToolSummary: 'python3 scripts/first.py' },
+      promptPreview: null,
+      resultPreview: null,
+      events: [
+        {
+          kind: 'tool_use',
+          role: 'assistant',
+          preview: 'Bash: python3 scripts/first.py',
+          timestamp: null,
+          toolUseId: 'call_first',
+          toolNames: ['Bash'],
+          toolInputPreview: 'Bash: python3 scripts/first.py',
+          toolResultPreview: null,
+        },
+        {
+          kind: 'tool_result',
+          role: 'user',
+          preview: 'unidentified output',
+          timestamp: null,
+          toolUseId: null,
+          toolNames: ['Bash'],
+          toolInputPreview: null,
+          toolResultPreview: 'unidentified output',
+        },
+      ],
+      metaPreview: null,
+    }
+
+    renderWithProviders(
+      <Routes>
+        <Route path="/workflows/runs/:sessionId/:runId" element={<WorkflowRunDetailPage />} />
+      </Routes>,
+      ['/workflows/runs/sess-hermes/wf_hermes'],
+    )
+
+    const cards = screen.getAllByTestId('workflow-event-card')
+    const firstCard = cards.find((card) => card.textContent?.includes('python3 scripts/first.py'))
+    if (!firstCard) {
+      throw new Error('Expected a card for the Bash tool input')
+    }
+    expect(within(firstCard).queryByText('unidentified output')).not.toBeInTheDocument()
   })
 
   it('shows an error state when the run cannot be loaded', () => {

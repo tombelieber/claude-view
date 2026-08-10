@@ -307,6 +307,10 @@ fn parse_agents(value: &Value, run_dir: Option<&Path>) -> Vec<WorkflowAgentSumma
                     .map(|s| safe_preview(&s, MAX_DETAIL_TEXT_CHARS)),
                 result_preview: json_string(item, "resultPreview")
                     .map(|s| safe_preview(&s, MAX_DETAIL_TEXT_CHARS)),
+                last_tool_name: json_string(item, "lastToolName")
+                    .map(|s| safe_preview(&s, MAX_LIST_PREVIEW_CHARS)),
+                last_tool_summary: json_string(item, "lastToolSummary")
+                    .map(|s| safe_preview(&s, MAX_LIST_PREVIEW_CHARS)),
                 events_available,
             });
         }

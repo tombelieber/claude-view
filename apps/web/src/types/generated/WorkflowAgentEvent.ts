@@ -5,4 +5,8 @@ export type WorkflowAgentEvent = {
   role: string | null
   preview: string
   timestamp: number | null
+  toolUseId: string | null
+  toolNames: Array<string>
+  toolInputPreview: string | null
+  toolResultPreview: string | null
 }

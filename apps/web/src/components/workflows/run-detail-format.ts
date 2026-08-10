@@ -1,7 +1,8 @@
 /** Formatting + small derivations shared across the workflow run detail panels. */
 
 /** Above this count a flat list bloats the DOM, so switch to a virtualized region. */
-export const VIRTUALIZE_THRESHOLD = 30
+export const AGENT_VIRTUALIZE_THRESHOLD = 30
+export const EVENT_VIRTUALIZE_THRESHOLD = 100
 
 export function formatDuration(ms: number | null): string {
   if (!ms) return 'n/a'

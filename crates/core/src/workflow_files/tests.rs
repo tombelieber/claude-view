@@ -253,6 +253,340 @@ fn redacts_secrets_in_run_and_agent_previews() {
 }
 
 #[test]
+fn parses_claude_code_agent_jsonl_as_structured_events() {
+    let tmp = fixture_home();
+    let workflows = session_dir(tmp.path()).join("workflows");
+    let run_dir = session_dir(tmp.path())
+        .join("subagents")
+        .join("workflows")
+        .join("wf_tools");
+    fs::create_dir_all(&workflows).unwrap();
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        workflows.join("wf_tools.json"),
+        serde_json::json!({
+            "runId": "wf_tools",
+            "workflowName": "Tools",
+            "status": "completed",
+            "workflowProgress": [{
+                "type": "workflow_agent",
+                "agentId": "abc",
+                "state": "completed",
+                "lastToolName": "Bash",
+                "lastToolSummary": "python3 /repo/scripts/check.py"
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    fs::write(
+        run_dir.join("agent-abc.jsonl"),
+        [
+            serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "text", "text": "I will inspect and update files."},
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_read",
+                            "name": "Read",
+                            "input": {"file_path": "/repo/src/main.rs"}
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_write",
+                            "name": "Write",
+                            "input": {
+                                "file_path": "/repo/out.txt",
+                                "content": "AUTH_TOKEN=supersecretvalue123\nlarge body that should not dominate the preview"
+                            }
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_read_again",
+                            "name": "Read",
+                            "input": {"file_path": "/repo/src/lib.rs"}
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_bash",
+                            "name": "Bash",
+                            "input": {
+                                "command": "python3 /repo/scripts/query_case_punishments.py --case-dir /tmp/case-04 --api-token secretvalue123",
+                                "description": "Query punishments for the case"
+                            }
+                        }
+                    ]
+                },
+                "timestamp": "2026-03-11T10:00:00.000Z"
+            })
+            .to_string(),
+            serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "Compare the two files before editing."}
+                    ]
+                },
+                "timestamp": "2026-03-11T10:00:01.000Z"
+            })
+            .to_string(),
+            serde_json::json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "toolu_read",
+                            "content": "fn main() {}\nfn helper() {}"
+                        }
+                    ]
+                },
+                "timestamp": "2026-03-11T10:00:02.000Z"
+            })
+            .to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let agent = get_workflow_agent(tmp.path(), "sess-1", "wf_tools", "abc")
+        .unwrap()
+        .unwrap();
+    assert_eq!(agent.events.len(), 7);
+    assert_eq!(agent.summary.last_tool_name.as_deref(), Some("Bash"));
+    assert_eq!(
+        agent.summary.last_tool_summary.as_deref(),
+        Some("python3 /repo/scripts/check.py")
+    );
+
+    let text = &agent.events[0];
+    assert_eq!(text.kind, "message");
+    assert_eq!(text.preview, "I will inspect and update files.");
+
+    let read = &agent.events[1];
+    assert_eq!(read.kind, "tool_use");
+    assert_eq!(read.role.as_deref(), Some("assistant"));
+    assert_eq!(read.tool_use_id.as_deref(), Some("toolu_read"));
+    assert_eq!(read.tool_names, vec!["Read"]);
+    assert!(read.timestamp.is_some(), "ISO timestamp was not parsed");
+    assert_eq!(
+        read.tool_input_preview.as_deref(),
+        Some("Read: file_path=/repo/src/main.rs")
+    );
+
+    let write = &agent.events[2];
+    assert_eq!(write.kind, "tool_use");
+    assert_eq!(write.tool_use_id.as_deref(), Some("toolu_write"));
+    assert_eq!(write.tool_names, vec!["Write"]);
+    let input_preview = write.tool_input_preview.as_deref().unwrap();
+    assert!(input_preview.contains("/repo/out.txt"));
+    assert!(
+        !input_preview.contains("supersecretvalue123"),
+        "tool input leaked secret content: {input_preview}"
+    );
+    assert!(
+        !input_preview.contains("large body that should not dominate"),
+        "Write content dominated the input preview: {input_preview}"
+    );
+
+    let read_again = &agent.events[3];
+    assert_eq!(read_again.kind, "tool_use");
+    assert_eq!(read_again.tool_use_id.as_deref(), Some("toolu_read_again"));
+    assert_eq!(read_again.tool_names, vec!["Read"]);
+    assert_eq!(
+        read_again.tool_input_preview.as_deref(),
+        Some("Read: file_path=/repo/src/lib.rs")
+    );
+
+    let bash = &agent.events[4];
+    assert_eq!(bash.kind, "tool_use");
+    assert_eq!(bash.tool_use_id.as_deref(), Some("toolu_bash"));
+    assert_eq!(bash.tool_names, vec!["Bash"]);
+    assert_eq!(
+        bash.tool_input_preview.as_deref(),
+        Some("Bash: python3 /repo/scripts/query_case_punishments.py --case-dir /tmp/case-04 --api-token [redacted]")
+    );
+    assert!(
+        !bash.preview.contains("secretvalue123"),
+        "Bash command preview leaked CLI token: {}",
+        bash.preview
+    );
+
+    let thinking = &agent.events[5];
+    assert_eq!(thinking.kind, "thinking");
+    assert_eq!(thinking.preview, "Compare the two files before editing.");
+    assert!(
+        !thinking.preview.contains("\"type\""),
+        "thinking preview dumped raw JSON: {}",
+        thinking.preview
+    );
+
+    let tool_result = &agent.events[6];
+    assert_eq!(tool_result.kind, "tool_result");
+    assert_eq!(tool_result.tool_use_id.as_deref(), Some("toolu_read"));
+    assert_eq!(tool_result.tool_names, vec!["Read"]);
+    assert_eq!(
+        tool_result.tool_result_preview.as_deref(),
+        Some("fn main() {}\nfn helper() {}")
+    );
+    assert!(
+        !tool_result.preview.contains("\"tool_use_id\""),
+        "tool_result preview dumped raw JSON: {}",
+        tool_result.preview
+    );
+}
+
+#[test]
+fn redacts_and_bounds_untrusted_tool_names() {
+    let tmp = fixture_home();
+    let workflows = session_dir(tmp.path()).join("workflows");
+    let run_dir = session_dir(tmp.path())
+        .join("subagents")
+        .join("workflows")
+        .join("wf_tool_names");
+    fs::create_dir_all(&workflows).unwrap();
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        workflows.join("wf_tool_names.json"),
+        serde_json::json!({
+            "runId": "wf_tool_names",
+            "workflowProgress": [{
+                "type": "workflow_agent",
+                "agentId": "abc",
+                "state": "completed"
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let hostile_name = format!("Bash API_TOKEN=supersecretvalue123 {}", "x".repeat(400));
+    fs::write(
+        run_dir.join("agent-abc.jsonl"),
+        [
+            serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [{
+                        "type": "tool_use",
+                        "id": "toolu_hostile",
+                        "name": hostile_name,
+                        "input": {"command": "echo ok"}
+                    }]
+                }
+            })
+            .to_string(),
+            serde_json::json!({
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": "toolu_hostile",
+                        "content": "ok"
+                    }]
+                }
+            })
+            .to_string(),
+        ]
+        .join("\n"),
+    )
+    .unwrap();
+
+    let agent = get_workflow_agent(tmp.path(), "sess-1", "wf_tool_names", "abc")
+        .unwrap()
+        .unwrap();
+    let tool_use = &agent.events[0];
+    assert_eq!(tool_use.kind, "tool_use");
+    assert_eq!(tool_use.tool_names.len(), 1);
+    assert!(
+        tool_use.tool_names[0].len() <= 80,
+        "tool name was not bounded: {} chars",
+        tool_use.tool_names[0].len()
+    );
+    assert!(
+        !tool_use.tool_names[0].contains("supersecretvalue123"),
+        "tool name leaked a secret: {}",
+        tool_use.tool_names[0]
+    );
+    assert!(
+        !tool_use.preview.contains("supersecretvalue123"),
+        "tool preview leaked a secret: {}",
+        tool_use.preview
+    );
+    let tool_result = &agent.events[1];
+    assert!(
+        !tool_result.tool_names[0].contains("supersecretvalue123"),
+        "tool result name leaked a secret: {}",
+        tool_result.tool_names[0]
+    );
+}
+
+#[test]
+fn redacts_cli_secret_flags_before_tool_input_truncation() {
+    let tmp = fixture_home();
+    let workflows = session_dir(tmp.path()).join("workflows");
+    let run_dir = session_dir(tmp.path())
+        .join("subagents")
+        .join("workflows")
+        .join("wf_long_command");
+    fs::create_dir_all(&workflows).unwrap();
+    fs::create_dir_all(&run_dir).unwrap();
+    fs::write(
+        workflows.join("wf_long_command.json"),
+        serde_json::json!({
+            "runId": "wf_long_command",
+            "workflowProgress": [{
+                "type": "workflow_agent",
+                "agentId": "abc",
+                "state": "completed"
+            }]
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let command = format!(
+        "python3 /repo/scripts/run.py {} --api-token abcdefghijklmnopqrstuvwxyz",
+        "x".repeat(1156)
+    );
+    fs::write(
+        run_dir.join("agent-abc.jsonl"),
+        serde_json::json!({
+            "type": "assistant",
+            "message": {
+                "role": "assistant",
+                "content": [{
+                    "type": "tool_use",
+                    "id": "toolu_bash",
+                    "name": "Bash",
+                    "input": {"command": command}
+                }]
+            }
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let agent = get_workflow_agent(tmp.path(), "sess-1", "wf_long_command", "abc")
+        .unwrap()
+        .unwrap();
+    let preview = agent.events[0].tool_input_preview.as_deref().unwrap();
+    assert!(
+        !preview.contains("abcdef"),
+        "tool input leaked CLI token prefix across truncation boundary: {preview}"
+    );
+    assert!(
+        !preview.contains("--api-token ab"),
+        "tool input leaked an unredacted token flag: {preview}"
+    );
+}
+
+#[test]
 fn hostile_phase_index_does_not_allocate_unbounded() {
     let tmp = fixture_home();
     let workflows = session_dir(tmp.path()).join("workflows");
