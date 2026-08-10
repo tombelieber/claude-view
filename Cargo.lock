@@ -1004,6 +1004,7 @@ dependencies = [
  "serde_json",
  "tokio-util",
  "ts-rs",
+ "windows-sys 0.60.2",
  "workspace-hack",
 ]
 

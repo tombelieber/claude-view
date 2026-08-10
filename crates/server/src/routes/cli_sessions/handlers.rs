@@ -396,7 +396,7 @@ pub async fn kill_session(
         let pid_json_exists = dirs::home_dir()
             .map(|h| h.join(format!(".claude/sessions/{pid}.json")).exists())
             .unwrap_or(false);
-        let process_alive = unsafe { libc::kill(pid as i32, 0) } == 0;
+        let process_alive = claude_view_server_live_state::is_pid_alive(pid);
         tracing::debug!(
             tmux_session = %id,
             pane_pid = pid,
@@ -408,8 +408,7 @@ pub async fn kill_session(
         // SIGTERM the Claude CLI process directly — tmux kill only sends SIGHUP
         // which Claude CLI ignores (keeps running its 30s timer).
         if process_alive {
-            let result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-            let delivered = result == 0;
+            let delivered = crate::platform::terminate_pid(pid, false).is_ok();
             tracing::debug!(
                 tmux_session = %id,
                 pane_pid = pid,
