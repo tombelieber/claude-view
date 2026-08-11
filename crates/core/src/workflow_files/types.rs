@@ -55,6 +55,8 @@ pub struct WorkflowAgentSummary {
     pub duration_ms: Option<u64>,
     pub prompt_preview: Option<String>,
     pub result_preview: Option<String>,
+    pub last_tool_name: Option<String>,
+    pub last_tool_summary: Option<String>,
     pub events_available: bool,
 }
 
@@ -120,6 +122,11 @@ pub struct WorkflowAgentEvent {
     pub preview: String,
     #[ts(type = "number | null")]
     pub timestamp: Option<i64>,
+    pub tool_use_id: Option<String>,
+    #[serde(default)]
+    pub tool_names: Vec<String>,
+    pub tool_input_preview: Option<String>,
+    pub tool_result_preview: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS, ToSchema)]

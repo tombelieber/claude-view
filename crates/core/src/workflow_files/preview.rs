@@ -30,7 +30,7 @@ pub(crate) fn truncate(text: &str, limit: usize) -> String {
 
 /// Truncate then redact — the canonical way to build a content preview string.
 pub(crate) fn safe_preview(text: &str, limit: usize) -> String {
-    redact_secret_like_text(&truncate(text, limit))
+    truncate(&redact_secret_like_text(text), limit)
 }
 
 /// High-signal secret token shapes (provider key prefixes, JWTs, bearer tokens,
@@ -74,6 +74,16 @@ fn keyvalue_pattern() -> &'static Regex {
     })
 }
 
+fn cli_flag_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(
+            r#"(?i)((?:^|\s)--?[A-Za-z0-9_-]*(?:api[_-]?key|apikey|secret|token|password|passwd|authorization|access[_-]?token|refresh[_-]?token|client[_-]?secret|private[_-]?key)(?:=|\s+)["']?)([^\s"',}]{6,})"#,
+        )
+        .expect("static CLI flag redaction pattern compiles")
+    })
+}
+
 /// Redact secret-like substrings. Token patterns run first (so `Bearer <tok>` is
 /// caught whole), then credential `key: value` assignments. Idempotent.
 pub(crate) fn redact_secret_like_text(text: &str) -> String {
@@ -83,6 +93,9 @@ pub(crate) fn redact_secret_like_text(text: &str) -> String {
             out = pattern.replace_all(&out, REDACTED).into_owned();
         }
     }
+    out = cli_flag_pattern()
+        .replace_all(&out, format!("${{1}}{REDACTED}").as_str())
+        .into_owned();
     out = keyvalue_pattern()
         .replace_all(&out, format!("${{1}}{REDACTED}").as_str())
         .into_owned();
