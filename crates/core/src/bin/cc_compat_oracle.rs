@@ -216,8 +216,28 @@ fn scan_file(path: &Path, scan: &mut Scan) {
             .and_then(|c| c.as_array())
         {
             for block in arr {
-                if let Some(bt) = block.get("type").and_then(|t| t.as_str()) {
-                    scan.content_block_types.insert(bt.to_string());
+                let Some(bt) = block.get("type").and_then(|t| t.as_str()) else {
+                    continue;
+                };
+                scan.content_block_types.insert(bt.to_string());
+
+                // `tool_result.content[]` can itself be an array of content blocks
+                // (text/image/tool_reference). Some block types — notably
+                // `tool_reference` (815x in real data, 0x top-level) — appear ONLY
+                // nested here, so a top-level-only census is structurally blind to
+                // them and the drift gate can never flag the drop. Descend exactly
+                // ONE level into tool_result.content[] (mirroring
+                // `extract_tool_results`' traversal) — never a deep walk, which
+                // would over-collect junk `type` keys out of `tool_use.input`
+                // payloads (base64/url/message/shutdown_request/…).
+                if bt == "tool_result" {
+                    if let Some(inner) = block.get("content").and_then(|c| c.as_array()) {
+                        for nested in inner {
+                            if let Some(nbt) = nested.get("type").and_then(|t| t.as_str()) {
+                                scan.content_block_types.insert(nbt.to_string());
+                            }
+                        }
+                    }
                 }
             }
         }

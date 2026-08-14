@@ -15,13 +15,21 @@ use ts_rs::TS;
 // ============================================================================
 
 /// A single entry from history.jsonl.
+///
+/// Boundary-normalization: every field is `#[serde(default)]` so a single
+/// missing/renamed field degrades to a default rather than dropping the whole
+/// line. CC has historically omitted fields (e.g. paste sub-objects carry only
+/// `contentHash` for large pastes, with no `content`); without defaults those
+/// lines fail to deserialize and the entire prompt is silently lost.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PromptEntry {
+    #[serde(default)]
     pub display: String,
     #[serde(default, rename = "pastedContents")]
     pub pasted_contents: Option<HashMap<String, PasteContent>>,
-    #[serde(rename = "timestamp")]
+    #[serde(default, rename = "timestamp")]
     pub timestamp_ms: u64,
+    #[serde(default)]
     pub project: String,
     #[serde(default, rename = "sessionId")]
     pub session_id: Option<String>,
@@ -29,9 +37,13 @@ pub struct PromptEntry {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PasteContent {
+    #[serde(default)]
     pub id: u64,
-    #[serde(rename = "type")]
+    #[serde(default, rename = "type")]
     pub content_type: String,
+    /// CC elides the body for large pastes, persisting only a `contentHash`;
+    /// default to empty so the parent prompt line still parses.
+    #[serde(default)]
     pub content: String,
 }
 
@@ -313,6 +325,33 @@ mod tests {
         let entry: PromptEntry = serde_json::from_str(json).unwrap();
         assert!(entry.session_id.is_none());
         assert_eq!(entry.project, "/Users/testuser/dev/project");
+    }
+
+    #[test]
+    fn parse_prompt_entry_paste_without_content_field() {
+        // Real history.jsonl shape: CC elides the body for large pastes and
+        // persists only a contentHash. Without #[serde(default)] on
+        // PasteContent.content this dropped the ENTIRE line (490/20343 = 2.41%
+        // of one real corpus). Must parse and degrade content to "".
+        let json = r#"{"display":"[Pasted text #1 +118 lines]","pastedContents":{"1":{"id":1,"type":"text","contentHash":"ccb893dfaea35cda"}},"timestamp":1768314608262,"project":"/Users/u","sessionId":"abc"}"#;
+        let entry: PromptEntry =
+            serde_json::from_str(json).expect("must not drop line missing paste content");
+        let pastes = entry.pasted_contents.as_ref().unwrap();
+        assert_eq!(pastes.len(), 1);
+        assert_eq!(pastes["1"].content, "");
+        // paste_text() should treat empty content as no usable paste text.
+        assert!(entry.paste_text().is_none());
+    }
+
+    #[test]
+    fn parse_prompt_entry_missing_required_scalars_degrades() {
+        // A future CC rename of a required scalar must degrade per-field, not
+        // drop the whole record (Zero Data Loss mandate).
+        let json = r#"{"pastedContents":null}"#;
+        let entry: PromptEntry = serde_json::from_str(json).expect("must degrade, not drop");
+        assert_eq!(entry.display, "");
+        assert_eq!(entry.project, "");
+        assert_eq!(entry.timestamp_ms, 0);
     }
 
     #[test]
