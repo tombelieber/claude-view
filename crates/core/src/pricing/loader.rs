@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 19 models + 3 aliases = 22 entries
-        assert_eq!(pricing.len(), 22);
+        // 20 models + 3 aliases = 23 entries
+        assert_eq!(pricing.len(), 23);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -113,6 +113,7 @@ mod tests {
     /// fails with a pointer to the fix.
     const ACTIVE_MODELS: &[&str] = &[
         "claude-fable-5",
+        "claude-opus-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
@@ -181,12 +182,29 @@ mod tests {
     }
 
     #[test]
-    fn test_sonnet_5_priced_at_introductory_rates() {
-        // Verified against platform.claude.com/docs/.../pricing on 2026-07-04:
-        // Sonnet 5 INTRODUCTORY pricing ($2 in / $10 out / $2.50 5m / $4 1h / $0.20 read)
-        // is in effect through 2026-08-31. This is what sessions are actually billed
-        // right now, so it's what we display — showing the $3/$15 sticker today would
-        // over-report cost by 50%. Flip to sticker on 2026-09-01 (see tokenizer_note).
+    fn test_opus_5_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-08-20:
+        // Opus 5 is $5 in / $25 out / $6.25 5m-cache / $10 1h-cache / $0.50 read,
+        // identical to Opus 4.6–4.8. The family fallback would produce the same
+        // value, but an exact entry keeps the displayed cost precise (no estimate).
+        let pricing = load_pricing();
+        let o = pricing
+            .get("claude-opus-5")
+            .expect("Opus 5 must be in the pricing table");
+        assert!((o.input_cost_per_token - 5e-6).abs() < 1e-15);
+        assert!((o.output_cost_per_token - 25e-6).abs() < 1e-15);
+        assert!((o.cache_creation_cost_per_token - 6.25e-6).abs() < 1e-15);
+        assert!((o.cache_read_cost_per_token - 0.5e-6).abs() < 1e-15);
+        assert!((o.cache_creation_cost_per_token_1hr.unwrap() - 10e-6).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_sonnet_5_priced_at_standard_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-08-20:
+        // $2 in / $10 out / $2.50 5m / $4 1h / $0.20 read is now the STANDARD
+        // price — Anthropic cancelled the scheduled 2026-09-01 increase to
+        // $3/$15 ("The previously scheduled increase ... will not occur").
+        // Never flip this entry to the old sticker rates.
         let pricing = load_pricing();
         let s = pricing
             .get("claude-sonnet-5")

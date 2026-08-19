@@ -377,9 +377,10 @@ mod tests {
             "expected newest opus input rate $5/MTok, got {}",
             p.input_cost_per_token * 1e6
         );
-        // Sonnet future inherits the NEWEST sonnet rate. That is now Sonnet 5
-        // ($2/MTok intro through 2026-08-31), which outranks Sonnet 4.6's $3 —
-        // exactly the "nearest preceding, not oldest" guarantee this test names.
+        // Sonnet future inherits the NEWEST sonnet rate. That is Sonnet 5
+        // ($2/MTok, standard price since 2026-08-20 — the scheduled increase to
+        // $3 was cancelled), which outranks Sonnet 4.6's $3 — exactly the
+        // "nearest preceding, not oldest" guarantee this test names.
         let s = lookup_pricing("claude-sonnet-9-9", &pricing).unwrap();
         assert!(
             (s.input_cost_per_token - 2e-6).abs() < 1e-15,

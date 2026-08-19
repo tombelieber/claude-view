@@ -263,7 +263,7 @@ export function CostTooltip({
  * a staler date than the rates actually were), so the pairing is now enforced
  * by `__tests__/CostTooltip.pricing-date.test.ts`.
  */
-export const PRICING_LAST_VERIFIED = '2026-07-19'
+export const PRICING_LAST_VERIFIED = '2026-08-20'
 
 function CostRow({
   label,
