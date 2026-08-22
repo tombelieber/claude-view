@@ -9,24 +9,12 @@ export const telemetryGeneratedTools: ToolDef[] = [
     name: 'telemetry_set_consent',
     description: 'Set telemetry consent preference.',
     inputSchema: z.object({
-      enabled: z.boolean(),
-    }),
+    enabled: z.boolean(),
+  }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', '/api/telemetry/consent', {
-        body: { enabled: args.enabled },
-      })
+      const result = await client.request('POST', '/api/telemetry/consent', { body: { enabled: args.enabled } })
       return JSON.stringify(result, null, 2)
     },
-  },
-  {
-    name: 'telemetry_ingest_event',
-    description: 'ingress for web journey events.',
-    inputSchema: z.object({}),
-    annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
-    handler: async (client, _args) => {
-      const result = await client.request('POST', '/api/telemetry/event')
-      return JSON.stringify(result, null, 2)
-    },
-  },
+  }
 ]

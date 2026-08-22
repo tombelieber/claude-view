@@ -2,13 +2,10 @@
 // Generated from openapi.json by scripts/codegen-from-openapi.ts
 
 import type { ToolDef } from '../types.js'
-import { authGeneratedTools } from './auth.js'
 import { classifyGeneratedTools } from './classify.js'
-import { claudehomeGeneratedTools } from './claude-home.js'
 import { cliGeneratedTools } from './cli.js'
 import { coachingGeneratedTools } from './coaching.js'
 import { contributionsGeneratedTools } from './contributions.js'
-import { devicesGeneratedTools } from './devices.js'
 import { exportGeneratedTools } from './export.js'
 import { facetsGeneratedTools } from './facets.js'
 import { healthGeneratedTools } from './health.js'
@@ -26,7 +23,6 @@ import { pluginsGeneratedTools } from './plugins.js'
 import { processesGeneratedTools } from './processes.js'
 import { projectsGeneratedTools } from './projects.js'
 import { promptsGeneratedTools } from './prompts.js'
-import { providersGeneratedTools } from './providers.js'
 import { reportsGeneratedTools } from './reports.js'
 import { sessionsGeneratedTools } from './sessions.js'
 import { settingsGeneratedTools } from './settings.js'
@@ -41,13 +37,10 @@ import { webhooksGeneratedTools } from './webhooks.js'
 import { workflowsGeneratedTools } from './workflows.js'
 
 export const allGeneratedTools: ToolDef[] = [
-  ...authGeneratedTools,
   ...classifyGeneratedTools,
-  ...claudehomeGeneratedTools,
   ...cliGeneratedTools,
   ...coachingGeneratedTools,
   ...contributionsGeneratedTools,
-  ...devicesGeneratedTools,
   ...exportGeneratedTools,
   ...facetsGeneratedTools,
   ...healthGeneratedTools,
@@ -65,7 +58,6 @@ export const allGeneratedTools: ToolDef[] = [
   ...processesGeneratedTools,
   ...projectsGeneratedTools,
   ...promptsGeneratedTools,
-  ...providersGeneratedTools,
   ...reportsGeneratedTools,
   ...sessionsGeneratedTools,
   ...settingsGeneratedTools,
