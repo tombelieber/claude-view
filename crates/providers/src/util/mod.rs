@@ -29,11 +29,7 @@ pub fn read_to_string_capped<P: AsRef<std::path::Path>>(path: P) -> std::io::Res
 /// First N chars of a string for previews, on a char boundary, single line.
 pub fn preview(text: &str, max_chars: usize) -> String {
     let line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    line.chars()
-        .take(max_chars)
-        .collect::<String>()
-        .trim()
-        .to_string()
+    line.chars().take(max_chars).collect::<String>().trim().to_string()
 }
 
 /// Derive a project display name from a cwd path: final component, with the
