@@ -102,6 +102,19 @@ impl LightSession {
             project_path: self.project_path,
             display_name: self.project_display_name,
             git_root: None,
+            // Insights aggregates never surface per-session attribution, so
+            // this row type does not carry it. Derived from the path rather
+            // than left blank so any future consumer gets a real value.
+            profile: claude_view_core::discovery::config_dir_from_session_path(
+                std::path::Path::new(&self.file_path),
+            )
+            .map(|d| claude_view_core::discovery::profile_name(&d))
+            .unwrap_or_default(),
+            config_dir: claude_view_core::discovery::config_dir_from_session_path(
+                std::path::Path::new(&self.file_path),
+            )
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or_default(),
             file_path: self.file_path,
             modified_at: self.last_message_at.filter(|&ts| ts > 0).unwrap_or(0),
             size_bytes: self.size_bytes as u64,

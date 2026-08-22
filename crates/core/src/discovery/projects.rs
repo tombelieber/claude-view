@@ -1,8 +1,7 @@
 // crates/core/src/discovery/projects.rs
-//! Project and session scanning from the Claude projects directory.
+//! Project and session scanning from the configured Claude projects directories.
 
 use super::metadata::extract_session_metadata;
-use super::paths::claude_projects_dir;
 use super::resolve::{resolve_project_path_with_cwd, ResolvedProject};
 use crate::error::DiscoveryError;
 use crate::types::{ProjectInfo, SessionInfo};
@@ -36,7 +35,38 @@ pub fn count_active_sessions(sessions: &[SessionInfo]) -> usize {
 /// # Errors
 /// Returns an error only for permission denied. Missing directories return empty vec.
 pub async fn get_projects() -> Result<Vec<ProjectInfo>, DiscoveryError> {
-    let projects_dir = claude_projects_dir()?;
+    let roots = super::claude_projects_dirs()?;
+
+    // A project is a working directory, so the same encoded name under two
+    // config dirs is the same project seen from two profiles. Merge their
+    // sessions rather than listing the project twice; each session still
+    // carries its own `config_dir`.
+    let mut merged: Vec<ProjectInfo> = Vec::new();
+    for root in roots {
+        for project in get_projects_in(&root).await? {
+            match merged.iter_mut().find(|p| p.name == project.name) {
+                Some(existing) => {
+                    existing.sessions.extend(project.sessions);
+                    existing.active_count = count_active_sessions(&existing.sessions);
+                }
+                None => merged.push(project),
+            }
+        }
+    }
+
+    // Sort projects by most recent session
+    merged.sort_by(|a, b| {
+        let a_latest = a.sessions.iter().map(|s| s.modified_at).max().unwrap_or(0);
+        let b_latest = b.sessions.iter().map(|s| s.modified_at).max().unwrap_or(0);
+        b_latest.cmp(&a_latest)
+    });
+
+    Ok(merged)
+}
+
+/// Discover projects under one projects directory.
+async fn get_projects_in(projects_dir: &Path) -> Result<Vec<ProjectInfo>, DiscoveryError> {
+    let projects_dir = projects_dir.to_path_buf();
 
     // If the directory doesn't exist, return empty list (not an error)
     if !projects_dir.exists() {
@@ -110,13 +140,6 @@ pub async fn get_projects() -> Result<Vec<ProjectInfo>, DiscoveryError> {
         });
     }
 
-    // Sort projects by most recent session
-    projects.sort_by(|a, b| {
-        let a_latest = a.sessions.iter().map(|s| s.modified_at).max().unwrap_or(0);
-        let b_latest = b.sessions.iter().map(|s| s.modified_at).max().unwrap_or(0);
-        b_latest.cmp(&a_latest)
-    });
-
     Ok(projects)
 }
 
@@ -128,6 +151,12 @@ async fn get_project_sessions(
 ) -> Result<Vec<SessionInfo>, std::io::Error> {
     let mut entries = fs::read_dir(project_path).await?;
     let mut sessions = Vec::new();
+
+    // Same for every session in this project dir, so resolve it once.
+    let config_dir = project_path
+        .parent()
+        .and_then(|projects| projects.parent())
+        .map(std::path::Path::to_path_buf);
 
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
@@ -164,6 +193,14 @@ async fn get_project_sessions(
             project_path: resolved.full_path.clone(),
             display_name: resolved.display_name.clone(),
             git_root: None,
+            profile: config_dir
+                .as_deref()
+                .map(super::profile_name)
+                .unwrap_or_default(),
+            config_dir: config_dir
+                .as_ref()
+                .map(|d| d.to_string_lossy().to_string())
+                .unwrap_or_default(),
             file_path: path.to_string_lossy().to_string(),
             modified_at,
             size_bytes: metadata.len(),
@@ -402,6 +439,8 @@ mod tests {
             project_path: "/test".to_string(),
             display_name: "test".to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: "/test/session.jsonl".to_string(),
             modified_at,
             size_bytes: 100,

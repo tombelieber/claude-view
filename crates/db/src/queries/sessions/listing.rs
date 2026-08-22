@@ -30,7 +30,7 @@ impl Database {
             SELECT
                 s.id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.git_root, s.project_display_name,
+                s.project_path, s.git_root, s.config_dir, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
@@ -136,7 +136,7 @@ impl Database {
             r#"SELECT
                 s.session_id AS id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.git_root, s.project_display_name,
+                s.project_path, s.git_root, s.config_dir, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
