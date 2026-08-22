@@ -168,9 +168,7 @@ pub fn start_watcher(
 /// at the same tree via symlinks. Matching stops at the first hit, so an
 /// overlapping root cannot produce duplicate events.
 fn is_parent_session_jsonl_any(path: &Path, roots: &[PathBuf]) -> bool {
-    roots
-        .iter()
-        .any(|root| is_parent_session_jsonl(path, root))
+    roots.iter().any(|root| is_parent_session_jsonl(path, root))
 }
 
 /// Returns `true` for paths matching `{root}/{project}/{sessionId}.jsonl`

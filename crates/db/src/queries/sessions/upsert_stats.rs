@@ -171,9 +171,9 @@ where
     // which roots are configured at index time. Empty when the path does not
     // match Claude Code's layout; the ON CONFLICT clause then preserves any
     // previously-derived value rather than blanking it.
-    let config_dir = claude_view_core::discovery::config_dir_from_session_path(std::path::Path::new(
-        &s.file_path,
-    ))
+    let config_dir = claude_view_core::discovery::config_dir_from_session_path(
+        std::path::Path::new(&s.file_path),
+    )
     .map(|p| p.to_string_lossy().to_string())
     .unwrap_or_default();
 

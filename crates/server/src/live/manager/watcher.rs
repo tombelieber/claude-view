@@ -16,7 +16,7 @@ use tracing::{error, info, warn};
 
 use claude_view_core::pricing::TokenUsage;
 
-use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+use claude_view_db::indexer_parallel::{build_index_hints_multi, scan_and_index_all_dirs};
 use claude_view_db::indexer_v2::{build_delta_from_file, DeltaSource, StatsDelta};
 
 use crate::live::mutation::types::{LifecycleEvent, SessionMutation};
@@ -211,15 +211,16 @@ impl LiveSessionManager {
             return;
         };
         let claude_dir = home.join(".claude");
-        let hints = build_index_hints(&claude_dir);
+        let claude_dirs = claude_view_core::discovery::expand_config_dirs(&claude_dir);
+        let hints = build_index_hints_multi(&claude_dirs);
         let registry_for_rescan = self
             .registry
             .read()
             .unwrap()
             .as_ref()
             .map(|r| Arc::new(r.clone()));
-        let (indexed, _) = scan_and_index_all(
-            &claude_dir,
+        let (indexed, _) = scan_and_index_all_dirs(
+            &claude_dirs,
             &self.db,
             &hints,
             registry_for_rescan,

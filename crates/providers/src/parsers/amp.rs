@@ -31,7 +31,11 @@ impl Provider for AmpProvider {
 
     fn discover(&self, root: &Path) -> Vec<DiscoveredSession> {
         let threads = root.join("threads");
-        let dir = if threads.is_dir() { threads } else { root.to_path_buf() };
+        let dir = if threads.is_dir() {
+            threads
+        } else {
+            root.to_path_buf()
+        };
         let Ok(entries) = std::fs::read_dir(&dir) else {
             return Vec::new();
         };
@@ -41,9 +45,7 @@ impl Provider for AmpProvider {
             let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if path.extension().and_then(|e| e.to_str()) != Some("json")
-                || !is_thread_id(stem)
-            {
+            if path.extension().and_then(|e| e.to_str()) != Some("json") || !is_thread_id(stem) {
                 continue;
             }
             let Some((mtime, size_bytes)) = stat_entry(&path) else {
@@ -135,8 +137,9 @@ impl Provider for AmpProvider {
 }
 
 fn is_thread_id(s: &str) -> bool {
-    s.strip_prefix("T-")
-        .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+    s.strip_prefix("T-").is_some_and(|rest| {
+        !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    })
 }
 
 fn handle_user(
@@ -350,7 +353,10 @@ mod tests {
         assert_eq!(s.meta.first_message, "fix the login bug");
         assert_eq!(s.meta.user_message_count, 1);
         assert_eq!(s.meta.message_count, 3);
-        assert!(!s.meta.usage.has_usage, "amp carries no usage — must stay false");
+        assert!(
+            !s.meta.usage.has_usage,
+            "amp carries no usage — must stay false"
+        );
         // started from created-ms, ended from last trace endTime.
         assert_eq!(s.meta.started_at, Some(1767323045.0));
         assert_eq!(s.meta.ended_at, Some(1767326400.0));
@@ -369,7 +375,10 @@ mod tests {
         };
         assert_eq!(execution.tool_name, "Read");
         assert_eq!(execution.status, ToolStatus::Complete);
-        assert_eq!(execution.result.as_ref().unwrap().output, "file contents here");
+        assert_eq!(
+            execution.result.as_ref().unwrap().output,
+            "file contents here"
+        );
     }
 
     #[test]

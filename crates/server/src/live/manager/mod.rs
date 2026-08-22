@@ -409,10 +409,7 @@ impl LiveSessionManager {
         // map empty when the accumulator hasn't been populated yet.
         let transcript_path = {
             let project_key = claude_view_core::discovery::encode_project_name(&cwd);
-            let candidate = claude_view_core::discovery::claude_projects_dir()
-                .ok()
-                .map(|dir| dir.join(&project_key).join(format!("{session_id}.jsonl")));
-            candidate.filter(|p| p.exists())
+            claude_view_core::discovery::find_session_file(&project_key, &session_id)
         };
         let tp_str = transcript_path
             .as_ref()

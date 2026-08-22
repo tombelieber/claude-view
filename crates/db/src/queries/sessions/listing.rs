@@ -197,6 +197,20 @@ impl Database {
         Ok(row.map(|(p,)| p))
     }
 
+    /// Get the Claude config dir a session was written by.
+    ///
+    /// Empty string when the session predates the column or its path never
+    /// matched Claude Code's layout. Survives archiving, because the writers
+    /// preserve a stored value when the path no longer yields a derivation.
+    pub async fn get_session_config_dir(&self, session_id: &str) -> DbResult<Option<String>> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT config_dir FROM session_stats WHERE session_id = ?1")
+                .bind(session_id)
+                .fetch_optional(self.pool())
+                .await?;
+        Ok(row.map(|(c,)| c))
+    }
+
     /// Get all session IDs in the database (for backup dedup).
     pub async fn get_all_session_ids(&self) -> DbResult<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as("SELECT session_id FROM session_stats")

@@ -84,7 +84,8 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                         return;
                     }
                 };
-                let hints = claude_view_db::indexer_parallel::build_index_hints(&claude_dir);
+                let claude_dirs = claude_view_core::discovery::expand_config_dirs(&claude_dir);
+                let hints = claude_view_db::indexer_parallel::build_index_hints_multi(&claude_dirs);
 
                 let indexing_cb = indexing.clone();
                 let indexing_total = indexing.clone();
@@ -94,8 +95,8 @@ pub async fn trigger_deep_index(State(state): State<Arc<AppState>>) -> ApiResult
                     .unwrap()
                     .as_ref()
                     .map(|r| std::sync::Arc::new(r.clone()));
-                let result = claude_view_db::indexer_parallel::scan_and_index_all(
-                    &claude_dir,
+                let result = claude_view_db::indexer_parallel::scan_and_index_all_dirs(
+                    &claude_dirs,
                     &db,
                     &hints,
                     registry_for_scan,

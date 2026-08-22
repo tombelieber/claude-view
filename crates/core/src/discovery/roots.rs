@@ -233,6 +233,70 @@ pub fn profile_name(config_dir: &Path) -> String {
     }
 }
 
+/// Locate an existing project directory by its encoded name, across every root.
+///
+/// Returns the first root that has it. `None` when no root does, which is what
+/// callers use to decide a project has been archived or removed.
+pub fn find_project_dir(project_id: &str) -> Option<PathBuf> {
+    claude_projects_dirs()
+        .ok()?
+        .into_iter()
+        .map(|root| root.join(project_id))
+        .find(|candidate| candidate.is_dir())
+}
+
+/// Locate an existing session JSONL by project and session id, across every root.
+///
+/// Returns `None` when the file does not exist under any root. Use
+/// [`session_file_path`] instead when a path is needed for a session that may
+/// not have been written yet.
+pub fn find_session_file(project_id: &str, session_id: &str) -> Option<PathBuf> {
+    claude_projects_dirs()
+        .ok()?
+        .into_iter()
+        .map(|root| root.join(project_id).join(format!("{session_id}.jsonl")))
+        .find(|candidate| candidate.is_file())
+}
+
+/// Path a session JSONL either has or would have.
+///
+/// Prefers an existing file under any root; falls back to the primary root's
+/// candidate path so callers that resolve a path *before* Claude Code writes
+/// the file still get the location it will appear at. Sessions started under a
+/// non-primary config dir are resolved correctly the moment the file exists.
+pub fn session_file_path(project_id: &str, session_id: &str) -> Option<PathBuf> {
+    if let Some(found) = find_session_file(project_id, session_id) {
+        return Some(found);
+    }
+    claude_projects_dirs()
+        .ok()?
+        .into_iter()
+        .next()
+        .map(|root| root.join(project_id).join(format!("{session_id}.jsonl")))
+}
+
+/// Expand a caller-supplied primary config dir into the full set to index.
+///
+/// Callers that already hold a config dir (the indexer, the live manager) pass
+/// it here rather than calling [`claude_config_dirs`] directly. If `primary` is
+/// the real `~/.claude`, the opted-in extra dirs are appended; otherwise
+/// `primary` is returned alone.
+///
+/// That distinction is what keeps test and tooling injection working: a caller
+/// pointed at a tempdir must not silently start indexing the developer's real
+/// home directory.
+pub fn expand_config_dirs(primary: &Path) -> Vec<PathBuf> {
+    let is_real_primary = dirs::home_dir()
+        .map(|home| home.join(PRIMARY_DIR_NAME) == primary)
+        .unwrap_or(false);
+
+    if !is_real_primary {
+        return vec![primary.to_path_buf()];
+    }
+
+    claude_config_dirs().unwrap_or_else(|_| vec![primary.to_path_buf()])
+}
+
 /// Derive the config dir from a session JSONL path, using structure alone.
 ///
 /// Claude Code always writes sessions as
@@ -264,9 +328,7 @@ pub fn config_dir_for_path(path: &Path, roots: &[PathBuf]) -> Option<PathBuf> {
     let mut best: Option<&PathBuf> = None;
     for root in roots {
         if path.starts_with(root)
-            && best.is_none_or(|current| {
-                root.as_os_str().len() > current.as_os_str().len()
-            })
+            && best.is_none_or(|current| root.as_os_str().len() > current.as_os_str().len())
         {
             best = Some(root);
         }
@@ -363,6 +425,24 @@ mod tests {
             .collect();
 
         assert_eq!(names, vec![".claude-alpha", ".claude-beta"]);
+    }
+
+    #[test]
+    fn expand_config_dirs_leaves_injected_dirs_alone() {
+        let temp = tempfile::TempDir::new().expect("tempdir");
+        let injected = temp.path().join("fake-claude");
+        std::fs::create_dir_all(injected.join("projects")).unwrap();
+
+        // An injected dir must never pull in the developer's real ~/.claude.
+        assert_eq!(expand_config_dirs(&injected), vec![injected.clone()]);
+    }
+
+    #[test]
+    fn expand_config_dirs_on_real_primary_includes_it_first() {
+        let home = dirs::home_dir().expect("home dir");
+        let primary = home.join(PRIMARY_DIR_NAME);
+        let expanded = expand_config_dirs(&primary);
+        assert_eq!(expanded.first(), Some(&primary));
     }
 
     #[test]

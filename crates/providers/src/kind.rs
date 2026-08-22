@@ -171,7 +171,9 @@ impl ProviderKind {
             Self::Piebald => &[".local/share/piebald"],
             Self::Kiro => &[".kiro/sessions/cli", ".local/share/kiro-cli"],
             #[cfg(target_os = "macos")]
-            Self::KiroIde => &["Library/Application Support/Kiro/User/globalStorage/kiro.kiroagent"],
+            Self::KiroIde => {
+                &["Library/Application Support/Kiro/User/globalStorage/kiro.kiroagent"]
+            }
             #[cfg(not(target_os = "macos"))]
             Self::KiroIde => &[".config/Kiro/User/globalStorage/kiro.kiroagent"],
             #[cfg(target_os = "macos")]

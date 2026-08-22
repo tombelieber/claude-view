@@ -29,5 +29,6 @@ pub use resolve::{
 };
 pub use roots::{
     claude_config_dirs, claude_projects_dirs, claude_projects_dirs_or_empty, config_dir_for_path,
-    config_dir_from_session_path, profile_name, DEFAULT_PROFILE,
+    config_dir_from_session_path, expand_config_dirs, find_project_dir, find_session_file,
+    profile_name, session_file_path, DEFAULT_PROFILE,
 };
