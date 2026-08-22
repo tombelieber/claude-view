@@ -386,6 +386,47 @@ bun dev    # fully local, no cloud dependencies
 </details>
 
 <details>
+<summary><strong>Multiple Claude config directories</strong></summary>
+<br>
+
+Claude Code reads its config from `~/.claude` by default, or from wherever
+`CLAUDE_CONFIG_DIR` points. If you wrap the CLI in per-context launchers — one
+per client, project, or account — each with its own `CLAUDE_CONFIG_DIR`, your
+sessions live in several `~/.claude-<name>/projects/` directories.
+
+claude-view reads `~/.claude/projects/` only, unless you opt in:
+
+```bash
+# Find every ~/.claude* directory that looks like a Claude config dir
+CLAUDE_VIEW_DISCOVER_CONFIG_DIRS=1 claude-view
+
+# Or name them explicitly
+CLAUDE_VIEW_CONFIG_DIRS="$HOME/.claude:$HOME/.claude-work" claude-view
+```
+
+| Env Variable | Effect |
+|-------------|--------|
+| `CLAUDE_VIEW_DISCOVER_CONFIG_DIRS=1` | Auto-discover `$HOME/.claude*` config dirs |
+| `CLAUDE_VIEW_CONFIG_DIRS` | `:`-separated config dirs; `projects/` is appended to each |
+| `CLAUDE_VIEW_PROJECT_ROOTS` | `:`-separated `projects/` dirs directly, for non-standard layouts |
+
+`~/.claude` is always included and always first, so you cannot configure the
+primary directory away. Auto-discovery only accepts a directory that contains
+`projects/` or `settings.json`, so neighbours like `~/.claude-view` itself are
+skipped.
+
+Sessions carry the config dir they came from, shown as a short profile name
+(`~/.claude` is `default`, `~/.claude-work` is `work`). Projects opened from
+more than one config dir stay a single project, since a project is a working
+directory; the sessions inside it keep their individual attribution.
+
+Live Monitor hooks and the statusline wrapper are registered in every config
+dir's `settings.json`, so in-flight sessions show up whichever launcher started
+them. `claude-view cleanup` removes them from all of them.
+
+</details>
+
+<details>
 <summary><strong>Enterprise / Sandbox Environments</strong></summary>
 <br>
 

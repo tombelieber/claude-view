@@ -39,6 +39,7 @@ function buildSearchParams(params: SessionsQueryParams, offset: number): URLSear
   if (params.filters.models.length > 0) sp.set('models', params.filters.models.join(','))
 
   if (params.filters.providers.length > 0) sp.set('providers', params.filters.providers.join(','))
+  if (params.filters.profiles.length > 0) sp.set('profiles', params.filters.profiles.join(','))
 
   if (params.filters.hasCommits === 'yes') sp.set('has_commits', 'true')
   if (params.filters.hasCommits === 'no') sp.set('has_commits', 'false')

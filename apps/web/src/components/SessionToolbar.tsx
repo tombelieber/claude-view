@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { GroupBy, SessionFilters, SessionSort, ViewMode } from '../hooks/use-session-filters'
 import { countActiveFilters } from '../hooks/use-session-filters'
 import { cn } from '../lib/utils'
-import { FilterPopover, type ProviderOption } from './FilterPopover'
+import { FilterPopover, type ProfileOption, type ProviderOption } from './FilterPopover'
 
 interface SessionToolbarProps {
   filters: SessionFilters
@@ -17,6 +17,8 @@ interface SessionToolbarProps {
   models?: string[]
   /** Providers with session counts (data-driven from /api/providers) */
   providers?: ProviderOption[]
+  /** Claude config dirs with session counts (data-driven from /api/profiles) */
+  profiles?: ProfileOption[]
 }
 
 interface DropdownProps {
@@ -195,6 +197,7 @@ export function SessionToolbar({
   branches = [],
   models = [],
   providers = [],
+  profiles = [],
 }: SessionToolbarProps) {
   const activeFilterCount = countActiveFilters(filters)
   const hasNonDefaults =
@@ -237,6 +240,7 @@ export function SessionToolbar({
           branches={branches}
           models={models}
           providers={providers}
+          profiles={profiles}
         />
 
         {/* Sort dropdown */}

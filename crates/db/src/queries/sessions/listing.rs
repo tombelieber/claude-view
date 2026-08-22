@@ -211,6 +211,23 @@ impl Database {
         Ok(row.map(|(c,)| c))
     }
 
+    /// Count sessions per Claude config dir, most sessions first.
+    ///
+    /// Drives the profile filter. Includes the empty config_dir bucket so
+    /// callers can tell "no attribution" apart from "no sessions"; the route
+    /// filters it out rather than offering it as a profile.
+    pub async fn count_sessions_by_config_dir(&self) -> DbResult<Vec<(String, usize)>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"SELECT config_dir, COUNT(*) AS n
+               FROM valid_sessions
+               GROUP BY config_dir
+               ORDER BY n DESC, config_dir ASC"#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|(d, n)| (d, n as usize)).collect())
+    }
+
     /// Get all session IDs in the database (for backup dedup).
     pub async fn get_all_session_ids(&self) -> DbResult<Vec<String>> {
         let rows: Vec<(String,)> = sqlx::query_as("SELECT session_id FROM session_stats")

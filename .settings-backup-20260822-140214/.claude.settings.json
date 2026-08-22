@@ -1,0 +1,111 @@
+{
+  "enabledPlugins": {
+    "warp@claude-code-warp": true
+  },
+  "env": {
+    "BASH_DEFAULT_TIMEOUT_MS": "300000",
+    "BASH_MAX_TIMEOUT_MS": "600000"
+  },
+  "extraKnownMarketplaces": {
+    "claude-code-warp": {
+      "source": {
+        "repo": "warpdotdev/claude-code-warp",
+        "source": "github"
+      }
+    }
+  },
+  "hooks": {
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "command": "if [ -x '/Users/mo/.orca/agent-hooks/claude-hook.sh' ]; then /bin/sh '/Users/mo/.orca/agent-hooks/claude-hook.sh'; fi",
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "if [ -x '/Users/mo/.orca/agent-hooks/claude-hook.sh' ]; then /bin/sh '/Users/mo/.orca/agent-hooks/claude-hook.sh'; fi",
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "command": "if [ -x '/Users/mo/.orca/agent-hooks/claude-hook.sh' ]; then /bin/sh '/Users/mo/.orca/agent-hooks/claude-hook.sh'; fi",
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "command": "if [ -x '/Users/mo/.orca/agent-hooks/claude-hook.sh' ]; then /bin/sh '/Users/mo/.orca/agent-hooks/claude-hook.sh'; fi",
+            "type": "command"
+          }
+        ],
+        "matcher": "*"
+      },
+      {
+        "hooks": [
+          {
+            "command": "rtk hook claude",
+            "type": "command"
+          }
+        ],
+        "matcher": "Bash"
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "/Users/mo/.local/bin/claude-commitments --hook",
+            "timeout": 10,
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "command": "if [ -x '/Users/mo/.orca/agent-hooks/claude-hook.sh' ]; then /bin/sh '/Users/mo/.orca/agent-hooks/claude-hook.sh'; fi",
+            "type": "command"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "command": "if [ -x '/Users/mo/.orca/agent-hooks/claude-hook.sh' ]; then /bin/sh '/Users/mo/.orca/agent-hooks/claude-hook.sh'; fi",
+            "type": "command"
+          }
+        ]
+      }
+    ]
+  },
+  "model": "opus[1m]",
+  "skipDangerousModePermissionPrompt": true,
+  "statusLine": {
+    "command": "/Users/mo/.local/bin/claude-statusline",
+    "type": "command"
+  },
+  "theme": "light",
+  "verbose": true
+}

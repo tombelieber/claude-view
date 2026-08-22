@@ -297,6 +297,22 @@ export function HistoryView() {
     staleTime: 60_000,
   })
 
+  // Claude config dirs with session counts — drives the Profile filter.
+  // The popover hides the section unless more than one config dir has
+  // sessions, which is the default single-config-dir case.
+  const { data: availableProfiles = [] } = useQuery({
+    queryKey: ['profiles-summary'],
+    queryFn: async () => {
+      const res = await fetch('/api/profiles')
+      if (!res.ok) return []
+      const body = (await res.json()) as {
+        profiles: Array<{ id: string; configDir: string; count: number }>
+      }
+      return body.profiles.filter((p) => p.count > 0)
+    },
+    staleTime: 60_000,
+  })
+
   const isFiltered = !!(
     debouncedSearch ||
     sidebarProject ||
@@ -311,7 +327,8 @@ export function HistoryView() {
     filters.minTokens !== null ||
     filters.branches.length > 0 ||
     filters.models.length > 0 ||
-    filters.providers.length > 0
+    filters.providers.length > 0 ||
+    filters.profiles.length > 0
   )
 
   const tooManyToGroup = shouldDisableGrouping(sessionsWithLiveCost.length)
@@ -492,6 +509,7 @@ export function HistoryView() {
               branches={availableBranches}
               models={availableModels}
               providers={availableProviders}
+              profiles={availableProfiles}
             />
 
             <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
