@@ -4,14 +4,14 @@
 import { z } from 'zod'
 import type { ToolDef } from '../types.js'
 
-export const pairingGeneratedTools: ToolDef[] = [
+export const claudehomeGeneratedTools: ToolDef[] = [
   {
-    name: 'pairing_generate_qr',
-    description: 'Generate a QR payload via Supabase pair-offer.',
+    name: 'claude_home_list_claude_home',
+    description: 'List Claude Home (GET /api/claude-home)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, _args) => {
-      const result = await client.request('GET', '/api/pairing/qr')
+      const result = await client.request('GET', '/api/claude-home')
       return JSON.stringify(result, null, 2)
     },
   },

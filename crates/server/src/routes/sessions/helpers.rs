@@ -54,11 +54,23 @@ pub(crate) fn build_session_info(
         .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
         .map(|dt| dt.timestamp());
 
+    // Which Claude config dir wrote this session. The catalog row carries an
+    // absolute path, so this is structural and needs no DB lookup.
+    let config_dir = claude_view_core::discovery::config_dir_from_session_path(&row.file_path);
+
     SessionInfo {
         id: row.id.clone(),
         project: row.project_id.clone(),
         project_path: project_path_from_id(&row.project_id),
         display_name: display_name_from_project(&row.project_id),
+        profile: config_dir
+            .as_deref()
+            .map(claude_view_core::discovery::profile_name)
+            .unwrap_or_default(),
+        config_dir: config_dir
+            .as_ref()
+            .map(|d| d.to_string_lossy().to_string())
+            .unwrap_or_default(),
         file_path: row.file_path.to_string_lossy().to_string(),
         modified_at: row.mtime,
         size_bytes: row.bytes,

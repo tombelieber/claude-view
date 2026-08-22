@@ -19,8 +19,8 @@ export const workflowsGeneratedTools: ToolDef[] = [
     name: 'workflows_create_workflow',
     description: 'Create Workflow (POST /api/workflows)',
     inputSchema: z.object({
-    yaml: z.string(),
-  }),
+      yaml: z.string(),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
       const result = await client.request('POST', '/api/workflows', { body: { yaml: args.yaml } })
@@ -31,11 +31,57 @@ export const workflowsGeneratedTools: ToolDef[] = [
     name: 'workflows_control_run',
     description: 'Control Run (POST /api/workflows/run/control)',
     inputSchema: z.object({
-    run_id: z.string(),
-  }),
+      run_id: z.string(),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', `/api/workflows/run/${encodeURIComponent(String(args.run_id))}/control`)
+      const result = await client.request(
+        'POST',
+        `/api/workflows/run/${encodeURIComponent(String(args.run_id))}/control`,
+      )
+      return JSON.stringify(result, null, 2)
+    },
+  },
+  {
+    name: 'workflows_list_workflow_runs',
+    description: 'List Workflow Runs',
+    inputSchema: z.object({}),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    handler: async (client, _args) => {
+      const result = await client.request('GET', '/api/workflows/runs')
+      return JSON.stringify(result, null, 2)
+    },
+  },
+  {
+    name: 'workflows_get_workflow_run_detail',
+    description: 'Get Workflow Run Detail',
+    inputSchema: z.object({
+      session_id: z.string(),
+      run_id: z.string(),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    handler: async (client, args) => {
+      const result = await client.request(
+        'GET',
+        `/api/workflows/runs/${encodeURIComponent(String(args.session_id))}/${encodeURIComponent(String(args.run_id))}`,
+      )
+      return JSON.stringify(result, null, 2)
+    },
+  },
+  {
+    name: 'workflows_get_workflow_agent_detail',
+    description: 'Get Workflow Agent Detail',
+    inputSchema: z.object({
+      session_id: z.string(),
+      run_id: z.string(),
+      agent_id: z.string(),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    handler: async (client, args) => {
+      const result = await client.request(
+        'GET',
+        `/api/workflows/runs/${encodeURIComponent(String(args.session_id))}/${encodeURIComponent(String(args.run_id))}/agents/${encodeURIComponent(String(args.agent_id))}`,
+      )
       return JSON.stringify(result, null, 2)
     },
   },
@@ -43,11 +89,14 @@ export const workflowsGeneratedTools: ToolDef[] = [
     name: 'workflows_get_workflow',
     description: 'Get Workflow (GET /api/workflows)',
     inputSchema: z.object({
-    id: z.string(),
-  }),
+      id: z.string(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', `/api/workflows/${encodeURIComponent(String(args.id))}`)
+      const result = await client.request(
+        'GET',
+        `/api/workflows/${encodeURIComponent(String(args.id))}`,
+      )
       return JSON.stringify(result, null, 2)
     },
   },
@@ -55,12 +104,15 @@ export const workflowsGeneratedTools: ToolDef[] = [
     name: 'workflows_delete_workflow',
     description: 'Delete Workflow (DELETE /api/workflows)',
     inputSchema: z.object({
-    id: z.string(),
-  }),
+      id: z.string(),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('DELETE', `/api/workflows/${encodeURIComponent(String(args.id))}`)
+      const result = await client.request(
+        'DELETE',
+        `/api/workflows/${encodeURIComponent(String(args.id))}`,
+      )
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]
