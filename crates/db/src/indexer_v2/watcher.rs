@@ -61,17 +61,19 @@ pub enum FileEvent {
 /// stalls (which would be a bug, not a steady state).
 pub const FILE_EVENT_CHANNEL_CAPACITY: usize = 512;
 
-/// Start a fsnotify watcher rooted at `projects_dir` and forward filtered
-/// events through `tx`.
+/// Start a fsnotify watcher over every root in `projects_dirs` and forward
+/// filtered events through `tx`.
 ///
 /// Returns the watcher handle (which **must be kept alive** for the
 /// duration of monitoring — dropping it stops the watch) plus an atomic
 /// counter the orchestrator can poll for dropped-event backpressure.
 ///
-/// If `projects_dir` does not exist, returns a watcher that watches
-/// nothing (still valid; useful at first-run startup).
+/// A root that does not exist is skipped with a warning rather than
+/// failing the call, so an empty or partially-present set still yields a
+/// valid idle watcher (useful at first-run startup). One `notify` watcher
+/// serves all roots; each is registered with a separate `watch()` call.
 pub fn start_watcher(
-    projects_dir: PathBuf,
+    projects_dirs: Vec<PathBuf>,
     tx: mpsc::Sender<FileEvent>,
 ) -> notify::Result<(RecommendedWatcher, Arc<AtomicU64>)> {
     let dropped_events = Arc::new(AtomicU64::new(0));
@@ -83,9 +85,10 @@ pub fn start_watcher(
     // without this normalization the `strip_prefix` filter rejects
     // every event silently. Production paths under `~/.claude/projects/`
     // are typically already canonical but the call is cheap and idempotent.
-    let root_for_filter = projects_dir
-        .canonicalize()
-        .unwrap_or_else(|_| projects_dir.clone());
+    let roots_for_filter: Vec<PathBuf> = projects_dirs
+        .iter()
+        .map(|dir| dir.canonicalize().unwrap_or_else(|_| dir.clone()))
+        .collect();
 
     let mut watcher =
         notify::recommended_watcher(move |res: Result<notify::Event, notify::Error>| match res {
@@ -103,7 +106,7 @@ pub fn start_watcher(
                 let jsonl_paths: Vec<PathBuf> = event
                     .paths
                     .into_iter()
-                    .filter(|p| is_parent_session_jsonl(p, &root_for_filter))
+                    .filter(|p| is_parent_session_jsonl_any(p, &roots_for_filter))
                     .collect();
 
                 for path in jsonl_paths {
@@ -131,20 +134,43 @@ pub fn start_watcher(
             }
         })?;
 
-    if projects_dir.exists() {
-        watcher.watch(&projects_dir, RecursiveMode::Recursive)?;
-        tracing::info!(
-            projects_dir = %projects_dir.display(),
-            "indexer_v2 fsnotify watcher started"
-        );
-    } else {
+    let mut watched = 0usize;
+    for projects_dir in &projects_dirs {
+        if projects_dir.exists() {
+            watcher.watch(projects_dir, RecursiveMode::Recursive)?;
+            watched += 1;
+            tracing::info!(
+                projects_dir = %projects_dir.display(),
+                "indexer_v2 fsnotify watcher started"
+            );
+        } else {
+            warn!(
+                projects_dir = %projects_dir.display(),
+                "indexer_v2 watcher: projects dir missing — not watched"
+            );
+        }
+    }
+
+    if watched == 0 {
         warn!(
-            projects_dir = %projects_dir.display(),
-            "indexer_v2 watcher: projects dir missing — watcher is idle"
+            roots = projects_dirs.len(),
+            "indexer_v2 watcher: no existing projects dir — watcher is idle"
         );
     }
 
     Ok((watcher, dropped_events))
+}
+
+/// Returns `true` when `path` is a parent-session JSONL under **any** of
+/// `roots`.
+///
+/// Roots are not assumed to be disjoint: a user may point two config dirs
+/// at the same tree via symlinks. Matching stops at the first hit, so an
+/// overlapping root cannot produce duplicate events.
+fn is_parent_session_jsonl_any(path: &Path, roots: &[PathBuf]) -> bool {
+    roots
+        .iter()
+        .any(|root| is_parent_session_jsonl(path, root))
 }
 
 /// Returns `true` for paths matching `{root}/{project}/{sessionId}.jsonl`
@@ -229,11 +255,52 @@ mod tests {
         // Should not error even if the directory doesn't exist —
         // mirrors the live watcher's first-run behaviour.
         let (tx, _rx) = mpsc::channel::<FileEvent>(8);
-        let result = start_watcher(PathBuf::from("/no/such/projects/dir"), tx);
+        let result = start_watcher(vec![PathBuf::from("/no/such/projects/dir")], tx);
         assert!(
             result.is_ok(),
             "start_watcher must tolerate a missing root, got {:?}",
             result.err()
         );
+    }
+
+    #[test]
+    fn start_watcher_with_no_roots_is_idle_not_an_error() {
+        let (tx, _rx) = mpsc::channel::<FileEvent>(8);
+        let result = start_watcher(Vec::new(), tx);
+        assert!(
+            result.is_ok(),
+            "an empty root set must yield an idle watcher, got {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn multi_root_filter_accepts_each_root() {
+        let primary = PathBuf::from("/home/user/.claude/projects");
+        let secondary = PathBuf::from("/home/user/.claude-work/projects");
+        let roots = vec![primary.clone(), secondary.clone()];
+
+        assert!(is_parent_session_jsonl_any(
+            &primary.join("proj").join("a.jsonl"),
+            &roots
+        ));
+        assert!(is_parent_session_jsonl_any(
+            &secondary.join("proj").join("b.jsonl"),
+            &roots
+        ));
+        // Still depth-2 only, per root.
+        assert!(!is_parent_session_jsonl_any(
+            &secondary
+                .join("proj")
+                .join("b")
+                .join("subagents")
+                .join("agent.jsonl"),
+            &roots
+        ));
+        // Outside every root.
+        assert!(!is_parent_session_jsonl_any(
+            &PathBuf::from("/tmp/other.jsonl"),
+            &roots
+        ));
     }
 }

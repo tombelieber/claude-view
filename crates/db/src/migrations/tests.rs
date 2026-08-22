@@ -1985,17 +1985,24 @@ async fn test_migration64_session_stats_columns_exist() {
         assert!(names.contains(&col), "missing session_stats.{}", col);
     }
 
+    // Multi-config-dir attribution: which Claude config dir wrote the session.
+    assert!(
+        names.contains(&"config_dir"),
+        "missing session_stats.config_dir"
+    );
+
     // Total = 8 header + 24 stats (Phase 2 PR 2.1) + 4 filesystem-mirror
     // (Phase 3 PR 3.a) + 1 invocation_counts (Phase 6.2 migration 86)
     // + 4 Phase 7.c fields (is_sidechain, commit_count, reedited_files_count, skills_used)
     // + 42 Phase 7.h fields (migration 89 mirrors every remaining legacy `sessions`
     // column onto `session_stats` so the table can be DROPped in Phase 7.h.6)
-    // = 83. Each ADD in migration 89 lands one column; the rebuilt valid_sessions
+    // + 1 config_dir (multi-config-dir attribution)
+    // = 84. Each ADD in migration 89 lands one column; the rebuilt valid_sessions
     // view and the DROP ship in subsequent migrations.
     assert_eq!(
         names.len(),
-        83,
-        "session_stats column count drifted (expected 83 after migration 89; got {})",
+        84,
+        "session_stats column count drifted (expected 84; got {})",
         names.len()
     );
 }

@@ -225,11 +225,24 @@ pub fn spawn_delta_consumer(db: Arc<Database>) -> (mpsc::Sender<StatsDelta>, Joi
     (tx, handle)
 }
 
-/// Default fsnotify root: `~/.claude/projects/`. Returned as `None` if
-/// `HOME` is unset (CI, broken environments) so callers can no-op
-/// instead of crashing.
+/// Default fsnotify roots.
+///
+/// `~/.claude/projects/` plus any additional config dirs the user has
+/// opted into (see `claude_view_core::discovery::claude_projects_dirs`).
+/// Empty if `HOME` is unset (CI, broken environments) so callers can
+/// no-op instead of crashing.
+pub fn default_projects_dirs() -> Vec<PathBuf> {
+    claude_view_core::discovery::claude_projects_dirs_or_empty()
+}
+
+/// Primary fsnotify root: `~/.claude/projects/`. Returned as `None` if
+/// `HOME` is unset.
+///
+/// Prefer [`default_projects_dirs`] for anything that walks or watches
+/// sessions; this remains for callers that specifically mean the primary
+/// directory.
 pub fn default_projects_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude").join("projects"))
+    default_projects_dirs().into_iter().next()
 }
 
 /// Spawn the indexer_v2 shadow-indexer task and return its handle.
@@ -239,32 +252,41 @@ pub fn default_projects_dir() -> Option<PathBuf> {
 /// does not stop the task. `notify::Watcher` is moved into the task and
 /// kept alive there for the duration of monitoring.
 ///
-/// Uses `default_projects_dir()` for the watch root. If `HOME` is
+/// Uses `default_projects_dirs()` for the watch roots. If `HOME` is
 /// unavailable, logs a warning and returns a handle to an immediately-
 /// completed task (no watcher started, no indexer running).
 ///
 /// For test injection or non-default roots, see
-/// [`spawn_shadow_indexer_with_root`].
+/// [`spawn_shadow_indexer_with_root`] and
+/// [`spawn_shadow_indexer_with_roots`].
 pub fn spawn_shadow_indexer(db: Arc<Database>) -> JoinHandle<()> {
-    match default_projects_dir() {
-        Some(root) => spawn_shadow_indexer_with_root(db, root),
-        None => {
-            tracing::warn!(
-                "indexer_v2: HOME not set — shadow indexer disabled. \
-                 session_stats will not auto-update."
-            );
-            tokio::spawn(async {})
-        }
+    let roots = default_projects_dirs();
+    if roots.is_empty() {
+        tracing::warn!(
+            "indexer_v2: HOME not set — shadow indexer disabled. \
+             session_stats will not auto-update."
+        );
+        return tokio::spawn(async {});
     }
+    spawn_shadow_indexer_with_roots(db, roots)
 }
 
-/// Same as [`spawn_shadow_indexer`] but takes an explicit watch root.
-/// Used by integration tests that want to point the indexer at a
+/// Same as [`spawn_shadow_indexer`] but takes a single explicit watch
+/// root. Used by integration tests that want to point the indexer at a
 /// tempdir instead of the user's `~/.claude/projects/`.
 pub fn spawn_shadow_indexer_with_root(db: Arc<Database>, projects_dir: PathBuf) -> JoinHandle<()> {
+    spawn_shadow_indexer_with_roots(db, vec![projects_dir])
+}
+
+/// Same as [`spawn_shadow_indexer`] but takes an explicit set of watch
+/// roots. One watcher and one debounced index loop serve all of them.
+pub fn spawn_shadow_indexer_with_roots(
+    db: Arc<Database>,
+    projects_dirs: Vec<PathBuf>,
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         let (tx, mut rx) = mpsc::channel::<FileEvent>(FILE_EVENT_CHANNEL_CAPACITY);
-        let (_watcher_handle, dropped) = match start_watcher(projects_dir.clone(), tx) {
+        let (_watcher_handle, dropped) = match start_watcher(projects_dirs.clone(), tx) {
             Ok(pair) => pair,
             Err(e) => {
                 tracing::error!(error = %e, "indexer_v2: start_watcher failed; shadow indexer exiting");
@@ -276,7 +298,8 @@ pub fn spawn_shadow_indexer_with_root(db: Arc<Database>, projects_dir: PathBuf) 
         let mut last_dropped = 0u64;
 
         tracing::info!(
-            projects_dir = %projects_dir.display(),
+            projects_dirs = %display_roots(&projects_dirs),
+            root_count = projects_dirs.len(),
             debounce_ms = DEBOUNCE_MS,
             "indexer_v2 shadow indexer running"
         );
@@ -327,8 +350,8 @@ pub fn spawn_shadow_indexer_with_root(db: Arc<Database>, projects_dir: PathBuf) 
                     // if the rebuild takes longer than the backlog can
                     // absorb — operators see it in the same log line.
                     let db_clone = db.clone();
-                    let root = projects_dir.clone();
-                    let report = full_rebuild(db_clone, root).await;
+                    let roots = projects_dirs.clone();
+                    let report = full_rebuild_all(db_clone, roots).await;
                     tracing::warn!(
                         scanned = report.scanned,
                         indexed = report.indexed,
@@ -366,6 +389,36 @@ pub struct RebuildReport {
     pub errors: usize,
     /// Wall-clock duration of the whole pass.
     pub elapsed_ms: u128,
+}
+
+/// Render a root list for a single tracing field.
+fn display_roots(roots: &[PathBuf]) -> String {
+    roots
+        .iter()
+        .map(|r| r.display().to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Run [`full_rebuild`] against every root and sum the reports.
+///
+/// Counters add; `elapsed_ms` is the wall-clock total across all roots
+/// rather than the sum of per-root timings, so it stays comparable with
+/// the single-root figure.
+pub async fn full_rebuild_all(db: Arc<Database>, projects_dirs: Vec<PathBuf>) -> RebuildReport {
+    let started = std::time::Instant::now();
+    let mut total = RebuildReport::default();
+
+    for projects_dir in projects_dirs {
+        let report = full_rebuild(db.clone(), projects_dir).await;
+        total.scanned += report.scanned;
+        total.indexed += report.indexed;
+        total.skipped_unchanged += report.skipped_unchanged;
+        total.errors += report.errors;
+    }
+
+    total.elapsed_ms = started.elapsed().as_millis();
+    total
 }
 
 /// Walk `projects_dir` for every parent-session JSONL file (depth 2,

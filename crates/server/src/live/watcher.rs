@@ -46,14 +46,17 @@ pub enum FileEvent {
     Rescan,
 }
 
-/// Start a file system watcher on `~/.claude/projects/`.
+/// Start a file system watcher over every configured projects directory.
+///
+/// Defaults to `~/.claude/projects/` alone; additional config dirs are opt-in
+/// via the environment (see `claude_view_core::discovery::claude_projects_dirs`).
 ///
 /// Modified/removed JSONL files are sent through the provided `mpsc::Sender`.
 /// Returns the watcher handle which must be kept alive for the duration of
 /// monitoring (dropping it stops the watch).
 ///
-/// If the projects directory does not exist, logs a warning and returns a
-/// watcher that watches nothing.
+/// If no projects directory exists, logs a warning and returns a watcher that
+/// watches nothing.
 ///
 /// ## Filtering Strategy
 ///
@@ -66,21 +69,23 @@ pub enum FileEvent {
 pub fn start_watcher(
     tx: mpsc::Sender<FileEvent>,
 ) -> notify::Result<(RecommendedWatcher, Arc<AtomicU64>)> {
-    let projects_dir = match dirs::home_dir() {
-        Some(home) => home.join(".claude").join("projects"),
-        None => {
-            warn!("Could not determine home directory; file watcher disabled");
-            let w =
-                notify::recommended_watcher(move |_res: Result<notify::Event, notify::Error>| {})?;
-            return Ok((w, Arc::new(AtomicU64::new(0))));
-        }
-    };
+    let projects_dirs = claude_view_core::discovery::claude_projects_dirs_or_empty();
+    if projects_dirs.is_empty() {
+        warn!("Could not determine home directory; file watcher disabled");
+        let w = notify::recommended_watcher(move |_res: Result<notify::Event, notify::Error>| {})?;
+        return Ok((w, Arc::new(AtomicU64::new(0))));
+    }
 
     let dropped_events = Arc::new(AtomicU64::new(0));
     let dropped_counter = dropped_events.clone();
 
-    // Clone projects_dir for use in closure (must be moved)
-    let projects_dir_for_filter = projects_dir.clone();
+    // Clone the roots for use in the closure (must be moved). Canonicalized so
+    // the depth-2 `strip_prefix` filter compares like with like, matching the
+    // indexer_v2 watcher.
+    let roots_for_filter: Vec<PathBuf> = projects_dirs
+        .iter()
+        .map(|dir| dir.canonicalize().unwrap_or_else(|_| dir.clone()))
+        .collect();
 
     // Create the watcher with a callback that filters and forwards events
     let mut watcher = notify::recommended_watcher(
@@ -109,13 +114,13 @@ pub fn start_watcher(
                                 return false;
                             }
 
-                            // Must be exactly 2 path components deep from projects_dir
-                            // Format: {project}/{sessionId}.jsonl
-                            if let Ok(rel_path) = p.strip_prefix(&projects_dir_for_filter) {
-                                rel_path.components().count() == 2
-                            } else {
-                                false
-                            }
+                            // Must be exactly 2 path components deep from one of
+                            // the roots. Format: {project}/{sessionId}.jsonl
+                            roots_for_filter.iter().any(|root| {
+                                p.strip_prefix(root)
+                                    .map(|rel| rel.components().count() == 2)
+                                    .unwrap_or(false)
+                            })
                         })
                         .collect();
 
@@ -152,17 +157,25 @@ pub fn start_watcher(
         },
     )?;
 
-    if projects_dir.exists() {
-        watcher.watch(&projects_dir, RecursiveMode::Recursive)?;
-        tracing::info!(
-            "Watching {} for parent session JSONL changes (depth-filtered)",
-            projects_dir.display()
-        );
-    } else {
-        warn!(
-            "Claude projects directory does not exist: {}; file watcher idle",
-            projects_dir.display()
-        );
+    let mut watched = 0usize;
+    for projects_dir in &projects_dirs {
+        if projects_dir.exists() {
+            watcher.watch(projects_dir, RecursiveMode::Recursive)?;
+            watched += 1;
+            tracing::info!(
+                "Watching {} for parent session JSONL changes (depth-filtered)",
+                projects_dir.display()
+            );
+        } else {
+            warn!(
+                "Claude projects directory does not exist: {}; not watched",
+                projects_dir.display()
+            );
+        }
+    }
+
+    if watched == 0 {
+        warn!("No Claude projects directory exists; file watcher idle");
     }
 
     Ok((watcher, dropped_events))
@@ -238,6 +251,28 @@ pub fn initial_scan(projects_dir: &Path) -> Vec<PathBuf> {
     }
 
     // Sort by modification time, newest first
+    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    entries.into_iter().map(|(p, _)| p).collect()
+}
+
+/// Run [`initial_scan`] over every configured projects directory and merge the
+/// results into a single newest-first list.
+///
+/// Sorting happens after the merge, so recency ordering holds across roots
+/// rather than only within each one. Session filenames are UUIDs, so files
+/// from different roots cannot collide.
+pub fn initial_scan_all(projects_dirs: &[PathBuf]) -> Vec<PathBuf> {
+    let mut entries: Vec<(PathBuf, SystemTime)> = Vec::new();
+
+    for projects_dir in projects_dirs {
+        for path in initial_scan(projects_dir) {
+            let Ok(modified) = std::fs::metadata(&path).and_then(|m| m.modified()) else {
+                continue;
+            };
+            entries.push((path, modified));
+        }
+    }
+
     entries.sort_by(|a, b| b.1.cmp(&a.1));
     entries.into_iter().map(|(p, _)| p).collect()
 }

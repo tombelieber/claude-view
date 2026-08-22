@@ -418,4 +418,25 @@ CREATE INDEX IF NOT EXISTS idx_session_stats_project_first_message ON session_st
 DROP TABLE IF EXISTS sessions;
 COMMIT;
 PRAGMA foreign_keys=ON;"#,
+    // Multi-config-dir support: record which Claude config directory each
+    // session came from, so sessions written by a launcher that sets
+    // CLAUDE_CONFIG_DIR stay attributable instead of blending together.
+    //
+    // Empty string means "unknown / not derivable", which is what every row
+    // gets when the path does not match Claude Code's
+    // `{config_dir}/projects/{project}/{session}.jsonl` layout.
+    r#"ALTER TABLE session_stats ADD COLUMN config_dir TEXT NOT NULL DEFAULT '';"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_stats_config_dir ON session_stats(config_dir);"#,
+    // Best-effort backfill so existing databases do not need a full reindex.
+    // Mirrors `claude_view_core::discovery::config_dir_from_session_path`,
+    // which is authoritative on the write path and will correct any row this
+    // misses on its next index. SQLite has no reverse-instr, so this takes
+    // the FIRST `/projects/` in the path; a config dir nested under another
+    // directory literally named `projects` resolves on reindex instead.
+    r#"
+UPDATE session_stats
+SET config_dir = substr(file_path, 1, instr(file_path, '/projects/') - 1)
+WHERE config_dir = ''
+  AND file_path LIKE '%/projects/%';
+"#,
 ];
