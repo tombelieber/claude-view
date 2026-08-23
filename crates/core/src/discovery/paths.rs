@@ -5,13 +5,22 @@ use crate::error::DiscoveryError;
 use regex_lite::Regex;
 use std::path::{Path, PathBuf};
 
-/// Returns the path to the Claude projects directory (~/.claude/projects).
+/// Returns the path to the primary Claude projects directory (~/.claude/projects).
+///
+/// This is always the first entry of [`super::claude_projects_dirs`]. Callers
+/// that walk or watch sessions should prefer `claude_projects_dirs`, which
+/// also covers any additional config dirs the user has opted into; this
+/// single-root helper remains for the cases that are inherently about the
+/// primary directory (writing into it, reporting it, resolving a path the
+/// caller already knows lives there).
 ///
 /// # Errors
 /// Returns `DiscoveryError::HomeDirNotFound` if the home directory cannot be determined.
 pub fn claude_projects_dir() -> Result<PathBuf, DiscoveryError> {
-    let home = dirs::home_dir().ok_or(DiscoveryError::HomeDirNotFound)?;
-    Ok(home.join(".claude").join("projects"))
+    super::claude_projects_dirs()?
+        .into_iter()
+        .next()
+        .ok_or(DiscoveryError::HomeDirNotFound)
 }
 
 /// Derive a human-friendly display name from a resolved filesystem path.

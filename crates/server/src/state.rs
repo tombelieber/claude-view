@@ -299,8 +299,8 @@ impl AppStateBuilder {
             // Production populates via `create_app_full` or the reconcile loop.
             if !cfg!(test) {
                 let home = dirs::home_dir().expect("home dir exists");
-                let _ = catalog.rebuild_from_filesystem(
-                    &home.join(".claude").join("projects"),
+                let _ = catalog.rebuild_from_filesystem_multi(
+                    &claude_view_core::discovery::claude_projects_dirs_or_empty(),
                     &home.join(".claude-backup").join("machines"),
                 );
             }

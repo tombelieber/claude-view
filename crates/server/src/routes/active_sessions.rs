@@ -20,12 +20,9 @@ use crate::state::AppState;
 pub async fn get_active_sessions(
     State(_state): State<Arc<AppState>>,
 ) -> ApiResult<Json<Vec<session_files::ActiveSession>>> {
-    let sessions = tokio::task::spawn_blocking(|| match session_files::claude_sessions_dir() {
-        Some(dir) => session_files::scan_active_sessions(&dir),
-        None => Vec::new(),
-    })
-    .await
-    .map_err(|e| ApiError::Internal(format!("Task join error: {e}")))?;
+    let sessions = tokio::task::spawn_blocking(session_files::scan_all_active_sessions)
+        .await
+        .map_err(|e| ApiError::Internal(format!("Task join error: {e}")))?;
 
     Ok(Json(sessions))
 }

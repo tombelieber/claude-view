@@ -19,6 +19,17 @@ export type SessionInfo = {
    * None for non-git directories or sessions indexed before this field existed.
    */
   gitRoot?: string | null
+  /**
+   * Claude config dir this session was written by, e.g. `/home/u/.claude`
+   * or `/home/u/.claude-work`. Empty for sessions indexed before the
+   * column existed, or whose path never matched Claude Code's layout.
+   */
+  configDir?: string
+  /**
+   * Short name for `config_dir`: `default` for `~/.claude`, otherwise the
+   * suffix (`~/.claude-work` -> `work`). Empty when `config_dir` is.
+   */
+  profile?: string
   filePath: string
   modifiedAt: number
   sizeBytes: number

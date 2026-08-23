@@ -221,14 +221,33 @@ impl SessionCatalog {
         live_root: &Path,
         backup_machines_root: &Path,
     ) -> std::io::Result<WalkStats> {
+        self.rebuild_from_filesystem_multi(
+            std::slice::from_ref(&live_root.to_path_buf()),
+            backup_machines_root,
+        )
+    }
+
+    /// Same as [`Self::rebuild_from_filesystem`] but walks several live roots,
+    /// one per Claude config dir.
+    ///
+    /// Session ids are UUIDs, so rows from different roots cannot collide;
+    /// the dedup map is shared across roots purely so a root symlinked to
+    /// another is counted once.
+    pub fn rebuild_from_filesystem_multi(
+        &self,
+        live_roots: &[std::path::PathBuf],
+        backup_machines_root: &Path,
+    ) -> std::io::Result<WalkStats> {
         let mut stats = WalkStats::default();
         let mut by_id: HashMap<SessionId, CatalogRow> = HashMap::new();
 
         // Pass 1 — live
-        if live_root.is_dir() {
-            for row in walk_root(live_root, ".jsonl", false) {
-                stats.live_found += 1;
-                by_id.insert(row.id.clone(), row);
+        for live_root in live_roots {
+            if live_root.is_dir() {
+                for row in walk_root(live_root, ".jsonl", false) {
+                    stats.live_found += 1;
+                    by_id.insert(row.id.clone(), row);
+                }
             }
         }
 

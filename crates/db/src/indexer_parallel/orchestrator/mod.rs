@@ -8,7 +8,7 @@ mod phase_write;
 
 use claude_view_core::Registry;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::Database;
@@ -45,13 +45,53 @@ where
     T: FnOnce(usize),
     W: FnOnce(),
 {
-    let projects_dir = claude_dir.join("projects");
-    if !projects_dir.exists() {
+    scan_and_index_all_dirs(
+        std::slice::from_ref(&claude_dir.to_path_buf()),
+        db,
+        hints,
+        registry,
+        on_file_done,
+        on_total_known,
+        on_finalize_start,
+    )
+    .await
+}
+
+/// Same as [`scan_and_index_all`] but scans several Claude config dirs in a
+/// single pipeline run.
+///
+/// One run rather than one per dir, because the index-run record, the
+/// staleness map and the chunked write phase are all global: running the
+/// pipeline N times would create N index runs and re-query staleness N times
+/// for no benefit. Session ids are UUIDs, so files gathered from different
+/// roots cannot collide.
+#[tracing::instrument(skip_all)]
+pub async fn scan_and_index_all_dirs<F, T, W>(
+    claude_dirs: &[PathBuf],
+    db: &Database,
+    hints: &HashMap<String, IndexHints>,
+    registry: Option<Arc<Registry>>,
+    on_file_done: F,
+    on_total_known: T,
+    on_finalize_start: W,
+) -> Result<(usize, usize), String>
+where
+    F: Fn(&str) + Send + Sync + 'static,
+    T: FnOnce(usize),
+    W: FnOnce(),
+{
+    let projects_dirs: Vec<PathBuf> = claude_dirs
+        .iter()
+        .map(|dir| dir.join("projects"))
+        .filter(|dir| dir.exists())
+        .collect();
+
+    if projects_dirs.is_empty() {
         return Ok((0, 0));
     }
 
-    // Discover all .jsonl files
-    let files = discovery::discover_jsonl_files(&projects_dir)?;
+    // Discover all .jsonl files across every root
+    let files = discovery::discover_jsonl_files_multi(&projects_dirs)?;
 
     // Report actual file count -- single source of truth for progress total.
     on_total_known(files.len());

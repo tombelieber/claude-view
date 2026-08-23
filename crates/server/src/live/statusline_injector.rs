@@ -1,4 +1,5 @@
-//! Inject a claude-view statusline command into ~/.claude/settings.json.
+//! Inject a claude-view statusline command into each Claude config dir's
+//! `settings.json`.
 //!
 //! Claude Code supports a single `statusLine` command that receives rich
 //! per-turn JSON (context_window_size, used_percentage, cost, model, etc.)
@@ -8,32 +9,88 @@
 //! Since `statusLine` is a single slot (not an array like hooks), we wrap
 //! the user's existing command rather than replacing it:
 //!   - Read the user's current statusLine command (if any), save as "original"
-//!   - Write a wrapper script to ~/.claude-view/statusline-wrapper.sh
+//!   - Write a wrapper script to ~/.claude-view/statusline-wrapper-<profile>.sh
 //!   - Set statusLine.command to the wrapper path
 //!   - On cleanup: restore the original statusLine (or remove ours)
+//!
+//! The wrapper is per config dir, not shared: each dir has its own original
+//! command baked into its own script, so one dir's statusLine can never be
+//! substituted for another's.
 //!
 //! The wrapper pipes stdin to both the user's original command (for their
 //! terminal bar output) AND fires a background curl to our server.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 const SENTINEL: &str = "# claude-view-statusline";
 const WRAPPER_SCRIPT_NAME: &str = "statusline-wrapper.sh";
+/// Shared stem of every wrapper filename, including the per-profile variants
+/// (`statusline-wrapper-<profile>.sh`).
+///
+/// The "is this already ours?" check must match on this rather than on the
+/// full default filename: a per-profile wrapper does not contain
+/// `statusline-wrapper.sh`, so matching the full name would let us treat our
+/// own wrapper as the user's original and nest a wrapper inside a wrapper on
+/// every restart.
+const WRAPPER_SCRIPT_PREFIX: &str = "statusline-wrapper";
 
 fn settings_path() -> Option<PathBuf> {
     Some(dirs::home_dir()?.join(".claude").join("settings.json"))
 }
 
+/// Every Claude config dir to inject into, paired with its wrapper script.
+///
+/// Defaults to just `~/.claude`. Each dir gets its own wrapper because the
+/// user's original statusLine command is baked into the script, and two config
+/// dirs may well have different ones.
+fn injection_targets() -> Vec<(PathBuf, PathBuf)> {
+    let config_dirs = claude_view_core::discovery::claude_config_dirs().unwrap_or_default();
+    if config_dirs.is_empty() {
+        return match (settings_path(), wrapper_script_path_for(None)) {
+            (Some(settings), Some(wrapper)) => vec![(settings, wrapper)],
+            _ => Vec::new(),
+        };
+    }
+
+    config_dirs
+        .into_iter()
+        .filter_map(|dir| {
+            let profile = claude_view_core::discovery::profile_name(&dir);
+            let wrapper = wrapper_script_path_for(Some(&profile))?;
+            Some((dir.join("settings.json"), wrapper))
+        })
+        .collect()
+}
+
 fn wrapper_script_path() -> Option<PathBuf> {
+    wrapper_script_path_for(None)
+}
+
+/// Wrapper script path for one profile.
+///
+/// `None` yields the historical shared name, which is what a single-config-dir
+/// install keeps using and what cleanup looks for when tidying up after an
+/// older version.
+fn wrapper_script_path_for(profile: Option<&str>) -> Option<PathBuf> {
     // MANDATORY: all app data under ~/.claude-view/ (never the OS cache dir).
     // Home-based (not the core paths helper) so it stays consistent with
     // settings_path() above — the wrapper must live beside a path the
     // non-overridable ~/.claude/settings.json can point at.
-    Some(
-        dirs::home_dir()?
-            .join(".claude-view")
-            .join(WRAPPER_SCRIPT_NAME),
-    )
+    let dir = dirs::home_dir()?.join(".claude-view");
+    Some(match profile {
+        Some(profile) if profile != claude_view_core::discovery::DEFAULT_PROFILE => {
+            dir.join(format!("statusline-wrapper-{profile}.sh"))
+        }
+        _ => dir.join(WRAPPER_SCRIPT_NAME),
+    })
+}
+
+/// Is this `statusLine.command` one of ours?
+///
+/// Matches the sentinel (for an inline command) and any wrapper filename,
+/// shared or per-profile.
+fn is_our_command(cmd: &str) -> bool {
+    cmd.contains(SENTINEL) || cmd.contains(WRAPPER_SCRIPT_PREFIX)
 }
 
 /// Build the wrapper shell script content.
@@ -82,18 +139,21 @@ session_id=$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null)
 /// Writes the wrapper script to ~/.claude-view/statusline-wrapper.sh.
 /// Called at server startup alongside hook_registrar::register().
 pub fn register(port: u16) {
-    let Some(settings_path) = settings_path() else {
+    let targets = injection_targets();
+    if targets.is_empty() {
         tracing::warn!("statusline_injector: could not determine home directory");
         return;
-    };
-    let Some(wrapper_path) = wrapper_script_path() else {
-        tracing::warn!("statusline_injector: could not determine home directory");
-        return;
-    };
+    }
+    for (settings_path, wrapper_path) in targets {
+        register_at(&settings_path, &wrapper_path, port);
+    }
+}
 
+/// Inject the wrapper into one config dir's `settings.json`.
+fn register_at(settings_path: &Path, wrapper_path: &Path, port: u16) {
     // Read existing settings
     let mut settings: serde_json::Value = if settings_path.exists() {
-        let content = match std::fs::read_to_string(&settings_path) {
+        let content = match std::fs::read_to_string(settings_path) {
             Ok(s) => s,
             Err(e) => {
                 tracing::warn!(error = %e, "statusline_injector: failed to read settings.json");
@@ -112,8 +172,11 @@ pub fn register(port: u16) {
         .and_then(|s| s.get("command"))
         .and_then(|c| c.as_str())
     {
-        if cmd.contains(SENTINEL) || cmd.contains(WRAPPER_SCRIPT_NAME) {
-            tracing::debug!("statusline_injector: wrapper already injected, skipping");
+        if is_our_command(cmd) {
+            tracing::debug!(
+                path = %settings_path.display(),
+                "statusline_injector: wrapper already injected, skipping"
+            );
             return;
         }
     }
@@ -142,7 +205,7 @@ pub fn register(port: u16) {
         }
     }
 
-    if let Err(e) = std::fs::write(&wrapper_path, &script_content) {
+    if let Err(e) = std::fs::write(wrapper_path, &script_content) {
         tracing::warn!(error = %e, "statusline_injector: failed to write wrapper script");
         return;
     }
@@ -151,7 +214,7 @@ pub fn register(port: u16) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let _ = std::fs::set_permissions(&wrapper_path, std::fs::Permissions::from_mode(0o755));
+        let _ = std::fs::set_permissions(wrapper_path, std::fs::Permissions::from_mode(0o755));
     }
 
     // Point statusLine at our wrapper
@@ -168,7 +231,7 @@ pub fn register(port: u16) {
 
     let tmp_path = settings_path.with_extension("json.tmp");
     if std::fs::write(&tmp_path, &content).is_ok() {
-        if let Err(e) = std::fs::rename(&tmp_path, &settings_path) {
+        if let Err(e) = std::fs::rename(&tmp_path, settings_path) {
             tracing::error!(error = %e, "statusline_injector: failed to rename settings.json");
         } else {
             tracing::info!(
@@ -181,21 +244,47 @@ pub fn register(port: u16) {
     }
 }
 
-/// Restore the user's original statusLine in ~/.claude/settings.json.
+/// Restore the user's original statusLine in every configured `settings.json`.
 /// Called at server shutdown alongside hook_registrar::cleanup().
 pub fn cleanup() {
-    let Some(settings_path) = settings_path() else {
-        return;
-    };
-    let Some(wrapper_path) = wrapper_script_path() else {
-        return;
-    };
+    for (settings_path, wrapper_path) in injection_targets() {
+        cleanup_at(&settings_path, &wrapper_path);
+    }
 
+    // Older versions wrote a single shared wrapper regardless of config dir.
+    // Remove it if nothing points at it any more, so an upgrade does not leave
+    // a stray script behind.
+    if let Some(legacy) = wrapper_script_path() {
+        if legacy.exists() && !any_settings_reference(&legacy) {
+            let _ = std::fs::remove_file(&legacy);
+        }
+    }
+}
+
+/// Does any configured `settings.json` still point at this wrapper?
+fn any_settings_reference(wrapper: &Path) -> bool {
+    let wrapper = wrapper.display().to_string();
+    injection_targets().into_iter().any(|(settings_path, _)| {
+        std::fs::read_to_string(&settings_path)
+            .ok()
+            .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+            .and_then(|v| {
+                v.get("statusLine")
+                    .and_then(|s| s.get("command"))
+                    .and_then(|c| c.as_str())
+                    .map(|cmd| cmd == wrapper)
+            })
+            .unwrap_or(false)
+    })
+}
+
+/// Restore the original statusLine in one config dir's `settings.json`.
+fn cleanup_at(settings_path: &Path, wrapper_path: &Path) {
     if !settings_path.exists() {
         return;
     }
 
-    let content = match std::fs::read_to_string(&settings_path) {
+    let content = match std::fs::read_to_string(settings_path) {
         Ok(c) => c,
         Err(_) => return,
     };
@@ -209,7 +298,7 @@ pub fn cleanup() {
         .get("statusLine")
         .and_then(|s| s.get("command"))
         .and_then(|c| c.as_str())
-        .map(|cmd| cmd.contains(SENTINEL) || cmd.contains(WRAPPER_SCRIPT_NAME))
+        .map(is_our_command)
         .unwrap_or(false);
 
     if !is_our_wrapper {
@@ -245,16 +334,16 @@ pub fn cleanup() {
     let tmp_path = settings_path.with_extension("json.tmp");
     if let Ok(serialized) = serde_json::to_string_pretty(&settings) {
         if std::fs::write(&tmp_path, &serialized).is_ok() {
-            if let Err(e) = std::fs::rename(&tmp_path, &settings_path) {
-                tracing::error!(error = %e, "statusline_injector: failed to restore settings.json");
+            if let Err(e) = std::fs::rename(&tmp_path, settings_path) {
+                tracing::error!(error = %e, path = %settings_path.display(), "statusline_injector: failed to restore settings.json");
             } else {
-                tracing::info!("Restored original statusLine on shutdown");
+                tracing::info!(path = %settings_path.display(), "Restored original statusLine on shutdown");
             }
         }
     }
 
     // Remove wrapper script
-    let _ = std::fs::remove_file(&wrapper_path);
+    let _ = std::fs::remove_file(wrapper_path);
 }
 
 #[cfg(test)]
@@ -339,5 +428,38 @@ mod tests {
         let script = build_wrapper_script(47892, Some("echo `whoami`"));
         // Inside sh -c '...', backticks are literal
         assert!(script.contains("sh -c '"));
+    }
+
+    #[test]
+    fn per_profile_wrappers_get_distinct_paths() {
+        let default = wrapper_script_path_for(Some("default")).expect("home dir");
+        let shared = wrapper_script_path_for(None).expect("home dir");
+        let work = wrapper_script_path_for(Some("work")).expect("home dir");
+
+        // The primary config dir keeps the historical filename so an upgrade
+        // does not orphan the script an existing settings.json points at.
+        assert_eq!(default, shared);
+        assert_ne!(work, shared);
+        assert!(work
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .contains("statusline-wrapper-work"));
+    }
+
+    #[test]
+    fn our_own_wrapper_is_recognised_for_every_profile() {
+        // Regression: matching on the full default filename missed
+        // per-profile wrappers, so a restart treated our own wrapper as the
+        // user's original and nested one wrapper inside another.
+        let shared = wrapper_script_path_for(None).unwrap();
+        let work = wrapper_script_path_for(Some("work")).unwrap();
+
+        assert!(is_our_command(&shared.display().to_string()));
+        assert!(is_our_command(&work.display().to_string()));
+        assert!(is_our_command(SENTINEL));
+
+        assert!(!is_our_command("/usr/local/bin/my-statusline"));
+        assert!(!is_our_command(""));
     }
 }

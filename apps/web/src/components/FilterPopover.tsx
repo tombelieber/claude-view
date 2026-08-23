@@ -11,6 +11,12 @@ export interface ProviderOption {
   count: number
 }
 
+export interface ProfileOption {
+  id: string
+  configDir: string
+  count: number
+}
+
 interface FilterPopoverProps {
   filters: SessionFilters
   onChange: (filters: SessionFilters) => void
@@ -22,6 +28,8 @@ interface FilterPopoverProps {
   models?: string[]
   /** Providers with session counts from GET /api/providers (data-driven) */
   providers?: ProviderOption[]
+  /** Claude config dirs with session counts from GET /api/profiles */
+  profiles?: ProfileOption[]
 }
 
 export function FilterPopover({
@@ -32,6 +40,7 @@ export function FilterPopover({
   branches = [],
   models = [],
   providers = [],
+  profiles = [],
 }: FilterPopoverProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [branchSearch, setBranchSearch] = useState('')
@@ -286,6 +295,42 @@ export function FilterPopover({
                       />
                       <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
                         {p.displayName}
+                        <span className="ml-1 text-gray-400 dark:text-gray-500">{p.count}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Config-dir profile filter — only offered when sessions come
+                from more than one Claude config dir. A single-config-dir
+                machine, which is the default, sees nothing. */}
+            {profiles.length > 1 && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">
+                  Profile
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {profiles.map((p) => (
+                    <label
+                      key={p.id}
+                      title={p.configDir}
+                      className="flex items-center px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded hover:bg-gray-50 dark:hover:bg-gray-750 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={filters.profiles.includes(p.id)}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...filters.profiles, p.id]
+                            : filters.profiles.filter((x) => x !== p.id)
+                          onChange({ ...filters, profiles: next })
+                        }}
+                        className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="ml-2 text-xs text-gray-700 dark:text-gray-300">
+                        {p.id}
                         <span className="ml-1 text-gray-400 dark:text-gray-500">{p.count}</span>
                       </span>
                     </label>

@@ -3,7 +3,7 @@
 
 use claude_view_core::resolve_cwd_for_project;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::super::types::*;
 
@@ -36,6 +36,19 @@ pub fn build_index_hints(claude_dir: &Path) -> HashMap<String, IndexHints> {
         Err(e) => {
             tracing::warn!("Failed to read session indexes: {e}");
         }
+    }
+    hints
+}
+
+/// Merge [`build_index_hints`] across several Claude config dirs.
+///
+/// Later dirs win on a session-id clash, which cannot happen in practice
+/// because session ids are UUIDs. Ordering therefore only matters for
+/// determinism, not correctness.
+pub fn build_index_hints_multi(claude_dirs: &[PathBuf]) -> HashMap<String, IndexHints> {
+    let mut hints = HashMap::new();
+    for claude_dir in claude_dirs {
+        hints.extend(build_index_hints(claude_dir));
     }
     hints
 }

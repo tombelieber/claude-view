@@ -44,7 +44,7 @@
 //! If Claude Code adds a new event, update [`ALL_HOOKS`] and the snapshot in
 //! `taxonomy_matches_official_docs_snapshot`.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 // ── Sentinel ────────────────────────────────────────────────────────────────
 //
@@ -244,6 +244,21 @@ fn settings_path() -> Option<PathBuf> {
     Some(dirs::home_dir()?.join(".claude").join("settings.json"))
 }
 
+/// Every `settings.json` Live Monitor should be registered in.
+///
+/// One per configured Claude config dir, so a session started by a launcher
+/// that sets `CLAUDE_CONFIG_DIR` still reports hook events. Defaults to just
+/// `~/.claude/settings.json`.
+fn settings_paths() -> Vec<PathBuf> {
+    let dirs = claude_view_core::discovery::claude_config_dirs().unwrap_or_default();
+    if dirs.is_empty() {
+        return settings_path().into_iter().collect();
+    }
+    dirs.into_iter()
+        .map(|dir| dir.join("settings.json"))
+        .collect()
+}
+
 // ── Handler / matcher-group builders ────────────────────────────────────────
 //
 // Claude Code hooks use a matcher-based nested format:
@@ -351,8 +366,8 @@ fn remove_our_hooks(hooks: &mut serde_json::Map<String, serde_json::Value>) {
 
 // ── Public registration API ─────────────────────────────────────────────────
 
-/// Register all observation hooks in ~/.claude/settings.json and clean up
-/// any stale entries from previous versions.
+/// Register all observation hooks in every configured `settings.json` and
+/// clean up any stale entries from previous versions.
 ///
 /// Invariants enforced:
 /// 1. Only [`HookKind::Observation`] events are ever written (compile-time
@@ -362,12 +377,10 @@ fn remove_our_hooks(hooks: &mut serde_json::Map<String, serde_json::Value>) {
 /// 4. Atomic write with pre-flight JSON validation — never leaves a corrupt
 ///    settings.json on disk.
 /// 5. Idempotent — calling multiple times yields the same result.
+///
+/// The taxonomy invariant is checked once, before any file is touched: a
+/// corrupted taxonomy must not leave some config dirs written and others not.
 pub fn register(port: u16) {
-    let Some(path) = settings_path() else {
-        tracing::error!("could not determine home directory");
-        return;
-    };
-
     // ── Layer 2a: runtime invariant on the taxonomy itself ──
     // If ALL_HOOKS is mis-edited so the same name is both observation and
     // replacement, bail out loudly rather than corrupt settings.json.
@@ -383,9 +396,25 @@ pub fn register(port: u16) {
         }
     }
 
+    let paths = settings_paths();
+    if paths.is_empty() {
+        tracing::error!("could not determine home directory");
+        return;
+    }
+
+    for path in paths {
+        register_at(&path, port);
+    }
+}
+
+/// Register the observation hooks in one specific `settings.json`.
+///
+/// A failure here is logged and skipped so one unwritable config dir cannot
+/// stop the others from being registered.
+fn register_at(path: &Path, port: u16) {
     // Read existing or create minimal settings
     let mut settings: serde_json::Value = if path.exists() {
-        match std::fs::read_to_string(&path) {
+        match std::fs::read_to_string(path) {
             Ok(s) => serde_json::from_str(&s).unwrap_or_else(|e| {
                 tracing::warn!(error = %e, path = %path.display(), "settings.json invalid JSON — resetting to empty");
                 serde_json::json!({})
@@ -474,28 +503,44 @@ pub fn register(port: u16) {
     // Atomic write (temp file + rename)
     let tmp_path = path.with_extension("json.tmp");
     if std::fs::write(&tmp_path, &content).is_ok() {
-        if let Err(e) = std::fs::rename(&tmp_path, &path) {
-            tracing::error!(error = %e, "failed to rename settings.json");
+        if let Err(e) = std::fs::rename(&tmp_path, path) {
+            tracing::error!(error = %e, path = %path.display(), "failed to rename settings.json");
             return;
         }
-        tracing::info!(count = obs.len(), port, "Registered Live Monitor hooks");
+        tracing::info!(
+            count = obs.len(),
+            port,
+            path = %path.display(),
+            "Registered Live Monitor hooks"
+        );
     } else {
         tracing::warn!("failed to write hooks to {:?}", path);
     }
 }
 
-/// Remove Live Monitor hooks from ~/.claude/settings.json.
+/// Remove Live Monitor hooks from every configured `settings.json`.
 /// Called on graceful server shutdown and by the `cleanup` subcommand.
 /// Returns a list of what was cleaned up for user feedback.
 pub fn cleanup(_port: u16) -> Vec<String> {
-    let mut removed = Vec::new();
-    let Some(path) = settings_path() else {
+    let paths = settings_paths();
+    if paths.is_empty() {
         tracing::error!("could not determine home directory");
-        return removed;
-    };
+        return Vec::new();
+    }
+
+    let mut removed = Vec::new();
+    for path in paths {
+        removed.extend(cleanup_at(&path));
+    }
+    removed
+}
+
+/// Remove Live Monitor hooks from one specific `settings.json`.
+fn cleanup_at(path: &Path) -> Vec<String> {
+    let mut removed = Vec::new();
 
     if path.exists() {
-        let content = match std::fs::read_to_string(&path) {
+        let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(_) => return removed,
         };
@@ -528,11 +573,11 @@ pub fn cleanup(_port: u16) -> Vec<String> {
                 return removed;
             };
             if std::fs::write(&tmp_path, &serialized).is_ok() {
-                if let Err(e) = std::fs::rename(&tmp_path, &path) {
-                    tracing::error!(error = %e, "failed to rename settings.json");
+                if let Err(e) = std::fs::rename(&tmp_path, path) {
+                    tracing::error!(error = %e, path = %path.display(), "failed to rename settings.json");
                 }
-                removed.push("Removed hooks from ~/.claude/settings.json".to_string());
-                tracing::info!("Cleaned up Live Monitor hooks");
+                removed.push(format!("Removed hooks from {}", display_home(path)));
+                tracing::info!(path = %path.display(), "Cleaned up Live Monitor hooks");
             }
         }
     }
@@ -541,12 +586,32 @@ pub fn cleanup(_port: u16) -> Vec<String> {
     let tmp_path = path.with_extension("json.tmp");
     if tmp_path.exists() {
         match std::fs::remove_file(&tmp_path) {
-            Ok(()) => removed.push("Removed ~/.claude/settings.json.tmp".to_string()),
-            Err(e) => removed.push(format!("Failed to remove settings.json.tmp: {}", e)),
+            Ok(()) => removed.push(format!("Removed {}", display_home(&tmp_path))),
+            Err(e) => removed.push(format!(
+                "Failed to remove {}: {}",
+                display_home(&tmp_path),
+                e
+            )),
         }
     }
 
     removed
+}
+
+/// Render a path with the home directory collapsed to `~`, for user-facing
+/// cleanup messages that now name more than one config dir.
+fn display_home(path: &Path) -> String {
+    let raw = path.display().to_string();
+    match dirs::home_dir() {
+        Some(home) => {
+            let home = home.display().to_string();
+            match raw.strip_prefix(&home) {
+                Some(rest) => format!("~{rest}"),
+                None => raw,
+            }
+        }
+        None => raw,
+    }
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────

@@ -16,7 +16,7 @@ use tracing::{error, info, warn};
 
 use claude_view_core::pricing::TokenUsage;
 
-use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+use claude_view_db::indexer_parallel::{build_index_hints_multi, scan_and_index_all_dirs};
 use claude_view_db::indexer_v2::{build_delta_from_file, DeltaSource, StatsDelta};
 
 use crate::live::mutation::types::{LifecycleEvent, SessionMutation};
@@ -24,7 +24,7 @@ use crate::live::process::count_claude_processes;
 use crate::live::state::{
     append_capped_hook_event, HookEvent, SessionEvent, SessionStatus, MAX_HOOK_EVENTS_PER_SESSION,
 };
-use crate::live::watcher::{initial_scan, start_watcher, FileEvent};
+use crate::live::watcher::{initial_scan_all, start_watcher, FileEvent};
 
 use super::accumulator::{
     apply_jsonl_metadata, build_metadata_from_accumulator, SessionAccumulator,
@@ -68,18 +68,16 @@ impl LiveSessionManager {
             // sessions lose ownership after server restart.
             manager.reconcile_tmux_ownership().await;
 
-            // 2. Initial JSONL scan
-            let projects_dir = match dirs::home_dir() {
-                Some(home) => home.join(".claude").join("projects"),
-                None => {
-                    warn!("Could not determine home directory; skipping initial scan");
-                    return;
-                }
-            };
+            // 2. Initial JSONL scan across every configured projects dir
+            let projects_dirs = claude_view_core::discovery::claude_projects_dirs_or_empty();
+            if projects_dirs.is_empty() {
+                warn!("Could not determine home directory; skipping initial scan");
+                return;
+            }
 
             let initial_paths = {
-                let dir = projects_dir.clone();
-                tokio::task::spawn_blocking(move || initial_scan(&dir))
+                let dirs = projects_dirs.clone();
+                tokio::task::spawn_blocking(move || initial_scan_all(&dirs))
                     .await
                     .unwrap_or_default()
             };
@@ -120,8 +118,8 @@ impl LiveSessionManager {
                         "Detected dropped watcher events -- triggering catch-up scan"
                     );
                     let catchup_paths = {
-                        let dir = projects_dir.clone();
-                        tokio::task::spawn_blocking(move || initial_scan(&dir))
+                        let dirs = projects_dirs.clone();
+                        tokio::task::spawn_blocking(move || initial_scan_all(&dirs))
                             .await
                             .unwrap_or_default()
                     };
@@ -213,15 +211,16 @@ impl LiveSessionManager {
             return;
         };
         let claude_dir = home.join(".claude");
-        let hints = build_index_hints(&claude_dir);
+        let claude_dirs = claude_view_core::discovery::expand_config_dirs(&claude_dir);
+        let hints = build_index_hints_multi(&claude_dirs);
         let registry_for_rescan = self
             .registry
             .read()
             .unwrap()
             .as_ref()
             .map(|r| Arc::new(r.clone()));
-        let (indexed, _) = scan_and_index_all(
-            &claude_dir,
+        let (indexed, _) = scan_and_index_all_dirs(
+            &claude_dirs,
             &self.db,
             &hints,
             registry_for_rescan,
@@ -236,7 +235,10 @@ impl LiveSessionManager {
                 indexed,
                 "Reconciliation scan complete -- resyncing live state"
             );
-            let recent_paths = initial_scan(&claude_dir);
+            // NOTE: this previously passed `claude_dir` (`~/.claude`) where a
+            // *projects* dir is expected, so the resync always found nothing.
+            let recent_paths =
+                initial_scan_all(&claude_view_core::discovery::claude_projects_dirs_or_empty());
             for path in &recent_paths {
                 self.process_jsonl_update(path).await;
             }

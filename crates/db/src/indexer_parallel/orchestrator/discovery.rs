@@ -1,5 +1,6 @@
 // crates/db/src/indexer_parallel/orchestrator/discovery.rs
-// Filesystem walk to collect all .jsonl session files under ~/.claude/projects/.
+// Filesystem walk to collect all .jsonl session files under the configured
+// Claude projects directories.
 
 use std::path::{Path, PathBuf};
 
@@ -40,6 +41,38 @@ pub(crate) fn discover_jsonl_files(
                 .to_string_lossy()
                 .to_string();
             files.push((file_path, project_encoded.clone(), session_id));
+        }
+    }
+
+    Ok(files)
+}
+
+/// Run [`discover_jsonl_files`] over several projects directories and
+/// concatenate the results.
+///
+/// A root that cannot be read is logged and skipped rather than failing the
+/// whole walk, so one unreadable config dir does not block indexing the rest.
+/// Session filenames are UUIDs, so files from different roots cannot collide
+/// on session id.
+#[tracing::instrument(skip_all)]
+pub(crate) fn discover_jsonl_files_multi(
+    projects_dirs: &[PathBuf],
+) -> Result<Vec<(PathBuf, String, String)>, String> {
+    let mut files: Vec<(PathBuf, String, String)> = Vec::new();
+
+    for projects_dir in projects_dirs {
+        if !projects_dir.exists() {
+            continue;
+        }
+        match discover_jsonl_files(projects_dir) {
+            Ok(found) => files.extend(found),
+            Err(e) => {
+                tracing::warn!(
+                    projects_dir = %projects_dir.display(),
+                    error = %e,
+                    "Skipping unreadable projects dir during discovery"
+                );
+            }
         }
     }
 

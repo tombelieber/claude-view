@@ -27,6 +27,8 @@ async fn setup_session_with_git_root(db: &Database) {
     let now = Utc::now().timestamp();
     let s = SessionInfo {
         git_root: Some(GIT_ROOT.to_string()),
+        config_dir: String::new(),
+        profile: String::new(),
         git_branch: Some("main".to_string()),
         modified_at: now - 100,
         files_edited_count: 3,
@@ -258,11 +260,15 @@ async fn worktree_consolidation_git_root_matches_all() {
     // Two different project_ids (worktrees) sharing the same git_root
     let s1 = SessionInfo {
         git_root: Some(shared_git_root.to_string()),
+        config_dir: String::new(),
+        profile: String::new(),
         modified_at: now - 100,
         ..make_session("s-wt-1", "-Users-test-monorepo", now - 100)
     };
     let s2 = SessionInfo {
         git_root: Some(shared_git_root.to_string()),
+        config_dir: String::new(),
+        profile: String::new(),
         modified_at: now - 200,
         ..make_session("s-wt-2", "-Users-test-monorepo-worktree-feat", now - 200)
     };
@@ -307,6 +313,8 @@ async fn session_without_git_root_still_matches_by_project_id() {
     // Session with NO git_root (the ~2% case)
     let s = SessionInfo {
         git_root: None,
+        config_dir: String::new(),
+        profile: String::new(),
         modified_at: now - 100,
         ..make_session("s-no-root", "-Users-test-legacy", now - 100)
     };

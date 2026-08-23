@@ -37,7 +37,9 @@ fn pid_file_matches_session(file_content: &str, expected_session_id: &str) -> bo
 /// if the file is missing (session ended cleanly), unreadable, or has a different
 /// `sessionId` (PID was recycled for a different Claude session).
 fn is_pid_still_claude(pid: u32, expected_session_id: &str) -> bool {
-    let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() else {
+    // The file lives under whichever config dir spawned the session, so look
+    // across all of them rather than only the primary.
+    let Some(sessions_dir) = claude_view_core::session_files::sessions_dir_for_pid(pid) else {
         return false;
     };
     let path = sessions_dir.join(format!("{pid}.json"));
@@ -86,7 +88,9 @@ impl LiveSessionManager {
 
         // Clean up crashed session files (PID dead but file left behind)
         for crashed_session in &crashed {
-            if let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() {
+            if let Some(sessions_dir) =
+                claude_view_core::session_files::sessions_dir_for_pid(crashed_session.pid)
+            {
                 let stale_path = sessions_dir.join(format!("{}.json", crashed_session.pid));
                 if stale_path.exists() {
                     info!(

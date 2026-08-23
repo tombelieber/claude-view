@@ -418,4 +418,107 @@ CREATE INDEX IF NOT EXISTS idx_session_stats_project_first_message ON session_st
 DROP TABLE IF EXISTS sessions;
 COMMIT;
 PRAGMA foreign_keys=ON;"#,
+    // Multi-config-dir support: record which Claude config directory each
+    // session came from, so sessions written by a launcher that sets
+    // CLAUDE_CONFIG_DIR stay attributable instead of blending together.
+    //
+    // Empty string means "unknown / not derivable", which is what every row
+    // gets when the path does not match Claude Code's
+    // `{config_dir}/projects/{project}/{session}.jsonl` layout.
+    r#"ALTER TABLE session_stats ADD COLUMN config_dir TEXT NOT NULL DEFAULT '';"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_stats_config_dir ON session_stats(config_dir);"#,
+    // Best-effort backfill so existing databases do not need a full reindex.
+    // Mirrors `claude_view_core::discovery::config_dir_from_session_path`,
+    // which is authoritative on the write path and will correct any row this
+    // misses on its next index. SQLite has no reverse-instr, so this takes
+    // the FIRST `/projects/` in the path; a config dir nested under another
+    // directory literally named `projects` resolves on reindex instead.
+    r#"
+UPDATE session_stats
+SET config_dir = substr(file_path, 1, instr(file_path, '/projects/') - 1)
+WHERE config_dir = ''
+  AND file_path LIKE '%/projects/%';
+"#,
+    // `valid_sessions` enumerates its columns explicitly, so ADD COLUMN on
+    // `session_stats` does not reach the view. Rebuild it so readers that go
+    // through `FROM valid_sessions s` can select config_dir. Identical to the
+    // migration 90 definition plus the new column.
+    r#"BEGIN;
+DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS
+  SELECT
+    ss.session_id AS id,
+    ss.project_id,
+    ss.project_display_name,
+    ss.project_path,
+    ss.file_path,
+    ss.preview,
+    ss.summary,
+    ss.message_count,
+    ss.last_message_at,
+    ss.first_message_at,
+    ss.git_branch,
+    ss.is_sidechain,
+    ss.size_bytes,
+    ss.indexed_at,
+    ss.last_message,
+    ss.files_touched,
+    ss.skills_used,
+    ss.tool_counts_edit,
+    ss.tool_counts_read,
+    ss.tool_counts_bash,
+    ss.tool_counts_write,
+    ss.turn_count,
+    ss.deep_indexed_at,
+    ss.parse_version,
+    ss.file_size_at_index,
+    ss.file_mtime_at_index,
+    ss.user_prompt_count,
+    ss.api_call_count,
+    ss.tool_call_count,
+    ss.files_read,
+    ss.files_edited,
+    ss.files_read_count,
+    ss.files_edited_count,
+    ss.reedited_files_count,
+    ss.duration_seconds,
+    ss.commit_count,
+    ss.total_input_tokens,
+    ss.total_output_tokens,
+    ss.cache_read_tokens,
+    ss.cache_creation_tokens,
+    ss.thinking_block_count,
+    ss.turn_duration_avg_ms,
+    ss.turn_duration_max_ms,
+    ss.turn_duration_total_ms,
+    ss.api_error_count,
+    ss.api_retry_count,
+    ss.compaction_count,
+    ss.hook_blocked_count,
+    ss.agent_spawn_count,
+    ss.bash_progress_count,
+    ss.hook_progress_count,
+    ss.mcp_progress_count,
+    ss.summary_text,
+    ss.lines_added,
+    ss.lines_removed,
+    ss.loc_source,
+    ss.ai_lines_added,
+    ss.ai_lines_removed,
+    ss.work_type,
+    ss.primary_model,
+    ss.total_task_time_seconds,
+    ss.longest_task_seconds,
+    ss.longest_task_preview,
+    ss.total_cost_usd,
+    ss.slug,
+    ss.entrypoint,
+    ss.git_root,
+    ss.session_cwd,
+    ss.parent_session_id,
+    ss.config_dir
+  FROM session_stats ss
+  LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
+  WHERE ss.is_sidechain = 0 AND sf.archived_at IS NULL;
+COMMIT;"#,
 ];

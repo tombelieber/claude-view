@@ -201,6 +201,8 @@ pub(crate) mod test_helpers {
             project_path: "/test/project".to_string(),
             display_name: "project".to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: format!("/tmp/{}.jsonl", id),
             modified_at: 1700000000,
             size_bytes: 1024,

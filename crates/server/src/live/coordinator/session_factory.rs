@@ -20,13 +20,8 @@ pub fn create_session_from_start(
     // Resolve JSONL path eagerly when cwd is available.
     let (project, file_path) = if let Some(ref cwd) = cwd {
         let proj = claude_view_core::discovery::encode_project_name(cwd);
-        let fp = claude_view_core::discovery::claude_projects_dir()
-            .map(|d| {
-                d.join(&proj)
-                    .join(format!("{session_id}.jsonl"))
-                    .to_string_lossy()
-                    .to_string()
-            })
+        let fp = claude_view_core::discovery::session_file_path(&proj, session_id)
+            .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_default();
         (proj, fp)
     } else {
@@ -69,14 +64,12 @@ pub fn create_session_from_birth(
         claude_view_core::discovery::resolve_project_path_with_cwd(&project, Some(&session.cwd));
 
     // Resolve JSONL path eagerly so the WS handler can watch it immediately.
-    // Path is deterministic: ~/.claude/projects/{project}/{session_id}.jsonl
-    let file_path = claude_view_core::discovery::claude_projects_dir()
-        .map(|d| {
-            d.join(&project)
-                .join(format!("{}.jsonl", session.session_id))
-                .to_string_lossy()
-                .to_string()
-        })
+    // Path is deterministic within a config dir:
+    // {config_dir}/projects/{project}/{session_id}.jsonl — resolved against an
+    // existing file first so sessions started under a non-primary config dir
+    // land on the right root.
+    let file_path = claude_view_core::discovery::session_file_path(&project, &session.session_id)
+        .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
     LiveSession {

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use claude_view_db::indexer_parallel::{build_index_hints, scan_and_index_all};
+use claude_view_db::indexer_parallel::{build_index_hints_multi, scan_and_index_all_dirs};
 use claude_view_db::Database;
 
 use crate::record_sync;
@@ -48,8 +48,18 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
         idx_state.set_status(IndexingStatus::ReadingIndexes);
         let index_start = Instant::now();
 
+        // Every config dir to index. `claude_dir` alone unless it is the real
+        // ~/.claude and the user opted into additional dirs.
+        let claude_dirs = claude_view_core::discovery::expand_config_dirs(&claude_dir);
+        if claude_dirs.len() > 1 {
+            tracing::info!(
+                config_dirs = claude_dirs.len(),
+                "Indexing multiple Claude config dirs"
+            );
+        }
+
         // 1. Build hints from sessions-index.json (no DB writes, sync function)
-        let hints = build_index_hints(&claude_dir);
+        let hints = build_index_hints_multi(&claude_dirs);
         let hint_count = hints.len();
         idx_state.set_sessions_found(hint_count);
         // Count unique projects from hints for the "ready" SSE event
@@ -129,8 +139,8 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
         let state_for_progress = idx_state.clone();
         let state_for_total = idx_state.clone();
         let state_for_finalize = idx_state.clone();
-        match scan_and_index_all(
-            &claude_dir,
+        match scan_and_index_all_dirs(
+            &claude_dirs,
             &idx_db,
             &hints,
             Some(registry_arc.clone()),
@@ -260,10 +270,10 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
                     tokio::time::sleep(sync_interval).await;
 
                     // Lightweight re-scan: picks up any files the watcher missed
-                    let hints = build_index_hints(&claude_dir);
+                    let hints = build_index_hints_multi(&claude_dirs);
                     let rescan_start = Instant::now();
-                    match scan_and_index_all(
-                        &claude_dir,
+                    match scan_and_index_all_dirs(
+                        &claude_dirs,
                         &idx_db,
                         &hints,
                         Some(registry_arc.clone()),

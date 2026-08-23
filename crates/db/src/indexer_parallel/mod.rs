@@ -19,9 +19,9 @@ pub(crate) mod writer;
 // Re-export all public items to preserve the original module API.
 pub use backup::ingest_backup_sessions;
 pub use helpers::extract_commit_skill_invocations;
-pub use orchestrator::scan_and_index_all;
+pub use orchestrator::{scan_and_index_all, scan_and_index_all_dirs};
 pub use parser::parse_bytes;
-pub use pipeline::{build_index_hints, prune_stale_sessions};
+pub use pipeline::{build_index_hints, build_index_hints_multi, prune_stale_sessions};
 pub use types::{
     read_file_fast, CommitSkillInvocation, DeepIndexResult, ExtendedMetadata, FileData, IndexHints,
     ParseDiagnostics, ParseResult, ParsedSession, RawInvocation, COMMIT_SKILL_NAMES,

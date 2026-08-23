@@ -38,6 +38,8 @@ mod tests {
             project_path: "/home/user/test-project".to_string(),
             display_name: "test-project".to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: file_path.to_string(),
             modified_at: 1700000000,
             size_bytes: 2048,

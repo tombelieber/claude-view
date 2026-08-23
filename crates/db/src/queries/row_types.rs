@@ -227,6 +227,9 @@ pub(crate) struct SessionRow {
     pub(crate) file_path: String,
     pub(crate) project_path: String,
     pub(crate) git_root: Option<String>,
+    /// Config dir the session was written by. Read tolerantly, so a query
+    /// that does not select it still maps.
+    pub(crate) config_dir: String,
     pub(crate) project_display_name: String,
     pub(crate) size_bytes: i64,
     pub(crate) last_message: String,
@@ -304,6 +307,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::sqlite::SqliteRow> for SessionRow {
             file_path: row.try_get("file_path")?,
             project_path: row.try_get("project_path")?,
             git_root: row.try_get("git_root").ok().flatten(),
+            config_dir: row.try_get("config_dir").unwrap_or_default(),
             project_display_name: row.try_get("project_display_name")?,
             size_bytes: row.try_get("size_bytes")?,
             last_message: row.try_get("last_message")?,
@@ -410,6 +414,12 @@ impl SessionRow {
             project_path: self.project_path,
             display_name: self.project_display_name.clone(),
             git_root: self.git_root,
+            profile: if self.config_dir.is_empty() {
+                String::new()
+            } else {
+                claude_view_core::discovery::profile_name(std::path::Path::new(&self.config_dir))
+            },
+            config_dir: self.config_dir,
             file_path: self.file_path,
             modified_at: self.last_message_at.unwrap_or(0),
             size_bytes: self.size_bytes as u64,
