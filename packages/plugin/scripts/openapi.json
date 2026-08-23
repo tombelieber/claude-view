@@ -2534,6 +2534,26 @@
         }
       }
     },
+    "/api/profiles": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "operationId": "list_profiles",
+        "responses": {
+          "200": {
+            "description": "Session counts per Claude config dir",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilesResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/projects": {
       "get": {
         "tags": [
@@ -3436,6 +3456,18 @@
             "name": "providers",
             "in": "query",
             "description": "Comma-separated provider ids to include (\"claude-code\" = native CC\nsessions; \"codex\", \"cursor\", … = foreign agents). Absent = all.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "profiles",
+            "in": "query",
+            "description": "Comma-separated Claude config-dir profiles to include (\"default\" =\n~/.claude; \"work\" = ~/.claude-work). Absent = all.",
             "required": false,
             "schema": {
               "type": [
@@ -5695,7 +5727,7 @@
       },
       "ActiveSession": {
         "type": "object",
-        "description": "A parsed session file from ~/.claude/sessions/{pid}.json.\n\nWritten by Claude Code CLI — external data we don't control.\nEvery field uses `#[serde(default)]` so missing fields never\ncause silent deserialization failures.",
+        "description": "A parsed session file from `{config_dir}/sessions/{pid}.json`.\n\nWritten by Claude Code CLI — external data we don't control.\nEvery field uses `#[serde(default)]` so missing fields never\ncause silent deserialization failures.",
         "properties": {
           "cwd": {
             "type": "string",
@@ -11809,6 +11841,44 @@
           }
         }
       },
+      "ProfileSummary": {
+        "type": "object",
+        "description": "One Claude config dir with at least one indexed session.",
+        "required": [
+          "id",
+          "configDir",
+          "count"
+        ],
+        "properties": {
+          "configDir": {
+            "type": "string",
+            "description": "Absolute config dir path, for a tooltip."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string",
+            "description": "Short name used in the `profiles` filter param: `default` for\n`~/.claude`, otherwise the suffix (`~/.claude-work` -> `work`)."
+          }
+        }
+      },
+      "ProfilesResponse": {
+        "type": "object",
+        "description": "Response for GET /api/profiles.",
+        "required": [
+          "profiles"
+        ],
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileSummary"
+            }
+          }
+        }
+      },
       "ProgressComparison": {
         "type": "object",
         "description": "Progress comparison between first and last month.",
@@ -13022,6 +13092,10 @@
             "format": "int32",
             "minimum": 0
           },
+          "configDir": {
+            "type": "string",
+            "description": "Claude config dir this session was written by, e.g. `/home/u/.claude`\nor `/home/u/.claude-work`. Empty for sessions indexed before the\ncolumn existed, or whose path never matched Claude Code's layout."
+          },
           "deepIndexed": {
             "type": "boolean"
           },
@@ -13160,6 +13234,10 @@
               "string",
               "null"
             ]
+          },
+          "profile": {
+            "type": "string",
+            "description": "Short name for `config_dir`: `default` for `~/.claude`, otherwise the\nsuffix (`~/.claude-work` -> `work`). Empty when `config_dir` is."
           },
           "project": {
             "type": "string"

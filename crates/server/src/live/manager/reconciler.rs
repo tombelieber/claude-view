@@ -126,7 +126,9 @@ impl LiveSessionManager {
         for session in dir_sessions {
             if !crate::live::process::is_pid_alive(session.pid) {
                 // PID dead but file still exists → crashed without cleanup
-                if let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() {
+                if let Some(sessions_dir) =
+                    claude_view_core::session_files::sessions_dir_for_pid(session.pid)
+                {
                     let stale_path = sessions_dir.join(format!("{}.json", session.pid));
                     if stale_path.exists() {
                         tracing::debug!(
