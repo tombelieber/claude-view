@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 20 models + 3 aliases = 23 entries
-        assert_eq!(pricing.len(), 23);
+        // 21 models + 3 aliases = 24 entries
+        assert_eq!(pricing.len(), 24);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -112,6 +112,7 @@ mod tests {
     /// list is the CI gate: if a dev forgets the pricing update, the test below
     /// fails with a pointer to the fix.
     const ACTIVE_MODELS: &[&str] = &[
+        "claude-fable-5-1",
         "claude-fable-5",
         "claude-opus-5",
         "claude-opus-4-8",
@@ -162,6 +163,25 @@ mod tests {
             opus48.cache_creation_cost_per_token_1hr,
             opus47.cache_creation_cost_per_token_1hr
         );
+    }
+
+    #[test]
+    fn test_fable_5_1_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-09-02:
+        // Fable 5.1 is $10 in / $50 out / $12.50 5m-cache / $20 1h-cache — same as
+        // Fable 5 — EXCEPT cache reads: $0.25 (0.025x base input, a documented
+        // exception that only Fable 5.1 and Mythos 5.1 get; the page footnote says
+        // "priced at 0.025x the base input price"). The family fallback would
+        // inherit Fable 5's $1 read and over-report cache-heavy sessions by 4x.
+        let pricing = load_pricing();
+        let f = pricing
+            .get("claude-fable-5-1")
+            .expect("Fable 5.1 must be in the pricing table");
+        assert!((f.input_cost_per_token - 10e-6).abs() < 1e-15);
+        assert!((f.output_cost_per_token - 50e-6).abs() < 1e-15);
+        assert!((f.cache_creation_cost_per_token - 12.5e-6).abs() < 1e-15);
+        assert!((f.cache_read_cost_per_token - 0.25e-6).abs() < 1e-15);
+        assert!((f.cache_creation_cost_per_token_1hr.unwrap() - 20e-6).abs() < 1e-15);
     }
 
     #[test]
