@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 21 models + 3 aliases = 24 entries
-        assert_eq!(pricing.len(), 24);
+        // 22 models + 3 aliases = 25 entries
+        assert_eq!(pricing.len(), 25);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -114,6 +114,7 @@ mod tests {
     const ACTIVE_MODELS: &[&str] = &[
         "claude-fable-5-1",
         "claude-fable-5",
+        "claude-opus-5-5",
         "claude-opus-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
@@ -199,6 +200,25 @@ mod tests {
         assert!((f.cache_creation_cost_per_token - 12.5e-6).abs() < 1e-15);
         assert!((f.cache_read_cost_per_token - 1e-6).abs() < 1e-15);
         assert!((f.cache_creation_cost_per_token_1hr.unwrap() - 20e-6).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_opus_5_5_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-09-23:
+        // Opus 5.5 is $4 in / $20 out / $5 5m-cache / $8 1h-cache — cheaper than
+        // Opus 5 — EXCEPT cache reads: $0.20 (0.05x base input, a documented
+        // exception that only Opus 5.5 gets; the page footnote says "priced at
+        // 0.05x the base input price"). The family fallback would inherit Opus 5's
+        // $0.50 read and over-report cache reads by 2.5x.
+        let pricing = load_pricing();
+        let o = pricing
+            .get("claude-opus-5-5")
+            .expect("Opus 5.5 must be in the pricing table");
+        assert!((o.input_cost_per_token - 4e-6).abs() < 1e-15);
+        assert!((o.output_cost_per_token - 20e-6).abs() < 1e-15);
+        assert!((o.cache_creation_cost_per_token - 5e-6).abs() < 1e-15);
+        assert!((o.cache_read_cost_per_token - 0.2e-6).abs() < 1e-15);
+        assert!((o.cache_creation_cost_per_token_1hr.unwrap() - 8e-6).abs() < 1e-15);
     }
 
     #[test]
