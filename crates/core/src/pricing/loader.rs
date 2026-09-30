@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 20 models + 3 aliases = 23 entries
-        assert_eq!(pricing.len(), 23);
+        // 21 models + 3 aliases = 24 entries
+        assert_eq!(pricing.len(), 24);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -203,6 +203,25 @@ mod tests {
         let f = pricing.get("claude-fable-5").unwrap();
         assert_eq!(m.input_cost_per_token, f.input_cost_per_token);
         assert_eq!(m.output_cost_per_token, f.output_cost_per_token);
+    }
+
+    #[test]
+    fn test_mythos_5_1_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/models/mythos-5-1/overview on
+        // 2026-10-01: Claude Mythos 5.1 (limited availability, Project Glasswing)
+        // shares Claude Fable 5.1's exact specs — $10 in / $50 out / $12.50 5m /
+        // $20 1h / $0.25 read (0.025x cache-read exception, NOT the standard 0.1x).
+        // An exact entry is required: the Family::Mythos fallback would otherwise
+        // inherit Mythos 5's $1 read (4x over-report).
+        let pricing = load_pricing();
+        let m = pricing
+            .get("claude-mythos-5-1")
+            .expect("Mythos 5.1 must be in the pricing table");
+        assert!((m.input_cost_per_token - 10e-6).abs() < 1e-15);
+        assert!((m.output_cost_per_token - 50e-6).abs() < 1e-15);
+        assert!((m.cache_creation_cost_per_token - 12.5e-6).abs() < 1e-15);
+        assert!((m.cache_read_cost_per_token - 0.25e-6).abs() < 1e-15);
+        assert!((m.cache_creation_cost_per_token_1hr.unwrap() - 20e-6).abs() < 1e-15);
     }
 
     #[test]
