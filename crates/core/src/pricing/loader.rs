@@ -101,8 +101,8 @@ mod tests {
     #[test]
     fn test_load_pricing_parses_all_models() {
         let pricing = load_pricing();
-        // 22 models + 3 aliases = 25 entries
-        assert_eq!(pricing.len(), 25);
+        // 23 models + 3 aliases = 26 entries
+        assert_eq!(pricing.len(), 26);
     }
 
     /// Models known to appear in real JSONL sessions right now.
@@ -119,6 +119,7 @@ mod tests {
         "claude-opus-4-8",
         "claude-opus-4-7",
         "claude-opus-4-6",
+        "claude-sonnet-5-5",
         "claude-sonnet-5",
         "claude-sonnet-4-6",
         "claude-sonnet-4-5-20250929",
@@ -249,6 +250,23 @@ mod tests {
         let s = pricing
             .get("claude-sonnet-5")
             .expect("Sonnet 5 must be in the pricing table");
+        assert!((s.input_cost_per_token - 2e-6).abs() < 1e-15);
+        assert!((s.output_cost_per_token - 10e-6).abs() < 1e-15);
+        assert!((s.cache_creation_cost_per_token - 2.5e-6).abs() < 1e-15);
+        assert!((s.cache_read_cost_per_token - 0.2e-6).abs() < 1e-15);
+        assert!((s.cache_creation_cost_per_token_1hr.unwrap() - 4e-6).abs() < 1e-15);
+    }
+
+    #[test]
+    fn test_sonnet_5_5_priced_at_official_rates() {
+        // Verified against platform.claude.com/docs/.../pricing on 2026-10-01:
+        // $2 in / $10 out / $2.50 5m / $4 1h / $0.20 read — identical to Sonnet 5,
+        // standard 0.1x cache-read multiplier (no documented exception, unlike
+        // Opus 5.5 / Fable 5.1 / Mythos 5.1).
+        let pricing = load_pricing();
+        let s = pricing
+            .get("claude-sonnet-5-5")
+            .expect("Sonnet 5.5 must be in the pricing table");
         assert!((s.input_cost_per_token - 2e-6).abs() < 1e-15);
         assert!((s.output_cost_per_token - 10e-6).abs() < 1e-15);
         assert!((s.cache_creation_cost_per_token - 2.5e-6).abs() < 1e-15);
