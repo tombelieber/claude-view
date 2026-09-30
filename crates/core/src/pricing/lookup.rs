@@ -25,6 +25,7 @@ pub fn resolve_model_alias(alias: &str) -> Option<&'static str> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
     Fable,
+    Mythos,
     Opus,
     Sonnet,
     Haiku,
@@ -34,6 +35,7 @@ impl Family {
     fn from_token(token: &str) -> Option<Self> {
         match token {
             "fable" => Some(Family::Fable),
+            "mythos" => Some(Family::Mythos),
             "opus" => Some(Family::Opus),
             "sonnet" => Some(Family::Sonnet),
             "haiku" => Some(Family::Haiku),
@@ -290,6 +292,19 @@ mod tests {
             fable_future.output_cost_per_token,
             fable5.output_cost_per_token
         );
+
+        // Mythos is likewise its own family (limited availability, Project Glasswing).
+        // A future mythos release — or the `claude-mythos-preview` id also named on
+        // the pricing page — must inherit Mythos 5's rate ($10/$50), not "Unavailable".
+        // Before Family::Mythos existed the "mythos" token parsed to no family → None.
+        let mythos_future = lookup_pricing("claude-mythos-6", &pricing)
+            .expect("future mythos release must resolve via family fallback");
+        let mythos5 = pricing.get("claude-mythos-5").unwrap();
+        assert_eq!(
+            mythos_future.input_cost_per_token,
+            mythos5.input_cost_per_token
+        );
+        assert!(lookup_pricing("claude-mythos-preview", &pricing).is_some());
     }
 
     #[test]
@@ -303,6 +318,11 @@ mod tests {
         assert_eq!(
             parse_claude_model("claude-fable-5"),
             Some((Family::Fable, (5, 0)))
+        );
+        // Mythos family (Claude 5, limited availability): distinct from Fable.
+        assert_eq!(
+            parse_claude_model("claude-mythos-5"),
+            Some((Family::Mythos, (5, 0)))
         );
         assert_eq!(
             parse_claude_model("claude-sonnet-4-6"),
