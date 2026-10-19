@@ -1,4 +1,5 @@
 import { useConfig } from '@/hooks/use-config'
+import { telemetryBeforeSend, telemetryDistinctId } from '@/lib/telemetry-contract'
 import { PostHogProvider } from '@posthog/react'
 import posthog from 'posthog-js'
 import { type ReactNode, useEffect, useRef } from 'react'
@@ -8,13 +9,17 @@ function PostHogInitializer({ children }: { children: ReactNode }) {
   const initialized = useRef(false)
 
   useEffect(() => {
-    if (initialized.current || !config.posthogKey) return
+    if (initialized.current || !config.posthogKey || !config.anonymousId) return
     initialized.current = true
 
     posthog.init(config.posthogKey, {
       api_host: 'https://us.i.posthog.com',
-      person_profiles: 'identified_only',
+      person_profiles: 'never',
       persistence: 'localStorage',
+      persistence_name: 'claude_view_oss_v1',
+      ip: false,
+      capture_performance: false,
+      before_send: telemetryBeforeSend(config.version, config.anonymousId),
       // Privacy hardening — the public promise is "no code, prompts, file
       // paths or session content, ever". autocapture, session recording,
       // and pageview/pageleave all carry DOM text or URLs (which embed
@@ -27,7 +32,7 @@ function PostHogInitializer({ children }: { children: ReactNode }) {
       disable_surveys: true,
       opt_out_capturing_by_default: true,
       bootstrap: {
-        distinctID: config.anonymousId ?? undefined,
+        distinctID: telemetryDistinctId(config.anonymousId),
         isIdentifiedID: false,
       },
     })

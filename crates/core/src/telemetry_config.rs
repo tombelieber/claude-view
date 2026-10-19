@@ -2,6 +2,16 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
+/// Namespace the wire identity without changing the persisted UUID or consent.
+/// Never alias it to another OSS product or to an authenticated account.
+pub fn telemetry_distinct_id(anonymous_id: &str) -> String {
+    if anonymous_id.starts_with("claude_view:") {
+        anonymous_id.to_string()
+    } else {
+        format!("claude_view:{anonymous_id}")
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ts_rs::TS, utoipa::ToSchema)]
 #[cfg_attr(feature = "codegen", ts(export))]
 #[serde(rename_all = "lowercase")]

@@ -60,7 +60,9 @@ pub async fn config(State(state): State<Arc<AppState>>) -> Json<ConfigResponse> 
             (
                 status,
                 Some(client.api_key.clone()),
-                Some(config.anonymous_id),
+                Some(claude_view_core::telemetry_config::telemetry_distinct_id(
+                    &config.anonymous_id,
+                )),
             )
         }
         None => (TelemetryStatus::Disabled, None, None),

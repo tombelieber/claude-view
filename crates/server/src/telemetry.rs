@@ -19,17 +19,31 @@ const POSTHOG_CAPTURE_URL: &str = "https://us.i.posthog.com/capture/";
 /// rollout / adoption by release without depending on a runtime config.
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Inject the two server-side super-properties — `source: "server"` and
-/// `app_version: <CARGO_PKG_VERSION>` — onto every captured payload.
-/// Non-object inputs pass through unchanged (matches existing track()
-/// behavior for malformed callers).
-fn enrich_properties(mut properties: Value) -> Value {
+/// Stamp immutable product metadata on every event, including malformed input.
+fn enrich_properties(properties: Value) -> Value {
+    let mut properties = if properties.is_object() {
+        properties
+    } else {
+        serde_json::json!({})
+    };
     if let Some(obj) = properties.as_object_mut() {
         obj.insert("source".to_string(), Value::String("server".to_string()));
         obj.insert(
             "app_version".to_string(),
             Value::String(APP_VERSION.to_string()),
         );
+        obj.insert("product".to_string(), Value::String("claude_view".into()));
+        obj.insert("schema_version".to_string(), Value::from(1));
+        obj.insert("deployment".to_string(), Value::String("local_app".into()));
+        obj.insert(
+            "environment".to_string(),
+            Value::String("production".into()),
+        );
+        obj.insert("$process_person_profile".to_string(), Value::Bool(false));
+        obj.insert("$geoip_disable".to_string(), Value::Bool(true));
+        obj.insert("$ip".to_string(), Value::Null);
+        obj.remove("$set");
+        obj.remove("$set_once");
     }
     properties
 }
@@ -60,7 +74,7 @@ impl TelemetryClient {
         Self {
             http: reqwest::Client::new(),
             api_key: api_key.to_string(),
-            anonymous_id: anonymous_id.to_string(),
+            anonymous_id: claude_view_core::telemetry_config::telemetry_distinct_id(anonymous_id),
             capture_url: Arc::from(capture_url),
             enabled: Arc::new(AtomicBool::new(false)),
         }
@@ -76,7 +90,10 @@ impl TelemetryClient {
         let capture_url = self.capture_url.clone();
         let event = event.to_string();
         tokio::spawn(async move {
-            let props = enrich_properties(properties);
+            let mut props = enrich_properties(properties);
+            if anonymous_id.starts_with("claude_view:qualification:") {
+                props["environment"] = Value::String("qualification".into());
+            }
             let payload = serde_json::json!({
                 "api_key": api_key,
                 "event": event,
@@ -121,7 +138,7 @@ mod tests {
     fn new_creates_client_with_correct_fields() {
         let client = TelemetryClient::new("phc_key123", "uuid-456");
         assert_eq!(client.api_key, "phc_key123");
-        assert_eq!(client.anonymous_id, "uuid-456");
+        assert_eq!(client.anonymous_id, "claude_view:uuid-456");
         assert!(!client.is_enabled());
     }
 
@@ -154,11 +171,21 @@ mod tests {
     }
 
     #[test]
-    fn enrich_properties_passes_non_object_through_unchanged() {
-        assert!(enrich_properties(serde_json::json!("str")).is_string());
-        assert!(enrich_properties(serde_json::json!(42)).is_number());
-        assert!(enrich_properties(serde_json::json!(null)).is_null());
-        assert!(enrich_properties(serde_json::json!([1, 2])).is_array());
+    fn enrich_properties_always_carries_product_isolation() {
+        for input in [serde_json::json!("str"), serde_json::json!(42), Value::Null] {
+            let props = enrich_properties(input);
+            assert_eq!(props["product"], "claude_view");
+            assert_eq!(props["schema_version"], 1);
+            assert_eq!(props["$process_person_profile"], false);
+        }
+        let props = enrich_properties(serde_json::json!({
+            "product": "app_canvas", "schema_version": 999,
+            "$set": {"email": "test@example.com"}, "$set_once": {"x": 1}
+        }));
+        assert_eq!(props["product"], "claude_view");
+        assert_eq!(props["schema_version"], 1);
+        assert!(props.get("$set").is_none());
+        assert!(props.get("$set_once").is_none());
     }
 
     #[test]

@@ -403,7 +403,7 @@ function jsonResponse(
 async function trackEvent(
   env: Env,
   event: string,
-  userId: string,
+  _userId: string,
   props: Record<string, unknown>,
 ): Promise<void> {
   if (!env.POSTHOG_API_KEY) return
@@ -413,8 +413,9 @@ async function trackEvent(
     body: JSON.stringify({
       api_key: env.POSTHOG_API_KEY,
       event,
-      distinct_id: userId,
-      properties: { ...props, $lib: 'cloudflare-worker' },
+      // Service counts only: never send an authenticated account ID.
+      distinct_id: 'claude_view:share_service',
+      properties: shareTelemetryProperties(props),
     }),
   })
 }
@@ -431,10 +432,25 @@ async function trackEventAnon(
     body: JSON.stringify({
       api_key: env.POSTHOG_API_KEY,
       event,
-      distinct_id: 'anonymous',
-      properties: { ...props, $lib: 'cloudflare-worker' },
+      distinct_id: 'claude_view:share_service',
+      properties: shareTelemetryProperties(props),
     }),
   })
+}
+
+function shareTelemetryProperties(props: Record<string, unknown>) {
+  return {
+    ...props,
+    product: 'claude_view',
+    schema_version: 1,
+    source: 'worker',
+    deployment: 'share_worker',
+    environment: 'production',
+    $lib: 'cloudflare-worker',
+    $process_person_profile: false,
+    $geoip_disable: true,
+    $ip: null,
+  }
 }
 
 async function sha256hex(input: string): Promise<string> {

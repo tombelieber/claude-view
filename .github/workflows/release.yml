@@ -70,6 +70,16 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@4be9e76fd7c4901c61fb841f559994984270fce7  # stable
 
+      - name: Require the shared OSS ingestion key
+        shell: bash
+        env:
+          POSTHOG_OSS_API_KEY: ${{ secrets.POSTHOG_OSS_API_KEY }}
+        run: |
+          if [[ "$POSTHOG_OSS_API_KEY" != phc_* ]]; then
+            echo "::error::Missing shared OSS ingestion key; refusing an untracked official release"
+            exit 1
+          fi
+
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
@@ -132,7 +142,8 @@ jobs:
           RELAY_URL: wss://claude-view-relay.fly.dev/ws
           SHARE_WORKER_URL: https://api-share.claudeview.ai
           SHARE_VIEWER_URL: https://share.claudeview.ai
-          POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
+          # Shared OSS destination; retain the old secret for legacy rollback.
+          POSTHOG_API_KEY: ${{ secrets.POSTHOG_OSS_API_KEY }}
 
       - name: Stage sidecar
         run: |

@@ -39,6 +39,51 @@ fn post_event(body: &str) -> Request<Body> {
 }
 
 #[tokio::test]
+async fn config_namespaces_legacy_id_without_rewriting_consent_or_dedup() {
+    use claude_view_core::telemetry_config::{
+        read_telemetry_config, write_telemetry_config, TelemetryConfig,
+    };
+    let dir = tempfile::TempDir::new().unwrap();
+    let config_path = dir.path().join("telemetry.json");
+    let cfg = TelemetryConfig {
+        anonymous_id: "legacy-install".into(),
+        enabled: Some(false),
+        install_reported: true,
+        first_feature_used: Some("search".into()),
+        ..TelemetryConfig::new_undecided()
+    };
+    write_telemetry_config(&config_path, &cfg).unwrap();
+    let original = std::fs::read(&config_path).unwrap();
+    let client = claude_view_server::telemetry::TelemetryClient::with_capture_url(
+        "phc_test",
+        &cfg.anonymous_id,
+        "http://127.0.0.1:1/capture/",
+    );
+    let db = Database::new_in_memory().await.unwrap();
+    let app = claude_view_server::create_app_with_telemetry_client(db, config_path.clone(), client);
+    let res = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/config")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let bytes = axum::body::to_bytes(res.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["anonymousId"], "claude_view:legacy-install");
+    assert_eq!(body["telemetry"], "disabled");
+    assert_eq!(std::fs::read(&config_path).unwrap(), original);
+    assert_eq!(
+        read_telemetry_config(&config_path).anonymous_id,
+        cfg.anonymous_id
+    );
+}
+
+#[tokio::test]
 async fn feature_opened_is_forwarded_to_posthog() {
     let mock = MockServer::start().await;
     Mock::given(method("POST"))
@@ -167,6 +212,12 @@ async fn captured_event_includes_app_version_and_source_properties() {
     assert!(!captured.is_empty(), "feature_opened payload not captured");
 
     let props = &captured[0]["properties"];
+    assert_eq!(captured[0]["distinct_id"], "claude_view:anon-version-check");
+    assert_eq!(props["product"], "claude_view");
+    assert_eq!(props["schema_version"], 1);
+    assert_eq!(props["environment"], "production");
+    assert_eq!(props["$process_person_profile"], false);
+    assert_eq!(props["$geoip_disable"], true);
     assert_eq!(
         props["source"], "server",
         "server-emitted events must stamp source=server"
