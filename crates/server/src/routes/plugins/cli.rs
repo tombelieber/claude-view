@@ -35,6 +35,7 @@ pub(crate) struct CliInstalledPlugin {
 pub(crate) struct CliAvailablePlugin {
     pub plugin_id: String,
     pub name: String,
+    #[serde(default)]
     pub description: String,
     pub marketplace_name: String,
     #[serde(default)]
@@ -224,4 +225,18 @@ pub(crate) async fn fetch_plugin_cli_data() -> Result<CliAvailableResponse, Stri
         .map_err(|e| e.to_string())?;
     serde_json::from_str::<CliAvailableResponse>(&json)
         .map_err(|e| format!("Failed to parse plugin data: {e}"))
+}
+
+#[cfg(test)]
+mod schema_regressions {
+    use super::*;
+    #[test]
+    fn available_plugin_can_omit_optional_description() {
+        let plugin: CliAvailablePlugin = serde_json::from_value(serde_json::json!({
+            "pluginId":"example@market", "name":"example", "marketplaceName":"market"
+        }))
+        .unwrap();
+        assert_eq!(plugin.name, "example");
+        assert!(plugin.description.is_empty());
+    }
 }

@@ -621,8 +621,8 @@ pub fn create_app_full(
     let legacy_catalog = {
         let catalog = claude_view_core::session_catalog::SessionCatalog::new();
         let home = dirs::home_dir().expect("home dir exists");
-        let _ = catalog.rebuild_from_filesystem(
-            &home.join(".claude").join("projects"),
+        let _ = catalog.rebuild_from_filesystem_multi(
+            &claude_view_core::discovery::claude_projects_dirs_or_empty(),
             &home.join(".claude-backup").join("machines"),
         );
         tracing::info!(
@@ -754,14 +754,14 @@ pub fn create_app_full(
         let mut shutdown = state.shutdown.clone();
         tokio::spawn(async move {
             let home = dirs::home_dir().expect("home dir exists");
-            let live_root = home.join(".claude").join("projects");
+            let live_roots = claude_view_core::discovery::claude_projects_dirs_or_empty();
             let backup_root = home.join(".claude-backup").join("machines");
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
             interval.tick().await; // skip immediate tick (startup already populated)
             loop {
                 tokio::select! {
                     _ = interval.tick() => {
-                        let _ = catalog.rebuild_from_filesystem(&live_root, &backup_root);
+                        let _ = catalog.rebuild_from_filesystem_multi(&live_roots, &backup_root);
                     }
                     _ = shutdown.changed() => {
                         tracing::debug!("Session catalog reconcile loop shutting down");

@@ -84,6 +84,7 @@ export function handleAcquiring(store: ChatPanelStore, event: RawEvent): Transit
     event.type === 'ACQUIRE_OK' ||
     event.type === 'ACQUIRE_FAILED' ||
     event.type === 'SESSION_INIT' ||
+    event.type === 'CONTROL_READY' ||
     event.type === 'INIT_TIMEOUT'
   ) {
     const leafEvent = event.type === 'SESSION_INIT' ? { type: 'SESSION_INIT' as const } : event

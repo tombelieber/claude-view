@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use claude_view_core::{claude_projects_dir, AnalyticsSessionBreakdown};
+use claude_view_core::{claude_projects_dirs, AnalyticsSessionBreakdown};
 
 use crate::error::ApiResult;
 use crate::state::AppState;
@@ -52,17 +52,22 @@ pub(super) async fn fetch_session_breakdown(
     ))
 }
 
-/// Calculate total size of JSONL session files in ~/.claude/projects/.
+/// Calculate total size of JSONL session files across every configured
+/// projects directory.
 pub(super) async fn calculate_jsonl_size() -> u64 {
-    let projects_dir = match claude_projects_dir() {
-        Ok(dir) => dir,
+    let projects_dirs = match claude_projects_dirs() {
+        Ok(dirs) => dirs,
         Err(e) => {
             tracing::warn!(error = %e, "Failed to locate Claude projects directory for JSONL size calculation");
             return 0;
         }
     };
 
-    calculate_directory_jsonl_size(&projects_dir).await
+    let mut total = 0u64;
+    for projects_dir in &projects_dirs {
+        total += calculate_directory_jsonl_size(projects_dir).await;
+    }
+    total
 }
 
 /// Recursively calculate the total size of .jsonl files in a directory.

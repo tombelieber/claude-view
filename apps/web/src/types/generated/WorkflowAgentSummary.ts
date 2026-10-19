@@ -15,5 +15,7 @@ export type WorkflowAgentSummary = {
   durationMs: number | null
   promptPreview: string | null
   resultPreview: string | null
+  lastToolName: string | null
+  lastToolSummary: string | null
   eventsAvailable: boolean
 }

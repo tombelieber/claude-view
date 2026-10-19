@@ -15,6 +15,14 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 ts-rs = { workspace = true }
 tokio-util = { workspace = true }
-libc = "0.2"
 claude-view-types = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+] }

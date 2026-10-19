@@ -30,7 +30,7 @@ impl Database {
             SELECT
                 s.id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.git_root, s.project_display_name,
+                s.project_path, s.git_root, s.config_dir, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
@@ -136,7 +136,7 @@ impl Database {
             r#"SELECT
                 s.session_id AS id, s.project_id, s.preview, s.turn_count,
                 s.last_message_at, s.file_path,
-                s.project_path, s.git_root, s.project_display_name,
+                s.project_path, s.git_root, s.config_dir, s.project_display_name,
                 s.size_bytes, s.last_message, s.files_touched, s.skills_used,
                 s.tool_counts_edit, s.tool_counts_read, s.tool_counts_bash, s.tool_counts_write,
                 s.message_count,
@@ -195,6 +195,37 @@ impl Database {
                 .fetch_optional(self.pool())
                 .await?;
         Ok(row.map(|(p,)| p))
+    }
+
+    /// Get the Claude config dir a session was written by.
+    ///
+    /// Empty string when the session predates the column or its path never
+    /// matched Claude Code's layout. Survives archiving, because the writers
+    /// preserve a stored value when the path no longer yields a derivation.
+    pub async fn get_session_config_dir(&self, session_id: &str) -> DbResult<Option<String>> {
+        let row: Option<(String,)> =
+            sqlx::query_as("SELECT config_dir FROM session_stats WHERE session_id = ?1")
+                .bind(session_id)
+                .fetch_optional(self.pool())
+                .await?;
+        Ok(row.map(|(c,)| c))
+    }
+
+    /// Count sessions per Claude config dir, most sessions first.
+    ///
+    /// Drives the profile filter. Includes the empty config_dir bucket so
+    /// callers can tell "no attribution" apart from "no sessions"; the route
+    /// filters it out rather than offering it as a profile.
+    pub async fn count_sessions_by_config_dir(&self) -> DbResult<Vec<(String, usize)>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"SELECT config_dir, COUNT(*) AS n
+               FROM valid_sessions
+               GROUP BY config_dir
+               ORDER BY n DESC, config_dir ASC"#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(|(d, n)| (d, n as usize)).collect())
     }
 
     /// Get all session IDs in the database (for backup dedup).

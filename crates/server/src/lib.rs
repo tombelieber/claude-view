@@ -22,6 +22,7 @@ pub mod live;
 pub mod local_llm;
 pub use claude_view_server_types::metrics;
 pub mod openapi;
+pub(crate) mod platform;
 pub mod routes;
 pub mod search_service;
 pub mod session_catalog_adapter;

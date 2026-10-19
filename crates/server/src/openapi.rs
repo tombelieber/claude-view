@@ -32,6 +32,7 @@ use utoipa::OpenApi;
         crate::routes::sessions::get_subagent_messages,
         crate::routes::sessions::session_activity_rich,
         // Multi-provider
+        crate::routes::profiles::list_profiles,
         crate::routes::providers::list_providers,
         crate::routes::providers::providers_usage,
         // Batch 1: Projects
@@ -181,6 +182,8 @@ use utoipa::OpenApi;
     ),
     components(schemas(
         crate::routes::health::HealthResponse,
+        crate::routes::profiles::ProfileSummary,
+        crate::routes::profiles::ProfilesResponse,
         crate::routes::providers::ProviderSummary,
         crate::routes::providers::ProvidersResponse,
         crate::routes::providers::ProviderUsage,

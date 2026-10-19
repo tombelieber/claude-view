@@ -268,6 +268,8 @@ mod tests {
             project_path: format!("/home/user/{}", project),
             display_name: project.to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: format!("/path/{}.jsonl", id),
             modified_at,
             size_bytes: 2048,

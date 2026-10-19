@@ -25,6 +25,7 @@ pub fn resolve_model_alias(alias: &str) -> Option<&'static str> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {
     Fable,
+    Mythos,
     Opus,
     Sonnet,
     Haiku,
@@ -34,6 +35,7 @@ impl Family {
     fn from_token(token: &str) -> Option<Self> {
         match token {
             "fable" => Some(Family::Fable),
+            "mythos" => Some(Family::Mythos),
             "opus" => Some(Family::Opus),
             "sonnet" => Some(Family::Sonnet),
             "haiku" => Some(Family::Haiku),
@@ -158,13 +160,19 @@ pub fn resolve_pricing<'a>(
         }
     }
     // Prefix matching: a table key is a prefix of model_id (dated variant of a base id).
-    for (key, p) in pricing {
-        if model_id.starts_with(key.as_str()) {
-            return Some(PricingMatch {
-                pricing: p,
-                kind: MatchKind::Prefix,
-            });
-        }
+    if let Some((_, p)) = pricing
+        .iter()
+        .filter(|(key, _)| {
+            model_id
+                .strip_prefix(key.as_str())
+                .is_some_and(|suffix| suffix.starts_with('-'))
+        })
+        .max_by_key(|(key, _)| key.len())
+    {
+        return Some(PricingMatch {
+            pricing: p,
+            kind: MatchKind::Prefix,
+        });
     }
     // Reverse prefix: model_id is a prefix of a table key. HashMap iteration
     // order is nondeterministic, so this branch is trust-gated: it only
@@ -290,6 +298,19 @@ mod tests {
             fable_future.output_cost_per_token,
             fable5.output_cost_per_token
         );
+
+        // Mythos is likewise its own family (limited availability, Project Glasswing).
+        // A future mythos release — or the `claude-mythos-preview` id also named on
+        // the pricing page — must inherit Mythos 5's rate ($10/$50), not "Unavailable".
+        // Before Family::Mythos existed the "mythos" token parsed to no family → None.
+        let mythos_future = lookup_pricing("claude-mythos-6", &pricing)
+            .expect("future mythos release must resolve via family fallback");
+        let mythos5 = pricing.get("claude-mythos-5").unwrap();
+        assert_eq!(
+            mythos_future.input_cost_per_token,
+            mythos5.input_cost_per_token
+        );
+        assert!(lookup_pricing("claude-mythos-preview", &pricing).is_some());
     }
 
     #[test]
@@ -303,6 +324,11 @@ mod tests {
         assert_eq!(
             parse_claude_model("claude-fable-5"),
             Some((Family::Fable, (5, 0)))
+        );
+        // Mythos family (Claude 5, limited availability): distinct from Fable.
+        assert_eq!(
+            parse_claude_model("claude-mythos-5"),
+            Some((Family::Mythos, (5, 0)))
         );
         assert_eq!(
             parse_claude_model("claude-sonnet-4-6"),
@@ -377,14 +403,55 @@ mod tests {
             "expected newest opus input rate $5/MTok, got {}",
             p.input_cost_per_token * 1e6
         );
-        // Sonnet future inherits the NEWEST sonnet rate. That is now Sonnet 5
-        // ($2/MTok intro through 2026-08-31), which outranks Sonnet 4.6's $3 —
-        // exactly the "nearest preceding, not oldest" guarantee this test names.
+        // Sonnet future inherits the NEWEST sonnet rate. That is Sonnet 5
+        // ($2/MTok, standard price since 2026-08-20 — the scheduled increase to
+        // $3 was cancelled), which outranks Sonnet 4.6's $3 — exactly the
+        // "nearest preceding, not oldest" guarantee this test names.
         let s = lookup_pricing("claude-sonnet-9-9", &pricing).unwrap();
         assert!(
             (s.input_cost_per_token - 2e-6).abs() < 1e-15,
             "expected newest sonnet (Sonnet 5) input rate $2/MTok, got {}",
             s.input_cost_per_token * 1e6
+        );
+    }
+}
+
+#[cfg(test)]
+mod pricing_regression_89 {
+    #[test]
+    fn review_mythos_dated_prefix_is_deterministic() {
+        let original = crate::pricing::load_pricing();
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..64 {
+            let table: std::collections::HashMap<_, _> = original
+                .iter()
+                .map(|(k, p)| (k.clone(), p.clone()))
+                .collect();
+            let p = super::lookup_pricing("claude-mythos-5-1-20260901", &table).unwrap();
+            seen.insert((p.cache_read_cost_per_token * 1e9).round() as i64);
+        }
+        assert_eq!(
+            seen,
+            std::collections::BTreeSet::from([250]),
+            "Supported date suffix must preserve the exact base-model price"
+        );
+    }
+}
+
+#[cfg(test)]
+mod pricing_regression_95 {
+    #[test]
+    fn review_longest_pricing_prefix_must_win() {
+        let mut seen = std::collections::BTreeSet::new();
+        for _ in 0..128 {
+            let table = crate::pricing::load_pricing();
+            let p = super::lookup_pricing("claude-fable-5-1-20260901", &table).unwrap();
+            seen.insert((p.cache_read_cost_per_token * 1e9).round() as i64);
+        }
+        assert_eq!(
+            seen,
+            std::collections::BTreeSet::from([250]),
+            "Dated Fable 5.1 must always use its exact base-model cache price"
         );
     }
 }

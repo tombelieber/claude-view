@@ -179,6 +179,8 @@ pub fn get_workflow_agent(
             duration_ms: None,
             prompt_preview: None,
             result_preview: None,
+            last_tool_name: None,
+            last_tool_summary: None,
             events_available: true,
         });
 

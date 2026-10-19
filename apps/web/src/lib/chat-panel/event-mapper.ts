@@ -21,6 +21,8 @@ export function mapWsEvent(raw: Record<string, unknown>): RawEvent | null {
   const type = raw.type as string
 
   switch (type) {
+    case 'control_ready':
+      return { type: 'CONTROL_READY' }
     case 'session_init':
       return {
         type: 'SESSION_INIT',

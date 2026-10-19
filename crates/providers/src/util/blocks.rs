@@ -45,6 +45,7 @@ pub fn assistant(
         parent_uuid: None,
         is_sidechain: None,
         agent_id: None,
+        model_fallbacks: Vec::new(),
         raw_json: None,
     })
 }
@@ -164,8 +165,18 @@ mod tests {
             None,
             None,
         )];
-        assert!(attach_tool_result(&mut blocks, "t1", "contents".into(), false));
-        assert!(!attach_tool_result(&mut blocks, "missing", String::new(), false));
+        assert!(attach_tool_result(
+            &mut blocks,
+            "t1",
+            "contents".into(),
+            false
+        ));
+        assert!(!attach_tool_result(
+            &mut blocks,
+            "missing",
+            String::new(),
+            false
+        ));
         let ConversationBlock::Assistant(a) = &blocks[0] else {
             panic!()
         };
@@ -180,7 +191,11 @@ mod tests {
     fn error_results_set_error_status() {
         let mut blocks = vec![assistant(
             "a1".into(),
-            vec![tool_segment("Bash".into(), serde_json::json!({}), "t9".into())],
+            vec![tool_segment(
+                "Bash".into(),
+                serde_json::json!({}),
+                "t9".into(),
+            )],
             None,
             None,
         )];

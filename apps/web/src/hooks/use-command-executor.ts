@@ -162,9 +162,13 @@ export function useCommandExecutor(
         fetch(`/api/sidecar/sessions/${encodeURIComponent(cmd.sessionId)}/fork`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: cmd.message, projectPath: cmd.projectPath }),
+          body: JSON.stringify({ initialMessage: cmd.message, projectPath: cmd.projectPath }),
         })
-          .then((r) => r.json())
+          .then(async (r) => {
+            const data = await r.json()
+            if (!r.ok) throw new Error(data.error || `Fork failed (${r.status})`)
+            return data
+          })
           .then((data) =>
             dispatch({
               type: 'ACQUIRE_OK',

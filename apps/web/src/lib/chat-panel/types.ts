@@ -157,6 +157,7 @@ export type RawEvent =
   | { type: 'ACQUIRE_FAILED'; error: string }
   // WS lifecycle
   | { type: 'WS_OPEN' }
+  | { type: 'CONTROL_READY' }
   | { type: 'WS_CLOSE'; code: number; recoverable: boolean }
   // Sidecar protocol
   | {

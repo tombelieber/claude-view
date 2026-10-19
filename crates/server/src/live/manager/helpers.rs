@@ -203,12 +203,13 @@ pub(crate) fn ms_to_secs(ms: i64) -> i64 {
 // Session file enrichment (kind + entrypoint from ~/.claude/sessions/)
 // =============================================================================
 
-/// Enrich a LiveSession with kind and entrypoint from ~/.claude/sessions/{pid}.json.
+/// Enrich a LiveSession with kind and entrypoint from
+/// `{config_dir}/sessions/{pid}.json`.
 ///
 /// Called after session discovery (startup + reconciliation). If the session file
 /// doesn't exist or can't be parsed, fields remain None (graceful degradation).
 pub(crate) fn enrich_from_session_file(session: &mut super::super::state::LiveSession, pid: u32) {
-    let Some(sessions_dir) = claude_view_core::session_files::claude_sessions_dir() else {
+    let Some(sessions_dir) = claude_view_core::session_files::sessions_dir_for_pid(pid) else {
         return;
     };
     let session_path = sessions_dir.join(format!("{pid}.json"));

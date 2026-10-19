@@ -8,12 +8,16 @@ import { SessionRegistry } from './session-registry.js'
 
 // Capture the Options passed to the SDK query() function
 let capturedOptions: Options | undefined
+let capturedPrompt: AsyncIterable<unknown> | undefined
 
 const mockGetSessionInfo = vi.fn()
+const forkId = 'bbbbbbbb-cccc-dddd-eeee-ffffffffffff'
+const mockForkSession = vi.fn().mockResolvedValue({ sessionId: forkId })
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
-  query: vi.fn((args: { options: Options }) => {
+  query: vi.fn((args: { options: Options; prompt: AsyncIterable<unknown> }) => {
     capturedOptions = args.options
+    capturedPrompt = args.prompt
     // Return a mock Query (async iterable that blocks forever)
     let blockResolve: (() => void) | null = null
     return {
@@ -47,6 +51,7 @@ vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
     }
   }),
   listSessions: vi.fn().mockResolvedValue([]),
+  forkSession: (...args: unknown[]) => mockForkSession(...args),
   getSessionInfo: (...args: unknown[]) => mockGetSessionInfo(...args),
 }))
 
@@ -67,9 +72,8 @@ vi.mock('node:fs', async (importOriginal) => {
 })
 
 // Import AFTER mocks
-const { createControlSession, forkControlSession, resumeControlSession } = await import(
-  './sdk-session.js'
-)
+const { createControlSession, forkControlSession, resumeControlSession, waitForSessionInit } =
+  await import('./sdk-session.js')
 
 describe('buildQueryOptions (via createControlSession)', () => {
   let registry: SessionRegistry
@@ -83,7 +87,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
     createControlSession({ model: 'claude-haiku-4-5-20251001' }, registry)
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.settingSources).toEqual(['user', 'project'])
+    expect(capturedOptions?.settingSources).toEqual(['user', 'project'])
   })
 
   it('sets allowDangerouslySkipPermissions when bypassPermissions mode', () => {
@@ -93,7 +97,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
     )
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.permissionMode).toBe('bypassPermissions')
+    expect(capturedOptions?.permissionMode).toBe('bypassPermissions')
     // biome-ignore lint/suspicious/noExplicitAny: testing private SDK option
     expect((capturedOptions as any).allowDangerouslySkipPermissions).toBe(true)
   })
@@ -104,7 +108,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
       createControlSession({ model: 'claude-haiku-4-5-20251001', permissionMode: mode }, registry)
 
       expect(capturedOptions).toBeDefined()
-      expect(capturedOptions!.permissionMode).toBe(mode)
+      expect((capturedOptions as Options | undefined)?.permissionMode).toBe(mode)
       // biome-ignore lint/suspicious/noExplicitAny: testing private SDK option
       expect((capturedOptions as any).allowDangerouslySkipPermissions).toBe(true)
     }
@@ -114,7 +118,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
     createControlSession({ model: 'claude-haiku-4-5-20251001' }, registry)
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe(process.cwd())
+    expect(capturedOptions?.cwd).toBe(process.cwd())
   })
 
   it('passes projectPath as cwd when provided', () => {
@@ -124,7 +128,7 @@ describe('buildQueryOptions (via createControlSession)', () => {
     )
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe('/Users/test/my-project')
+    expect(capturedOptions?.cwd).toBe('/Users/test/my-project')
   })
 })
 
@@ -148,10 +152,13 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     )
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe('/Users/test/forked-project')
+    expect(capturedOptions?.cwd).toBe('/Users/test/forked-project')
     // biome-ignore lint/suspicious/noExplicitAny: testing private SDK option
-    expect((capturedOptions as any).forkSession).toBe(true)
-    expect(capturedOptions!.resume).toBe('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee')
+    expect(capturedOptions?.forkSession).toBeUndefined()
+    expect(capturedOptions?.resume).toBe(forkId)
+    expect(mockForkSession).toHaveBeenCalledWith('aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', {
+      dir: '/Users/test/forked-project',
+    })
   })
 
   it('always includes settingSources for fork sessions', async () => {
@@ -164,7 +171,7 @@ describe('buildQueryOptions (via forkControlSession)', () => {
     )
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.settingSources).toEqual(['user', 'project'])
+    expect(capturedOptions?.settingSources).toEqual(['user', 'project'])
   })
 })
 
@@ -188,7 +195,7 @@ describe('resumeControlSession — projectPath fallback from getSessionInfo.cwd'
     await resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry)
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe('/Users/test/original-project')
+    expect(capturedOptions?.cwd).toBe('/Users/test/original-project')
   })
 
   it('prefers req.projectPath over info.cwd when both are available', async () => {
@@ -208,7 +215,7 @@ describe('resumeControlSession — projectPath fallback from getSessionInfo.cwd'
     )
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe('/Users/test/explicit-path')
+    expect(capturedOptions?.cwd).toBe('/Users/test/explicit-path')
   })
 
   it('falls back to process.cwd() when both req.projectPath and info.cwd are missing', async () => {
@@ -222,7 +229,7 @@ describe('resumeControlSession — projectPath fallback from getSessionInfo.cwd'
     await resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry)
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe(process.cwd())
+    expect(capturedOptions?.cwd).toBe(process.cwd())
   })
 })
 
@@ -248,7 +255,7 @@ describe('resumeControlSession — interrupted session (no assistant messages)',
     )
 
     expect(capturedOptions).toBeDefined()
-    expect(capturedOptions!.cwd).toBe('/test/project')
+    expect(capturedOptions?.cwd).toBe('/test/project')
   })
 
   it('throws when JSONL does not exist on disk (truly missing session)', async () => {
@@ -258,5 +265,42 @@ describe('resumeControlSession — interrupted session (no assistant messages)',
     await expect(
       resumeControlSession({ sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }, registry),
     ).rejects.toThrow('not found in CLI session store')
+  })
+})
+
+describe('resume initialization regression', () => {
+  it('restores a fork without a synthetic user turn or fabricated session_init', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockGetSessionInfo.mockResolvedValue(undefined)
+    const registry = new SessionRegistry()
+    const cs = await forkControlSession(
+      { sessionId: 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', projectPath: '/test' },
+      registry,
+    )
+    await waitForSessionInit(cs)
+    expect(cs.sessionId).toBe(forkId)
+    expect(cs.state).toBe('waiting_input')
+    expect(cs.lastSessionInit).toBeNull()
+    expect(cs.controlReady).toBe(true)
+    const next = capturedPrompt![Symbol.asyncIterator]().next()
+    cs.bridge.close()
+    expect(await next).toMatchObject({ done: true })
+    expect(capturedOptions?.forkSession).toBeUndefined()
+    expect(capturedOptions?.resume).toBe(forkId)
+  })
+
+  it('never reuses a closing session during delayed registry cleanup', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockGetSessionInfo.mockResolvedValue(undefined)
+    const registry = new SessionRegistry()
+    const old = createControlSession({ model: 'test' }, registry)
+    old.sessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+    old.closeReason = 'user_closed'
+    const resumed = await resumeControlSession(
+      { sessionId: old.sessionId, projectPath: '/test' },
+      registry,
+    )
+    expect(resumed.controlId).not.toBe(old.controlId)
+    expect(registry.getBySessionId(old.sessionId)).toBe(resumed)
   })
 })

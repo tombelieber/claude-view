@@ -4,8 +4,8 @@ import { Virtuoso } from 'react-virtuoso'
 import { cn } from '../../lib/utils'
 import type { WorkflowAgentSummary } from '../../types/generated/WorkflowAgentSummary'
 import type { WorkflowRunDetail } from '../../types/generated/WorkflowRunDetail'
-import { VIRTUALIZE_THRESHOLD, formatNumber, isPhaseComplete } from './run-detail-format'
 import { AGENT_ROW_GRID, WorkflowAgentRow } from './WorkflowAgentRow'
+import { AGENT_VIRTUALIZE_THRESHOLD, formatNumber, isPhaseComplete } from './run-detail-format'
 
 function PhasesSection({ detail }: { detail: WorkflowRunDetail }) {
   const sortedPhases = useMemo(
@@ -96,8 +96,9 @@ function AgentsSection({
       </div>
       {detail.agents.length === 0 ? (
         <div className="p-6 text-sm text-gray-500">No workflow-scoped agents recorded.</div>
-      ) : detail.agents.length > VIRTUALIZE_THRESHOLD ? (
+      ) : detail.agents.length > AGENT_VIRTUALIZE_THRESHOLD ? (
         <Virtuoso
+          data-testid="workflow-agent-list-virtuoso"
           style={{ height: 480 }}
           data={detail.agents}
           computeItemKey={(_, agent) => agent.agentId}

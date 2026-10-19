@@ -12,6 +12,7 @@
  * - Group by (none/branch/project/model/day/week/month)
  * - Branch filter (multi-select)
  * - Model filter (multi-select)
+ * - Profile filter (multi-select, Claude config dir)
  * - Has commits filter (any/yes/no)
  * - Has skills filter (any/yes/no)
  * - Duration minimum (null/1800/3600/7200 seconds)
@@ -36,6 +37,8 @@ export interface SessionFilters {
   branches: string[]
   models: string[]
   providers: string[]
+  /** Claude config-dir profiles ('default', 'work', …). */
+  profiles: string[]
 
   // Boolean filters
   hasCommits: 'any' | 'yes' | 'no'
@@ -55,6 +58,7 @@ export const DEFAULT_FILTERS: SessionFilters = {
   branches: [],
   models: [],
   providers: [],
+  profiles: [],
   hasCommits: 'any',
   hasSkills: 'any',
   minDuration: null,
@@ -76,6 +80,7 @@ function parseFilters(searchParams: URLSearchParams): SessionFilters {
     branches: searchParams.get('branches')?.split(',').filter(Boolean) || [],
     models: searchParams.get('models')?.split(',').filter(Boolean) || [],
     providers: searchParams.get('providers')?.split(',').filter(Boolean) || [],
+    profiles: searchParams.get('profiles')?.split(',').filter(Boolean) || [],
 
     // Parse boolean filters
     hasCommits: (searchParams.get('hasCommits') || 'any') as 'any' | 'yes' | 'no',
@@ -103,6 +108,7 @@ const FILTER_KEYS = [
   'branches',
   'models',
   'providers',
+  'profiles',
   'hasCommits',
   'hasSkills',
   'minDuration',
@@ -151,6 +157,10 @@ function serializeFilters(filters: SessionFilters, existing: URLSearchParams): U
     params.set('providers', filters.providers.join(','))
   }
 
+  if (filters.profiles.length > 0) {
+    params.set('profiles', filters.profiles.join(','))
+  }
+
   if (filters.hasCommits !== 'any') {
     params.set('hasCommits', filters.hasCommits)
   }
@@ -187,6 +197,7 @@ export function countActiveFilters(filters: SessionFilters): number {
   if (filters.branches.length > 0) count++
   if (filters.models.length > 0) count++
   if (filters.providers.length > 0) count++
+  if (filters.profiles.length > 0) count++
   if (filters.hasCommits !== 'any') count++
   if (filters.hasSkills !== 'any') count++
   if (filters.minDuration !== null) count++

@@ -47,4 +47,4 @@ pub use types::{
 ///   Pre-v3, sessions whose model post-dated the pricing table were stored with
 ///   NULL/zero `total_cost_usd` (UI showed "Unavailable"); reindex recomputes
 ///   them with real costs.
-pub const PRICING_VERSION: u32 = 3;
+pub const PRICING_VERSION: u32 = 4;

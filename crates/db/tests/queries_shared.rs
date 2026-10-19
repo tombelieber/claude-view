@@ -9,6 +9,8 @@ pub fn make_session(id: &str, project: &str, modified_at: i64) -> SessionInfo {
         project_path: format!("/home/user/{}", project),
         display_name: project.to_string(),
         git_root: None,
+        config_dir: String::new(),
+        profile: String::new(),
         file_path: format!("/home/user/.claude/projects/{}/{}.jsonl", project, id),
         modified_at,
         size_bytes: 2048,

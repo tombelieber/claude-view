@@ -5,6 +5,7 @@ export type AcquiringEvent =
   | { type: 'ACQUIRE_OK'; controlId: string; sessionId?: string }
   | { type: 'ACQUIRE_FAILED'; error: string }
   | { type: 'SESSION_INIT' }
+  | { type: 'CONTROL_READY' }
   | { type: 'INIT_TIMEOUT' }
 
 export type AcquiringResult =
@@ -18,19 +19,17 @@ export function acquiringTransition(s: AcquiringStep, e: AcquiringEvent): Acquir
     case 'posting':
       if (e.type === 'ACQUIRE_OK')
         return { stay: true, state: { step: 'ws_connecting', controlId: e.controlId } }
-      if (e.type === 'ACQUIRE_FAILED')
-        return { stay: false, exit: 'action_failed', error: e.error }
+      if (e.type === 'ACQUIRE_FAILED') return { stay: false, exit: 'action_failed', error: e.error }
       return { stay: true, state: s }
 
     case 'ws_connecting':
-      if (e.type === 'ACQUIRE_FAILED')
-        return { stay: false, exit: 'action_failed', error: e.error }
-      if (e.type === 'SESSION_INIT')
+      if (e.type === 'ACQUIRE_FAILED') return { stay: false, exit: 'action_failed', error: e.error }
+      if (e.type === 'SESSION_INIT' || e.type === 'CONTROL_READY')
         return { stay: false, exit: 'active', controlId: s.controlId }
       return { stay: true, state: s }
 
     case 'ws_initializing':
-      if (e.type === 'SESSION_INIT')
+      if (e.type === 'SESSION_INIT' || e.type === 'CONTROL_READY')
         return { stay: false, exit: 'active', controlId: s.controlId }
       if (e.type === 'INIT_TIMEOUT')
         return { stay: false, exit: 'ws_fatal', error: 'Session init timed out' }

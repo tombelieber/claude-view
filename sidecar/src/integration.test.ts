@@ -13,12 +13,15 @@
 
 import { type ChildProcess, spawn } from 'node:child_process'
 import http from 'node:http'
+import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import WebSocket from 'ws'
 
-const HAS_API_KEY = Boolean(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_AUTH)
+const HAS_API_KEY = Boolean(
+  process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_AUTH || process.env.ANTHROPIC_AUTH_TOKEN,
+)
 const TEST_PORT = 3099
-const MODEL = 'claude-haiku-4-5-20251001'
+const MODEL = process.env.TEST_MODEL || 'claude-haiku-4-5-20251001'
 
 let sidecarProcess: ChildProcess | null = null
 
@@ -270,22 +273,37 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     await waitForEvent(ws1, 'turn_complete', 60_000)
     ws1.close()
 
+    const beforeResume = await getSessionMessages(sessionId)
     // Close and resume
     await cleanupSession(sessionId)
     await new Promise((r) => setTimeout(r, 1_000))
 
-    const { data: resumed } = await httpRequest('POST', '/api/sidecar/sessions/:id/resume', {
-      sessionId,
-      model: MODEL,
-    })
+    const { data: resumed } = await httpRequest(
+      'POST',
+      `/api/sidecar/sessions/${sessionId}/resume`,
+      {
+        sessionId,
+        model: MODEL,
+      },
+    )
     expect(resumed.status).toMatch(/resumed|already_active/)
+
+    expect((await getSessionMessages(sessionId)).map((m) => m.message)).toEqual(
+      beforeResume.map((m) => m.message),
+    )
 
     // Send second message on resumed session
     const ws2 = await connectWs(resumed.sessionId as string)
     // WS connected — blocks_snapshot delivered on connect, no resume needed
 
-    // Wait for init replay, then send
-    await new Promise((r) => setTimeout(r, 2_000))
+    // No model turn may occur until the user sends the next message.
+    const unsolicited: string[] = []
+    ws2.on('message', (raw) => {
+      const event = JSON.parse(raw.toString())
+      if (['assistant_text', 'turn_complete'].includes(event.type)) unsolicited.push(event.type)
+    })
+    await new Promise((r) => setTimeout(r, 500))
+    expect(unsolicited).toEqual([])
     ws2.send(JSON.stringify({ type: 'user_message', content: 'Reply with exactly one word: beta' }))
 
     const turnComplete = await waitForEvent(ws2, 'turn_complete', 60_000)
@@ -309,18 +327,43 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
     await waitForEvent(ws1, 'turn_complete', 60_000)
     ws1.close()
 
+    const sourceMessages = await getSessionMessages(originalSessionId)
     // Fork
-    const { status, data: forked } = await httpRequest('POST', '/api/sidecar/sessions/fork', {
-      sessionId: originalSessionId,
-      model: MODEL,
-    })
+    const { status, data: forked } = await httpRequest(
+      'POST',
+      `/api/sidecar/sessions/${originalSessionId}/fork`,
+      {
+        sessionId: originalSessionId,
+        model: MODEL,
+      },
+    )
     expect(status).toBe(200)
     expect(forked.status).toBe('forked')
     expect(forked.sessionId).toBeTruthy()
     expect(forked.sessionId).not.toBe(originalSessionId)
 
+    const forkId = forked.sessionId as string
+    const forkMessages = await getSessionMessages(forkId)
+    expect(forkMessages.map((m) => m.message)).toEqual(sourceMessages.map((m) => m.message))
+    expect((await getSessionMessages(originalSessionId)).map((m) => m.message)).toEqual(
+      sourceMessages.map((m) => m.message),
+    )
+    const forkWs = await connectWs(forkId)
+    const nextTurn = waitForEvent(forkWs, 'turn_complete', 60_000)
+    forkWs.send(
+      JSON.stringify({
+        type: 'user_message',
+        content: 'Repeat the exact one word you replied earlier. Do not use tools.',
+      }),
+    )
+    const result = await nextTurn
+    expect(String(result.result).trim().toLowerCase()).toBe('original')
+    forkWs.close()
+    expect((await getSessionMessages(originalSessionId)).map((m) => m.message)).toEqual(
+      sourceMessages.map((m) => m.message),
+    )
     await cleanupSession(originalSessionId)
-    await cleanupSession(forked.sessionId as string)
+    await cleanupSession(forkId)
   }, 90_000)
 
   // --- 4. Interrupt mid-response → session stays alive ---
@@ -536,7 +579,6 @@ describe.skipIf(!HAS_API_KEY)('Sidecar V1 Integration Tests', () => {
 
     // If rate_limit events did arrive, log them for visibility
     if (rateLimitEvents.length > 0) {
-      console.log(`[test] Got ${rateLimitEvents.length} rate_limit events — session survived`)
     }
 
     await cleanupSession(created.sessionId)

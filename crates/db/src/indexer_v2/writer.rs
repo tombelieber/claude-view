@@ -61,6 +61,15 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
     // a parallel fs scan.
     let is_compressed_int = i64::from(delta.is_compressed);
 
+    // Multi-config-dir attribution, derived from the session path structure.
+    // Kept identical to the full-parse writer in
+    // `queries::sessions::upsert_stats` so the two never disagree.
+    let config_dir = claude_view_core::discovery::config_dir_from_session_path(
+        std::path::Path::new(delta.source_file_path.as_str()),
+    )
+    .map(|p| p.to_string_lossy().to_string())
+    .unwrap_or_default();
+
     sqlx::query(
         r#"INSERT INTO session_stats (
                 session_id, source_content_hash, source_size, source_inode, source_mid_hash,
@@ -75,7 +84,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 per_model_tokens_json,
                 project_id, file_path, is_compressed, source_mtime,
                 invocation_counts,
-                is_sidechain, commit_count, reedited_files_count, skills_used
+                is_sidechain, commit_count, reedited_files_count, skills_used,
+                config_dir
            ) VALUES (
                 ?, ?, ?, ?, ?,
                 ?, ?, ?,
@@ -89,7 +99,8 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 ?,
                 ?, ?, ?, ?,
                 ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?,
+                ?
            )
            ON CONFLICT(session_id) DO UPDATE SET
                 source_content_hash = excluded.source_content_hash,
@@ -131,7 +142,13 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
                 is_sidechain = excluded.is_sidechain,
                 commit_count = excluded.commit_count,
                 reedited_files_count = excluded.reedited_files_count,
-                skills_used = excluded.skills_used"#,
+                skills_used = excluded.skills_used,
+                -- Derived from file_path; an empty derivation must not
+                -- clobber a value the full-parse writer already stored.
+                config_dir = CASE
+                    WHEN excluded.config_dir = '' THEN session_stats.config_dir
+                    ELSE excluded.config_dir
+                END"#,
     )
     .bind(&delta.session_id)
     .bind(&delta.source_content_hash)
@@ -174,6 +191,7 @@ pub async fn upsert_session_stats(db: &Database, delta: &StatsDelta) -> DbResult
     .bind(delta.stats.commit_count as i64)
     .bind(delta.stats.reedited_files_count as i64)
     .bind(skills_used_json)
+    .bind(config_dir)
     .execute(db.pool())
     .await?;
 

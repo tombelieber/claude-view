@@ -80,17 +80,26 @@ pub fn detect_claude_processes() -> (HashMap<u32, ClaudeProcess>, u32) {
         if !is_claude {
             continue;
         }
-        if let Some(cwd) = process.cwd().map(|p| p.to_path_buf()) {
-            total_count += 1;
-            result.insert(
-                pid.as_u32(),
-                ClaudeProcess {
-                    pid: pid.as_u32(),
-                    cwd,
-                    start_time: process.start_time(),
-                },
-            );
-        }
+        // ponytail: Windows does not expose another process's working directory,
+        // so sysinfo returns None there and every Claude process would be dropped.
+        // Keep it with an empty cwd — PID liveness is what the live monitor needs,
+        // and cwd-based project matching falls back to the session file / hook
+        // payload, both of which carry cwd. Upgrade path if that matching matters
+        // on Windows: read the PEB via NtQueryInformationProcess.
+        let cwd = match process.cwd().map(|p| p.to_path_buf()) {
+            Some(cwd) => cwd,
+            None if cfg!(windows) => PathBuf::new(),
+            None => continue,
+        };
+        total_count += 1;
+        result.insert(
+            pid.as_u32(),
+            ClaudeProcess {
+                pid: pid.as_u32(),
+                cwd,
+                start_time: process.start_time(),
+            },
+        );
     }
 
     (result, total_count)
@@ -119,7 +128,8 @@ pub fn count_claude_processes() -> u32 {
         if !is_claude {
             continue;
         }
-        if process.cwd().is_some() {
+        // ponytail: same Windows cwd caveat as detect_claude_processes().
+        if process.cwd().is_some() || cfg!(windows) {
             count += 1;
         }
     }

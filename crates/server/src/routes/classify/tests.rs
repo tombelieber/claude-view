@@ -17,6 +17,8 @@ fn make_unclassified_session(id: &str, modified_at: i64) -> SessionInfo {
         project_path: "/home/user/project-a".to_string(),
         display_name: "project-a".to_string(),
         git_root: None,
+        config_dir: String::new(),
+        profile: String::new(),
         file_path: format!("/tmp/{id}.jsonl"),
         modified_at,
         size_bytes: 1024,

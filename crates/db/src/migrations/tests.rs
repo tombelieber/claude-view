@@ -1985,17 +1985,24 @@ async fn test_migration64_session_stats_columns_exist() {
         assert!(names.contains(&col), "missing session_stats.{}", col);
     }
 
+    // Multi-config-dir attribution: which Claude config dir wrote the session.
+    assert!(
+        names.contains(&"config_dir"),
+        "missing session_stats.config_dir"
+    );
+
     // Total = 8 header + 24 stats (Phase 2 PR 2.1) + 4 filesystem-mirror
     // (Phase 3 PR 3.a) + 1 invocation_counts (Phase 6.2 migration 86)
     // + 4 Phase 7.c fields (is_sidechain, commit_count, reedited_files_count, skills_used)
     // + 42 Phase 7.h fields (migration 89 mirrors every remaining legacy `sessions`
     // column onto `session_stats` so the table can be DROPped in Phase 7.h.6)
-    // = 83. Each ADD in migration 89 lands one column; the rebuilt valid_sessions
+    // + 1 config_dir (multi-config-dir attribution)
+    // = 84. Each ADD in migration 89 lands one column; the rebuilt valid_sessions
     // view and the DROP ship in subsequent migrations.
     assert_eq!(
         names.len(),
-        83,
-        "session_stats column count drifted (expected 83 after migration 89; got {})",
+        84,
+        "session_stats column count drifted (expected 84; got {})",
         names.len()
     );
 }
@@ -2740,4 +2747,56 @@ async fn test_migration88_session_stats_columns_are_queryable() {
         result.is_ok(),
         "Must be able to SELECT new columns from session_stats"
     );
+}
+
+#[tokio::test]
+async fn config_dir_upgrade_preserves_legacy_and_nested_paths() {
+    let pool = SqlitePool::connect("sqlite::memory:").await.unwrap();
+    let migrations = super::migrations();
+    let split = migrations
+        .iter()
+        .position(|sql| sql.contains("ADD COLUMN config_dir"))
+        .unwrap();
+    for sql in &migrations[..split] {
+        if let Err(error) = sqlx::raw_sql(sql).execute(&pool).await {
+            assert!(
+                error.to_string().contains("duplicate column name"),
+                "{error}"
+            );
+        }
+    }
+    for (id, path) in [
+        ("primary", "/home/user/.claude/projects/proj/primary.jsonl"),
+        (
+            "nested",
+            "/home/projects/client/.claude/projects/proj/nested.jsonl",
+        ),
+        (
+            "windows",
+            r"C:\Users\user\.claude-work\projects\proj\windows.jsonl",
+        ),
+        ("unknown", "/backup/unknown.jsonl"),
+    ] {
+        seed_session_stats(&pool, id, "proj", path, "legacy preview").await;
+    }
+    for sql in &migrations[split..] {
+        sqlx::raw_sql(sql).execute(&pool).await.unwrap();
+    }
+    let rows: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT session_id, config_dir, preview FROM session_stats ORDER BY session_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(rows.len(), 4);
+    assert!(rows.iter().all(|row| row.2 == "legacy preview"));
+    assert_eq!(rows[0].1, "/home/projects/client/.claude");
+    assert_eq!(rows[1].1, "/home/user/.claude");
+    assert_eq!(rows[2].1, "");
+    assert_eq!(rows[3].1, "C:/Users/user/.claude-work");
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM valid_sessions")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count.0, 4);
 }

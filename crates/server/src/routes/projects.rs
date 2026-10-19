@@ -76,13 +76,16 @@ pub async fn list_projects(
     Ok(Json(summaries))
 }
 
-/// Check if `~/.claude/projects/<project_id>/` exists as a directory.
+/// Check if `<config_dir>/projects/<project_id>/` exists under any configured
+/// root.
 fn project_dir_exists(project_id: &str) -> bool {
-    let Some(home) = dirs::home_dir() else {
-        return true; // best-effort — if HOME can't be resolved, assume not archived
-    };
-    let path = home.join(".claude").join("projects").join(project_id);
-    FsPath::new(&path).is_dir()
+    match claude_view_core::discovery::claude_projects_dirs() {
+        Ok(roots) => roots
+            .iter()
+            .any(|root| FsPath::new(&root.join(project_id)).is_dir()),
+        // Best-effort — if the roots can't be resolved, assume not archived.
+        Err(_) => true,
+    }
 }
 
 /// Query parameters for paginated sessions endpoint.

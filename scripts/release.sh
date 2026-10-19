@@ -7,19 +7,6 @@ set -euo pipefail
 BUMP="${1:-patch}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-# ─── Local CI ──────────────────────────────────────────────────────
-# Runs ALL quality gates: TS lint/typecheck/test, Rust clippy/test,
-# evidence audit, Storybook build, integrity gates.
-# Skip with SKIP_CI=1 if you've already run ./scripts/ci-local.sh.
-# Individual gates: SKIP_RUST=1, SKIP_TS=1, SKIP_EVIDENCE=1, etc.
-if [ "${SKIP_CI:-0}" != "1" ]; then
-  "$ROOT/scripts/ci-local.sh"
-  echo ""
-else
-  echo "Skipping local CI (SKIP_CI=1)"
-  echo ""
-fi
-
 cd "$ROOT/npx-cli"
 
 # Bump version in npx-cli/package.json (no git tag from npm)
@@ -88,7 +75,7 @@ if [ -f "$SITE_TS" ]; then
 fi
 
 # Regenerate Cargo.lock with new version
-cargo generate-lockfile --quiet
+"$ROOT/scripts/cq" update --workspace --offline --quiet
 
 # Regenerate the OpenAPI snapshot consumed by the plugin codegen.
 # crates/server/src/openapi.rs::export_openapi_spec writes
@@ -110,6 +97,19 @@ for f in "${BUMPED_PKGS[@]}"; do
 done
 if [ ${#PKG_JSONS[@]} -gt 0 ] && [ -x "$ROOT/node_modules/.bin/biome" ]; then
   "$ROOT/node_modules/.bin/biome" format --write "${PKG_JSONS[@]}" >/dev/null 2>&1 || true
+fi
+
+# ─── Local CI ──────────────────────────────────────────────────────
+# Qualifies the final bumped candidate. Runs ALL quality gates: TS lint/typecheck/test, Rust clippy/test,
+# evidence audit, Storybook build, integrity gates.
+# Skip with SKIP_CI=1 if you've already run ./scripts/ci-local.sh.
+# Individual gates: SKIP_RUST=1, SKIP_TS=1, SKIP_EVIDENCE=1, etc.
+if [ "${SKIP_CI:-0}" != "1" ]; then
+  "$ROOT/scripts/ci-local.sh"
+  echo ""
+else
+  echo "Skipping local CI (SKIP_CI=1)"
+  echo ""
 fi
 
 # Commit and tag — include Cargo files + all bumped package.json files + site.ts

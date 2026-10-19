@@ -1,4 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
+import { query } from '@anthropic-ai/claude-agent-sdk'
+
+vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  query: vi.fn(() => ({
+    initializationResult: vi.fn().mockResolvedValue({ models: [] }),
+    close: vi.fn(),
+  })),
+}))
+
+vi.mock('./cli-path.js', () => ({ findClaudeExecutable: () => '/test/claude' }))
 import {
   getCacheState,
   startModelCacheRefresh,
@@ -113,4 +123,17 @@ describe('startModelCacheRefresh / stopModelCacheRefresh', () => {
     expect(clearSpy).toHaveBeenCalledTimes(1)
     clearSpy.mockRestore()
   })
+})
+
+it('fetches model metadata without queuing a prompt or persisting a transcript', async () => {
+  startModelCacheRefresh()
+  await vi.waitFor(() =>
+    expect(vi.mocked(query).mock.results.at(-1)?.value.close).toHaveBeenCalled(),
+  )
+  stopModelCacheRefresh()
+  const args = vi.mocked(query).mock.calls.at(-1)![0]
+  expect(args.options?.persistSession).toBe(false)
+  expect(typeof args.prompt).not.toBe('string')
+  const prompt = args.prompt as AsyncIterable<unknown>
+  expect(await prompt[Symbol.asyncIterator]().next()).toMatchObject({ done: true })
 })
