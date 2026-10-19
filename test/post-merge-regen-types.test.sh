@@ -15,6 +15,13 @@
 # test FAILS against the old silent-swallow hook).
 set -euo pipefail
 
+# A pre-push hook exports these for the real checkout. Git honors them over
+# `cd`/`-C`, so a throwaway repo would otherwise commit into the caller's
+# branch, replace its index and change its author/hooks/signing configuration.
+# Scrub repository-local overrides before ANY fixture Git command.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_PREFIX
+unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT
+
 SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 HOOK_SRC="${HOOK_UNDER_TEST:-$SCRIPT_DIR/scripts/ci/post-merge-regen-types.sh}"
 
