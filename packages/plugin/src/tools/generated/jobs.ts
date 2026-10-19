@@ -14,5 +14,5 @@ export const jobsGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/jobs')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

@@ -137,7 +137,7 @@ jobs:
       - name: Build sidecar
         run: |
           cd sidecar
-          npm install
+          bun install --frozen-lockfile
           npm run build
 
       - name: Build Rust binary (dist profile)

@@ -34,5 +34,5 @@ export const healthGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/status')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

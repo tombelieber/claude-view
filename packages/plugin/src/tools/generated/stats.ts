@@ -9,14 +9,16 @@ export const statsGeneratedTools: ToolDef[] = [
     name: 'stats_ai_generation_stats',
     description: 'AI generation statistics with time range filtering.',
     inputSchema: z.object({
-    from: z.number().optional(),
-    to: z.number().optional(),
-    project: z.string().optional(),
-    branch: z.string().optional(),
-  }),
+      from: z.number().optional(),
+      to: z.number().optional(),
+      project: z.string().optional(),
+      branch: z.string().optional(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', '/api/stats/ai-generation', { params: { from: args.from, to: args.to, project: args.project, branch: args.branch } })
+      const result = await client.request('GET', '/api/stats/ai-generation', {
+        params: { from: args.from, to: args.to, project: args.project, branch: args.branch },
+      })
       return JSON.stringify(result, null, 2)
     },
   },
@@ -49,5 +51,5 @@ export const statsGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/trends')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]
