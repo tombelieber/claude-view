@@ -10,6 +10,10 @@ on:
         description: "Skip release creation and npm publish (build + verify only)"
         type: boolean
         default: true
+      verify-published:
+        description: "Only re-verify an already-published version (e.g. 0.45.1); no build or publish"
+        type: string
+        default: ""
 
 permissions: {}
 
@@ -22,6 +26,7 @@ env:
 
 jobs:
   build:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.verify-published == '' }}
     name: Build (${{ matrix.platform }})
     strategy:
       fail-fast: false
@@ -326,7 +331,7 @@ jobs:
   release:
     name: Create Release
     needs: verify
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry-run == false) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry-run == false && inputs.verify-published == '') }}
     runs-on: ubuntu-24.04
 
     permissions:
@@ -354,7 +359,7 @@ jobs:
   publish-npm:
     name: Publish to npm
     needs: release
-    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry-run == false) }}
+    if: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.dry-run == false && inputs.verify-published == '') }}
     runs-on: ubuntu-24.04
 
     permissions:
@@ -390,33 +395,32 @@ jobs:
   smoke-test:
     name: Smoke test published npm
     needs: publish-npm
-    if: github.event_name == 'push'
+    if: ${{ always() && ((github.event_name == 'push' && needs.publish-npm.result == 'success') || (github.event_name == 'workflow_dispatch' && inputs.verify-published != '')) }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
 
-    permissions: {}
+    permissions:
+      contents: read
 
     steps:
+      - name: Checkout verification code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6.4.0
+        with:
+          node-version: "24"
+
       - name: Wait for npm registry propagation
+        if: github.event_name == 'push'
         run: sleep 30
 
-      - name: Install and verify via npx
-        shell: bash
+      - name: Verify published installer and plugin in an isolated directory
         env:
           REF_NAME: ${{ github.ref_name }}
+          VERIFY_PUBLISHED_VERSION: ${{ inputs.verify-published }}
         run: |
-          set -euo pipefail
-          version="${REF_NAME#v}"
-          echo "Testing npx claude-view@${version} --version"
-          output=$(npx --yes "claude-view@${version}" --version 2>&1 | head -1)
-          echo "Output: $output"
-          echo "$output" | grep -q "$version" || {
-            echo "::error::npx claude-view@${version} did not report version ${version}"
-            exit 1
-          }
-          echo "OK: npx install + --version matches ($version)"
-          plugin_version=$(npm view "@claude-view/plugin@${version}" version)
-          [[ "$plugin_version" == "$version" ]] || {
-            echo "::error::Published plugin version does not match $version"
-            exit 1
-          }
-          echo "OK: plugin registry version matches ($version)"
+          version="${VERIFY_PUBLISHED_VERSION:-${REF_NAME#v}}"
+          node scripts/ci/check-published-npm.mjs "$version"

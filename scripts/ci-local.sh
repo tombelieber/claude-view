@@ -110,8 +110,8 @@ if [ "${SKIP_INTEGRITY:-0}" != "1" ]; then
   S=$(date +%s); ./scripts/integrity/ci-gates.sh; elapsed $S
 else echo "  SKIP (SKIP_INTEGRITY=1)"; fi
 
-# ── 10. GitHub Actions workflow lint (actionlint) ──
-gate "Actionlint (.github/workflows/*.yml)"
+# ── 10. Release workflow checks ──
+gate "Release workflow checks (actionlint + npm smoke regression)"
 if [ "${SKIP_ACTIONLINT:-0}" != "1" ]; then
   if ! command -v actionlint >/dev/null 2>&1; then
     echo "  FAIL: actionlint not installed" >&2
@@ -119,7 +119,10 @@ if [ "${SKIP_ACTIONLINT:-0}" != "1" ]; then
     echo "  Or skip: SKIP_ACTIONLINT=1 $0" >&2
     exit 1
   fi
-  S=$(date +%s); actionlint -color; elapsed $S
+  S=$(date +%s)
+  actionlint -color
+  node --test scripts/ci/check-published-npm.test.mjs
+  elapsed $S
 else echo "  SKIP (SKIP_ACTIONLINT=1)"; fi
 
 echo ""
