@@ -208,3 +208,8 @@ strip = true           # No debug symbols in shipped binary
 
 [profile.test]
 opt-level = 0  # Fastest test compilation (iterate faster; runtime penalty minimal for I/O-bound tests)
+
+# Keep the current Swagger API while using patched ZIP extraction.
+# Provenance and removal criteria: vendor/utoipa-swagger-ui/PATCH.md
+[patch.crates-io]
+utoipa-swagger-ui = { path = "vendor/utoipa-swagger-ui" }

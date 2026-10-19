@@ -248,11 +248,24 @@ pub fn handled_record_types() -> &'static [&'static str] {
 ///   bridgeSessionId, lastSequenceNum}` — no content/message/uuid) linking a local
 ///   session to its bridge-side counterpart. Pure routing/sequencing bookkeeping.
 ///
+/// - `atis-latch`: internal session latch; no conversation payload.
+/// - `cost-state`: cumulative checkpoint; token usage is already counted from
+///   messages, so treating this as incremental cost would double-count it.
+/// - `file-history-delta`: backup pointers, not a replacement for the supported
+///   `file-history-snapshot` conversation record.
+///
 /// The cc-compat oracle subtracts these from "unhandled" so they aren't flagged as
 /// gaps every run. A genuinely-new CC record type will NOT be in this set, so it
 /// still surfaces. Revisit if Claude Code ever gives any of them user-facing meaning.
 pub fn intentionally_ignored_record_types() -> &'static [&'static str] {
-    &["started", "result", "bridge-session"]
+    &[
+        "started",
+        "result",
+        "bridge-session",
+        "atis-latch",
+        "cost-state",
+        "file-history-delta",
+    ]
 }
 
 /// Session-level metadata extracted alongside blocks.

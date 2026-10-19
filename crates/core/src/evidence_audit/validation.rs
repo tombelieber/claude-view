@@ -159,10 +159,22 @@ pub fn run_phase3_checks(
     baseline: &Baseline,
 ) -> Vec<crate::pipeline_checks::PipelineCheckResult> {
     match &baseline.field_extraction_paths {
-        Some(paths) => vec![
-            crate::pipeline_checks::check_field_coverage(inventory, paths),
-            crate::pipeline_checks::check_phantom_fields(inventory, paths),
-        ],
+        Some(paths) => {
+            // Current sessions need not exercise every supported legacy tool.
+            // Keep live drift coverage independent, and require claimed fields
+            // to exist in either real data or the shipped parser regression fixture.
+            let mut supported_inventory = crate::field_inventory::FieldInventory::default();
+            supported_inventory.merge(inventory);
+            for line in include_str!("../../tests/fixtures/legacy_tool_inputs.jsonl").lines() {
+                supported_inventory.merge(&crate::field_inventory::extract_field_inventory(
+                    line.as_bytes(),
+                ));
+            }
+            vec![
+                crate::pipeline_checks::check_field_coverage(inventory, paths),
+                crate::pipeline_checks::check_phantom_fields(&supported_inventory, paths),
+            ]
+        }
         None => vec![
             crate::pipeline_checks::PipelineCheckResult::new_skipped(
                 "Field coverage",

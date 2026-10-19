@@ -9,6 +9,12 @@ pub fn handled_content_block_types() -> &'static [&'static str] {
     &["text", "tool_use", "tool_result", "thinking", "image"]
 }
 
+/// Diagnostic model-transition metadata, not conversation text/tool calls.
+/// Keep this separate from handled types so coverage never claims it is rendered.
+pub fn intentionally_ignored_content_block_types() -> &'static [&'static str] {
+    &["fallback"]
+}
+
 /// Extracted content blocks from a JSONL message.content[] array.
 pub struct ContentBlocks {
     pub text_segments: Vec<TextSegment>,

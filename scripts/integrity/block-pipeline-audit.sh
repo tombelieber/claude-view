@@ -65,7 +65,21 @@ step() { echo "[audit] $1" >&2; }
 step "Step 1/7: Scanning JSONL field paths..."
 
 JSONL_FILES="$TMPDIR_AUDIT/jsonl-files.txt"
-find "$CORPUS_DIR" -name "*.jsonl" -type f 2>/dev/null | head -n "$MAX_FILES" > "$JSONL_FILES" || true
+# Match runtime/evidence discovery: project sessions plus session subagents.
+# Recursive find also includes workflow/tool memoization caches, whose lifecycle
+# records are not session conversation types. Sort before bounding the sample.
+python3 - "$CORPUS_DIR" "$MAX_FILES" > "$JSONL_FILES" <<'PYFILES'
+import itertools
+import pathlib
+import sys
+root = pathlib.Path(sys.argv[1])
+limit = int(sys.argv[2])
+if limit <= 0:
+    raise SystemExit("--max-files must be positive")
+files = sorted(p for p in itertools.chain(root.glob("*/*.jsonl"), root.glob("*/*/subagents/*.jsonl")) if p.is_file())
+for path in files[:limit]:
+    print(path)
+PYFILES
 JSONL_COUNT=$(wc -l < "$JSONL_FILES" | tr -d ' ')
 step "  Found $JSONL_COUNT JSONL files (max $MAX_FILES)"
 
@@ -373,7 +387,7 @@ done <<< "$FRESH_TYPES"
 if [[ -n "$NEW_TYPES" ]]; then
   step "  ⚠ NEW UNHANDLED TYPES FOUND (not in baseline):"
   echo -e "$NEW_TYPES" | while read -r t; do
-    [[ -n "$t" ]] && step "    - $t"
+    if [[ -n "$t" ]]; then step "    - $t"; fi
   done
   # Write to report
   jq --arg new_types "$(echo -e "$NEW_TYPES" | tr '\n' ',' | sed 's/,$//')" \

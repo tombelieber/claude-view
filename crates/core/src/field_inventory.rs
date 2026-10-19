@@ -59,6 +59,20 @@ impl<'de, 'a> Visitor<'de> for ObjectVisitor<'a> {
             };
             *self.inventory.paths.entry(path.clone()).or_default() += 1;
 
+            // Opaque upstream wire maps use tool IDs as keys and may contain
+            // private content. Inventory their envelope only, not dynamic IDs.
+            // Other/new structures still recurse and remain drift-visible.
+            if (self.prefix.is_empty()
+                && matches!(
+                    key.as_str(),
+                    "wireToolInputs" | "wireIngestContext" | "serverClassifierContext"
+                ))
+                || path == "message.safeguard_results"
+            {
+                map.next_value::<serde::de::IgnoredAny>()?;
+                continue;
+            }
+
             // Recurse into the value — MUST reborrow, not move, because
             // self.inventory is used again on the next loop iteration.
             let child = ValueVisitor {
@@ -180,6 +194,19 @@ impl<'de, 'a> Visitor<'de> for ValueDispatch<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opaque_wire_maps_do_not_turn_identifiers_or_content_into_schema_paths() {
+        let line = br#"{"type":"assistant","wireToolInputs":{"private-id":{"description":"private"}},"wireIngestContext":{"private-id":{"prompt":"private"}},"futureField":{"shape":1}}"#;
+        let inv = extract_field_inventory(line);
+        assert!(inv.paths.contains_key("wireToolInputs"));
+        assert!(inv.paths.contains_key("wireIngestContext"));
+        assert!(!inv.paths.keys().any(|p| p.contains("private-id")));
+        assert!(
+            inv.paths.contains_key("futureField.shape"),
+            "unknown structures must still be audited"
+        );
+    }
 
     #[test]
     fn test_top_level_keys() {

@@ -194,6 +194,9 @@ fn main() {
     println!("  {}Baseline:{} {}", BLUE, NC, baseline_path.display());
     println!("  {}Threads:{}  {}", BLUE, NC, num_threads);
     println!("  {}Mode:{}     {}", BLUE, NC, mode_label);
+    if !quick_mode {
+        println!("  Phantom-field evidence: live corpus + shipped legacy tool-input fixture");
+    }
 
     // Scan directory (single walk — no separate discover step)
     let (signals, pipeline_results) = if quick_mode {

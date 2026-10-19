@@ -377,14 +377,14 @@ jobs:
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6  # v2.2.0
 
       - name: Publish claude-view
-        run: npm publish --provenance --access public || echo "Already published, skipping"
+        run: npm publish --provenance --access public
         working-directory: npx-cli
 
       - name: Build plugin
         run: cd packages/plugin && bun install && bun run build
 
       - name: Publish @claude-view/plugin
-        run: npm publish --provenance --access public || echo "Already published, skipping"
+        run: npm publish --provenance --access public
         working-directory: packages/plugin
 
   smoke-test:
@@ -414,3 +414,9 @@ jobs:
             exit 1
           }
           echo "OK: npx install + --version matches ($version)"
+          plugin_version=$(npm view "@claude-view/plugin@${version}" version)
+          [[ "$plugin_version" == "$version" ]] || {
+            echo "::error::Published plugin version does not match $version"
+            exit 1
+          }
+          echo "OK: plugin registry version matches ($version)"

@@ -142,7 +142,7 @@ fn is_valid_workflow_id(id: &str) -> bool {
 fn to_summary(path: &std::path::Path, source: &str) -> Option<WorkflowSummary> {
     let id = path.file_stem()?.to_string_lossy().to_string();
     let raw = std::fs::read_to_string(path).ok()?;
-    let def: WorkflowDefinition = serde_yaml::from_str(&raw).ok()?;
+    let def: WorkflowDefinition = serde_saphyr::from_str(&raw).ok()?;
     Some(WorkflowSummary {
         id,
         name: def.name,
@@ -236,7 +236,7 @@ pub async fn get_workflow(
         if path.exists() {
             let yaml =
                 std::fs::read_to_string(&path).map_err(|e| ApiError::Internal(e.to_string()))?;
-            let definition: WorkflowDefinition = serde_yaml::from_str(&yaml)
+            let definition: WorkflowDefinition = serde_saphyr::from_str(&yaml)
                 .map_err(|e| ApiError::BadRequest(format!("Invalid YAML: {e}")))?;
             return Ok(Json(WorkflowDetail {
                 id,
@@ -257,7 +257,7 @@ pub async fn create_workflow(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CreateWorkflowRequest>,
 ) -> ApiResult<Json<WorkflowDetail>> {
-    let definition: WorkflowDefinition = serde_yaml::from_str(&req.yaml)
+    let definition: WorkflowDefinition = serde_saphyr::from_str(&req.yaml)
         .map_err(|e| ApiError::BadRequest(format!("Invalid YAML: {e}")))?;
     let id = definition
         .name
@@ -425,6 +425,27 @@ mod tests {
             .await
             .unwrap();
         (status, String::from_utf8(bytes.to_vec()).unwrap())
+    }
+
+    #[test]
+    fn yaml_workflow_keeps_legacy_defaults_aliases_and_typed_stages() {
+        let yaml = r#"name: &title "Synthetic: workflow"
+description: *title
+author: user
+category: Dev
+stages:
+  - name: Verify
+    skills: [review]
+    gate: {condition: passed, retry: true}
+"#;
+        let def: WorkflowDefinition = serde_saphyr::from_str(yaml).unwrap();
+        assert_eq!(def.name, "Synthetic: workflow");
+        assert_eq!(def.description, def.name);
+        assert_eq!(def.version, "1.0.0");
+        assert!(!def.stages[0].parallel);
+        assert_eq!(def.stages[0].agents, 0);
+        assert!(def.stages[0].gate.as_ref().unwrap().retry);
+        assert!(serde_saphyr::from_str::<WorkflowDefinition>("name: only").is_err());
     }
 
     #[test]

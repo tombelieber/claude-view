@@ -115,7 +115,7 @@ bytes = { workspace = true }
 portable-pty = "0.9"
 aes-gcm = "0.10.3"
 flate2 = "1.1.9"
-serde_yaml = "0.9"
+serde-saphyr = { version = "2", default-features = false, features = ["deserialize"] }
 utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true, optional = true }
