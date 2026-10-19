@@ -168,7 +168,7 @@ async fn installed_event_emitted_to_posthog_exactly_once() {
     post_consent_with_client(&config_path, true, client.clone()).await;
 
     assert_eq!(
-        installed_count(&mock, &anon).await,
+        installed_count(&mock, &format!("claude_view:{anon}")).await,
         1,
         "`installed` must hit PostHog exactly once across consent toggles"
     );
@@ -181,7 +181,16 @@ async fn installed_event_emitted_to_posthog_exactly_once() {
         .filter_map(|r| serde_json::from_slice::<serde_json::Value>(&r.body).ok())
         .find(|b| b["event"] == "installed")
         .expect("an `installed` event was POSTed");
-    assert_eq!(installed["distinct_id"], anon);
+    assert_eq!(installed["distinct_id"], format!("claude_view:{anon}"));
+    let persisted = claude_view_core::telemetry_config::read_telemetry_config(&config_path);
+    assert_eq!(
+        persisted.anonymous_id, anon,
+        "migration must keep the local UUID"
+    );
+    assert!(
+        persisted.install_reported,
+        "migration must keep acquisition dedup"
+    );
     let props = &installed["properties"];
     assert!(
         props["install_source"].is_string(),
@@ -189,10 +198,8 @@ async fn installed_event_emitted_to_posthog_exactly_once() {
     );
     assert!(props["version"].is_string(), "version present");
     assert!(props["platform"].is_string(), "platform present");
-    assert!(
-        props["$set_once"]["installed_at"].is_string(),
-        "installed_at stamped once on the person profile"
-    );
+    assert!(props.get("$set_once").is_none(), "no person profile writes");
+    assert_eq!(props["$process_person_profile"], false);
 }
 
 #[tokio::test]

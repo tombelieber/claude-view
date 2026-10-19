@@ -22,13 +22,13 @@ vi.mock('../lib/supabase', () => ({
   },
 }))
 
-describe('Auth + PostHog identify', () => {
+describe('Auth stays separate from anonymous analytics', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authCallback = null
   })
 
-  it('calls posthog.identify with user ID and email on SIGNED_IN', async () => {
+  it('never sends account ID or email to PostHog on SIGNED_IN', async () => {
     const { AuthProvider } = await import('./use-auth')
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     render(
@@ -44,7 +44,7 @@ describe('Auth + PostHog identify', () => {
       })
     })
     await waitFor(() => {
-      expect(mockIdentify).toHaveBeenCalledWith('user-123', { email: 'test@example.com' })
+      expect(mockIdentify).not.toHaveBeenCalled()
     })
   })
 })

@@ -331,6 +331,14 @@ To guide development with real data — instead of guessing — **official build
 
 **What is collected** (official builds, until you opt out): which feature/screen was opened, high-intent action counts, app version, OS/platform, install source, a daily active ping, and a random per-install UUID.
 
+Official releases use a shared OSS PostHog project. Every event carries
+`product=claude_view`, `schema_version=1`, and a `claude_view:` identity prefix.
+Signing in never sends your email or merges your analytics with your account or
+another product. Existing telemetry preferences and the local UUID are preserved.
+Previous releases' analytics remain in the historical claude-view project;
+historical events are not copied into the shared project. See
+[the telemetry contract](docs/telemetry.md) for the cutover and self-hosting details.
+
 **What is *never* collected:** code, prompts, message/session content, file paths, project or repo names, branch names, environment variables, API keys, IP/geo, or anything tied to your identity. This is enforced by a **closed event schema in the type system** — an event physically cannot carry a path or prompt — not just by policy.
 
 **Opt out** (takes effect immediately, permanently):
