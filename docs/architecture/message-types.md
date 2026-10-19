@@ -877,3 +877,22 @@ Every JSONL entry with session context shares a set of metadata fields. Presence
 | `last-prompt` | No | Yes | Only `{type, sessionId, lastPrompt}` |
 | `custom-title` | No | Yes | Only `{type, sessionId, customTitle}` |
 | `pr-link` | No | Yes | Only `{type, sessionId, prNumber, prUrl, prRepository, timestamp}` |
+
+
+## Current wire metadata and legacy field evidence
+
+The audit distinguishes conversation payloads from upstream bookkeeping.
+`atis-latch`, `cost-state`, and `file-history-delta` are session/checkpoint or
+backup-pointer records. They do not create conversation actions or add cost to
+the existing per-message usage pipeline. Assistant `fallback` blocks contain
+model-transition metadata rather than text/tool executions. New system subtypes
+(`agents_killed`, `bridge_status`, `permission_retry`) retain their complete data
+through the existing informational system-block fallback.
+
+Opaque wire maps are inventoried by envelope, without expanding dynamic tool IDs
+or private payload keys into report paths. Reviewed metadata groups are recorded
+in `evidence-baseline.json`; genuinely unknown fields/types still fail the audit.
+Live field coverage remains separate from phantom-field evidence, which also
+includes the shipped synthetic `legacy_tool_inputs.jsonl` regression fixture.
+That fixture is parsed through the real block pipeline and keeps optional legacy
+Agent/TodoWrite inputs supported even when a current local corpus omits them.

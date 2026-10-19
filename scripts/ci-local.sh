@@ -81,6 +81,7 @@ else echo "  SKIP (SKIP_EVIDENCE=1)"; fi
 gate "Block pipeline drift check"
 if [ "${SKIP_PIPELINE:-0}" != "1" ]; then
   S=$(date +%s)
+  bash test/block-pipeline-discovery.test.sh
   AUDIT_OUT=$(mktemp)
   bash scripts/integrity/block-pipeline-audit.sh --output "$AUDIT_OUT" --max-files 300 2>&1 | tail -3
   NEW_TYPES=$(jq -r '.cross_layer_gaps.new_unhandled_types // [] | length' "$AUDIT_OUT" 2>/dev/null || echo "0")

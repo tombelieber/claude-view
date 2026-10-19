@@ -24,7 +24,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use claude_view_core::block_accumulator::content::handled_content_block_types;
+use claude_view_core::block_accumulator::content::{
+    handled_content_block_types, intentionally_ignored_content_block_types,
+};
 use claude_view_core::block_accumulator::{
     handled_record_types, intentionally_ignored_record_types,
 };
@@ -76,10 +78,14 @@ fn main() {
         .filter(|t| !handled_records.contains(t.as_str()) && !ignored_records.contains(t.as_str()))
         .cloned()
         .collect();
+    let ignored_blocks: BTreeSet<&str> = intentionally_ignored_content_block_types()
+        .iter()
+        .copied()
+        .collect();
     let unhandled_blocks: Vec<String> = scan
         .content_block_types
         .iter()
-        .filter(|t| !handled_blocks.contains(t.as_str()))
+        .filter(|t| !handled_blocks.contains(t.as_str()) && !ignored_blocks.contains(t.as_str()))
         .cloned()
         .collect();
 

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "audit_date": "2026-07-04",
+  "audit_date": "2026-10-19",
   "methodology": "jq structural JSON parsing only — never text grep — to avoid miscategorizing message content as structural fields",
   "corpus_stats": {
     "files": 14194,
@@ -23,16 +23,26 @@
       "pr-link"
     ],
     "handled_as_progress": ["progress"],
-    "silently_ignored": ["mode", "started", "result", "bridge-session"],
-    "silently_ignored_note": "mode = output-style marker. started/result = sub-agent tool-result cache records ({type, key:'v2:<hash>', agentId, result}) — internal result-memoization bookkeeping, deliberately not rendered as conversation blocks. bridge-session = a mobile/remote bridge pointer record ({type, sessionId, bridgeSessionId, lastSequenceNum}, no content/message/uuid) that links a local session to its bridge-side counterpart; pure routing/sequencing bookkeeping, not conversation content. Matches block_accumulator::intentionally_ignored_record_types(); the parser has no match arm for them (skipped via the `_ => {}` catch-all).",
+    "silently_ignored": [
+      "mode",
+      "started",
+      "result",
+      "bridge-session",
+      "atis-latch",
+      "cost-state",
+      "file-history-delta"
+    ],
+    "silently_ignored_note": "mode = output-style marker. started/result = sub-agent tool-result cache records ({type, key:'v2:<hash>', agentId, result}) — internal result-memoization bookkeeping, deliberately not rendered as conversation blocks. bridge-session = a mobile/remote bridge pointer record ({type, sessionId, bridgeSessionId, lastSequenceNum}, no content/message/uuid) that links a local session to its bridge-side counterpart; pure routing/sequencing bookkeeping, not conversation content. Matches block_accumulator::intentionally_ignored_record_types(); the parser has no match arm for them (skipped via the `_ => {}` catch-all). atis-latch is an internal session latch. cost-state is a cumulative checkpoint, not incremental token usage (counting it would double-count the existing usage pipeline). file-history-delta tracks backup pointers; conversation file-history-snapshot records remain supported.",
     "zero_occurrence_but_parser_has_arm": ["hook_event"],
     "removed_dead_code": ["saved_hook_context", "summary"],
     "zero_occurrence_not_in_parser": []
   },
   "content_block_types": {
-    "assistant": ["text", "thinking", "tool_use"],
+    "assistant": ["text", "thinking", "tool_use", "fallback"],
     "user": ["image", "text", "tool_result"],
-    "zero_occurrence": ["citation", "redacted_thinking", "server_tool_result", "server_tool_use"]
+    "zero_occurrence": ["citation", "redacted_thinking", "server_tool_result", "server_tool_use"],
+    "intentionally_ignored": ["fallback"],
+    "intentionally_ignored_note": "fallback contains from/to model metadata, not assistant text or a tool execution. Surrounding conversation blocks remain unchanged."
   },
   "thinking_block_keys": {
     "required": ["signature", "thinking", "type"],
@@ -56,9 +66,13 @@
       "microcompact_boundary",
       "scheduled_task_fire",
       "stop_hook_summary",
-      "turn_duration"
+      "turn_duration",
+      "agents_killed",
+      "bridge_status",
+      "permission_retry"
     ],
-    "zero_occurrence": []
+    "zero_occurrence": [],
+    "known_note": "The newer diagnostic subtypes preserve the complete record through the existing informational SystemBlock fallback, including content/commands when present."
   },
   "progress_data_types": {
     "known": [
@@ -276,8 +290,151 @@
       "toolEndsTurn",
       "hookAdditionalContext",
       "session_id",
-      "pendingBackgroundAgentCount"
+      "pendingBackgroundAgentCount",
+      "wireToolInputs",
+      "wireIngestContext",
+      "serverClassifierRequest",
+      "serverClassifierContext",
+      "effort",
+      "perTurnEffort",
+      "apiBlockIndex",
+      "advisorModel",
+      "requestedModel",
+      "thinkingDurationMs",
+      "thinkingDisplay",
+      "isAbortedMidStream",
+      "rendered",
+      "renderedRole",
+      "renderedInHumanTurn",
+      "renderedBesideToolResult",
+      "turnOrigin",
+      "turnPosition",
+      "turnCompanion",
+      "commandUuid",
+      "deliveryId",
+      "classifierBoundary",
+      "truncatedAfterOutput",
+      "interruptedByShutdown",
+      "ownerAccountUuid",
+      "ownerOrganizationUuid",
+      "permissionDecision",
+      "reason",
+      "toolDenialKind",
+      "toolResultRemedy",
+      "apiErrorCode",
+      "quotaLimits",
+      "usageLimitNote",
+      "atis",
+      "snapshotMessageId",
+      "trackingPath",
+      "backup",
+      "totalCostUSD",
+      "totalAPIDuration",
+      "totalAPIDurationWithoutRetries",
+      "totalToolDuration",
+      "totalLinesAdded",
+      "totalLinesRemoved",
+      "totalDuration",
+      "startTime",
+      "modelUsage",
+      "hasUnknownModelCost",
+      "queueSkipAttachments",
+      "queueTranscriptOnly",
+      "queuePriority",
+      "taskId",
+      "cron",
+      "prompt",
+      "scheduledTaskId",
+      "scheduledFireId",
+      "source",
+      "url",
+      "commands",
+      "commandRun",
+      "message.input_transformations",
+      "message.safeguard_results",
+      "message.content[].from",
+      "message.content[].to"
     ],
-    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin tag: typed | sdk | system) IS now surfaced — see consumed_by_parser (UserBlock.prompt_source → chat origin pill for sdk/system, developer badge for all values); it stays listed here rather than under `extracted` because it appears on only a fraction of sessions and must not trip the phantom-field check on corpora lacking it. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is the structured mirror of the tool_result content the timeline already renders, and is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Decision (settled, not a follow-up): mcpMeta stays unsurfaced — rendering opaque arbitrary per-tool JSON as a structured UI element adds no signal over the already-displayed result and would risk Trust-over-Accuracy. interruptedMessageId (top-level on a user record; the id of the assistant message a user interrupt aborted) is internal interruption bookkeeping — a message-id back-reference the parser does not consume and the block pipeline does not surface. The mobile/remote bridge + background-session fields (added by newer Claude Code releases) are internal routing/sequencing/classification metadata, not conversation content: sessionKind (value 'bg' — marks background/bridge-spawned sessions, on user/assistant/attachment/system records; a classifier not yet surfaced in the UI, same status as attribution*), bridgeSessionId + lastSequenceNum (only on the bridge-session pointer record — the bridge-side id and its sync sequence counter), toolEndsTurn (a boolean turn-boundary hint on user tool-result records — claude-view computes turn boundaries itself via TurnBoundary, so this CC-side flag is redundant), and hookAdditionalContext (a list on system records holding text a hook injected into the prompt — opaque, potentially arbitrary/PII-bearing, and not modeled as a conversation block). session_id is the snake_case mirror of sessionId (already ignored) — claude-view derives the canonical session id from the JSONL filename, so both casings are redundant. pendingBackgroundAgentCount is a transient live counter on system records, the background-agent sibling of pendingWorkflowCount — session metadata, not surfaced by the block pipeline."
+    "intentionally_ignored_note": "Metadata fields used by Claude Code internally. Either passthrough in SystemBlock.data or not needed by the block pipeline for session display, cost tracking, or live monitoring. attribution* fields (added Claude Code 2.1.123) tag sidechain messages with the dispatching subagent/skill/plugin/mcp-server/mcp-tool — not yet wired into the UI. mode (output-style mode), pendingWorkflowCount (transient session counter) are session metadata not surfaced by the block pipeline. promptSource (prompt-origin tag: typed | sdk | system) IS now surfaced — see consumed_by_parser (UserBlock.prompt_source → chat origin pill for sdk/system, developer badge for all values); it stays listed here rather than under `extracted` because it appears on only a fraction of sessions and must not trip the phantom-field check on corpora lacking it. mcpMeta is the MCP tool-call metadata envelope — claude-view derives MCP info from the tool_use block itself (message.content[].name) and does not model the envelope; its structuredContent child is the structured mirror of the tool_result content the timeline already renders, and is opaque tool-defined arbitrary JSON (MCP CallToolResult.structuredContent), so the whole mcpMeta subtree is intentionally ignored by field coverage (prefix match covers all descendants). Decision (settled, not a follow-up): mcpMeta stays unsurfaced — rendering opaque arbitrary per-tool JSON as a structured UI element adds no signal over the already-displayed result and would risk Trust-over-Accuracy. interruptedMessageId (top-level on a user record; the id of the assistant message a user interrupt aborted) is internal interruption bookkeeping — a message-id back-reference the parser does not consume and the block pipeline does not surface. The mobile/remote bridge + background-session fields (added by newer Claude Code releases) are internal routing/sequencing/classification metadata, not conversation content: sessionKind (value 'bg' — marks background/bridge-spawned sessions, on user/assistant/attachment/system records; a classifier not yet surfaced in the UI, same status as attribution*), bridgeSessionId + lastSequenceNum (only on the bridge-session pointer record — the bridge-side id and its sync sequence counter), toolEndsTurn (a boolean turn-boundary hint on user tool-result records — claude-view computes turn boundaries itself via TurnBoundary, so this CC-side flag is redundant), and hookAdditionalContext (a list on system records holding text a hook injected into the prompt — opaque, potentially arbitrary/PII-bearing, and not modeled as a conversation block). session_id is the snake_case mirror of sessionId (already ignored) — claude-view derives the canonical session id from the JSONL filename, so both casings are redundant. pendingBackgroundAgentCount is a transient live counter on system records, the background-agent sibling of pendingWorkflowCount — session metadata, not surfaced by the block pipeline. Reviewed 2026-10-19 metadata groups document upstream wire bookkeeping, inference hints, duplicate rendered copies, sensitive account identifiers, cumulative checkpoints and queue diagnostics. These are deliberately not used to infer conversation actions, identity or cost. Diagnostic system records are preserved in SystemBlock.data. The typed message.content and message.usage paths remain authoritative; unknown root fields still fail coverage. API response input_transformations and safeguard_results describe upstream request transforms/verdicts; they are not conversation content or local authorization decisions. fallback.from/to contain model metadata; the authoritative per-message model/usage remain extracted.",
+    "reviewed_metadata_groups": {
+      "opaque_wire_metadata": [
+        "wireToolInputs",
+        "wireIngestContext",
+        "serverClassifierRequest",
+        "serverClassifierContext"
+      ],
+      "inference_metadata": [
+        "effort",
+        "perTurnEffort",
+        "apiBlockIndex",
+        "advisorModel",
+        "requestedModel",
+        "thinkingDurationMs",
+        "thinkingDisplay",
+        "isAbortedMidStream"
+      ],
+      "duplicate_render_metadata": [
+        "rendered",
+        "renderedRole",
+        "renderedInHumanTurn",
+        "renderedBesideToolResult",
+        "turnOrigin",
+        "turnPosition",
+        "turnCompanion",
+        "commandUuid",
+        "deliveryId",
+        "classifierBoundary",
+        "truncatedAfterOutput",
+        "interruptedByShutdown"
+      ],
+      "account_and_permission_metadata": [
+        "ownerAccountUuid",
+        "ownerOrganizationUuid",
+        "permissionDecision",
+        "reason",
+        "toolDenialKind",
+        "toolResultRemedy",
+        "apiErrorCode",
+        "quotaLimits",
+        "usageLimitNote"
+      ],
+      "checkpoint_metadata": [
+        "atis",
+        "snapshotMessageId",
+        "trackingPath",
+        "backup",
+        "totalCostUSD",
+        "totalAPIDuration",
+        "totalAPIDurationWithoutRetries",
+        "totalToolDuration",
+        "totalLinesAdded",
+        "totalLinesRemoved",
+        "totalDuration",
+        "startTime",
+        "modelUsage",
+        "hasUnknownModelCost"
+      ],
+      "queue_and_diagnostic_metadata": [
+        "queueSkipAttachments",
+        "queueTranscriptOnly",
+        "queuePriority",
+        "taskId",
+        "cron",
+        "prompt",
+        "scheduledTaskId",
+        "scheduledFireId",
+        "source",
+        "url",
+        "commands",
+        "commandRun"
+      ],
+      "api_response_metadata": [
+        "message.input_transformations",
+        "message.safeguard_results",
+        "message.content[].from",
+        "message.content[].to"
+      ]
+    },
+    "legacy_fixture_note": "Phantom detection uses the live corpus plus the shipped synthetic legacy_tool_inputs.jsonl fixture; field coverage still validates the live corpus independently. This preserves Agent.name and TodoWrite.todos support when current sessions no longer contain those optional tool inputs."
   }
 }

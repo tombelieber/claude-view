@@ -120,7 +120,7 @@ fn parse_memory_file(content: &str) -> (Option<MemoryFrontmatter>, String) {
             .trim_start_matches('\n')
             .to_string();
 
-        match serde_yaml::from_str::<MemoryFrontmatter>(yaml_str) {
+        match serde_saphyr::from_str::<MemoryFrontmatter>(yaml_str) {
             Ok(fm) => (Some(fm), body),
             Err(_) => (None, content.to_string()),
         }
@@ -486,6 +486,19 @@ pub fn read_memory_file(relative_path: &str) -> Option<MemoryEntry> {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn yaml_frontmatter_preserves_aliases_unicode_and_invalid_metadata_fallback() {
+        let (fm, body) = parse_memory_file("---\nname: &label \"測試: feedback\"\ndescription: *label\ntype: feedback\n---\nKeep body.\n");
+        let fm = fm.unwrap();
+        assert_eq!(fm.name.as_deref(), Some("測試: feedback"));
+        assert_eq!(fm.description.as_deref(), Some("測試: feedback"));
+        assert_eq!(body, "Keep body.\n");
+        let (fm, body) =
+            parse_memory_file("---\nname: [broken\n---\nBody survives invalid metadata.");
+        assert!(fm.is_none());
+        assert!(body.contains("Body survives"));
+    }
 
     #[test]
     fn test_parse_memory_file_with_frontmatter() {
