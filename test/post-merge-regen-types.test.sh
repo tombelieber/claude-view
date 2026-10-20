@@ -37,7 +37,9 @@ check_eq() { # desc expected actual
 }
 check_contains() { # desc haystack needle
   inc TOTAL
-  if printf '%s' "$2" | grep -qF -- "$3"; then echo "  PASS: $1"; inc PASS
+  # grep -q may close its pipe early. Under pipefail, printf's SIGPIPE then
+  # turns a successful substring match into a flaky failure on long warnings.
+  if [[ "$2" == *"$3"* ]]; then echo "  PASS: $1"; inc PASS
   else echo "  FAIL: $1 (missing substring: $3)"; inc FAIL; fi
 }
 
