@@ -32,6 +32,16 @@ pub(super) fn resolve_state_from_hook(payload: &HookPayload) -> AgentState {
                 label: "Session cleared".into(),
                 context: None,
             },
+            // CC 2.1.214+ reports "fork" for sessions that begin as a fork
+            // (previously reported "resume"). A fork carries prior context and
+            // is waiting for you, same as a resume — without this arm it would
+            // fall through to the generic "Waiting for first prompt".
+            Some("fork") => AgentState {
+                group: AgentStateGroup::NeedsYou,
+                state: "idle".into(),
+                label: "Session forked".into(),
+                context: None,
+            },
             _ => AgentState {
                 group: AgentStateGroup::NeedsYou,
                 state: "idle".into(),
@@ -293,6 +303,17 @@ mod tests {
         let state = resolve_state_from_hook(&payload);
         assert_eq!(state.state, "thinking");
         assert!(matches!(state.group, AgentStateGroup::Autonomous));
+    }
+
+    // CC 2.1.214+ reports source "fork" for forked sessions (was "resume").
+    #[test]
+    fn session_start_fork_returns_forked_state() {
+        let mut payload = minimal_payload("SessionStart");
+        payload.source = Some("fork".into());
+        let state = resolve_state_from_hook(&payload);
+        assert_eq!(state.state, "idle");
+        assert!(matches!(state.group, AgentStateGroup::NeedsYou));
+        assert!(state.label.contains("fork"));
     }
 
     #[test]

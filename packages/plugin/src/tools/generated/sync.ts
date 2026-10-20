@@ -34,5 +34,5 @@ export const syncGeneratedTools: ToolDef[] = [
       const result = await client.request('POST', '/api/sync/git')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

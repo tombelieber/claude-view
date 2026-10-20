@@ -28,7 +28,8 @@ use crate::indexer_parallel::ParsedSession;
 ///   writer got there first wins for those columns.
 ///
 /// 65 bind parameters (same shape as UPSERT_SESSION_SQL to keep mental model
-/// stable) plus one trailing bind for `stats_version`.
+/// stable) plus trailing binds for `stats_version` (?66) and `config_dir`
+/// (?67).
 pub const UPSERT_SESSION_STATS_FROM_PARSED_SQL: &str = r#"
     INSERT INTO session_stats (
         session_id, project_id, project_display_name, project_path,
@@ -53,7 +54,7 @@ pub const UPSERT_SESSION_STATS_FROM_PARSED_SQL: &str = r#"
         ai_lines_added, ai_lines_removed, work_type,
         primary_model, total_task_time_seconds,
         longest_task_seconds, longest_task_preview, total_cost_usd,
-        slug, entrypoint,
+        slug, entrypoint, config_dir,
         -- session_stats header columns the StatsDelta writer owns. We set
         -- them to safe defaults on INSERT so the NOT NULL constraints are
         -- satisfied; ON CONFLICT DO NOT update them (coexistence contract).
@@ -71,7 +72,7 @@ pub const UPSERT_SESSION_STATS_FROM_PARSED_SQL: &str = r#"
         ?41, ?42, ?43, ?44, ?45, ?46, ?47, ?48,
         ?49, ?50, ?51, ?52, ?53, ?54, ?55,
         ?56, ?57, ?58, ?59, ?60, ?61, ?62, ?63,
-        ?64, ?65,
+        ?64, ?65, ?67,
         X'', ?13,
         ?23, ?66,
         ?20,
@@ -143,7 +144,13 @@ pub const UPSERT_SESSION_STATS_FROM_PARSED_SQL: &str = r#"
         total_cost_usd = excluded.total_cost_usd,
         slug = excluded.slug,
         entrypoint = COALESCE(excluded.entrypoint, session_stats.entrypoint),
-        bash_count = excluded.bash_count
+        bash_count = excluded.bash_count,
+        -- Derived from file_path, so it self-heals on every reindex. An
+        -- empty derivation must not clobber a good stored value.
+        config_dir = CASE
+            WHEN excluded.config_dir = '' THEN session_stats.config_dir
+            ELSE excluded.config_dir
+        END
 "#;
 
 /// Execute the session_stats full-row UPSERT from a ParsedSession.
@@ -158,6 +165,17 @@ where
     E: sqlx::Executor<'e, Database = sqlx::Sqlite>,
 {
     let indexed_at = Utc::now().timestamp();
+
+    // Which Claude config dir this session was written by. Derived from the
+    // path structure alone (no syscalls) so it stays correct regardless of
+    // which roots are configured at index time. Empty when the path does not
+    // match Claude Code's layout; the ON CONFLICT clause then preserves any
+    // previously-derived value rather than blanking it.
+    let config_dir = claude_view_core::discovery::config_dir_from_session_path(
+        std::path::Path::new(&s.file_path),
+    )
+    .map(|p| p.to_string_lossy().to_string())
+    .unwrap_or_default();
 
     sqlx::query(UPSERT_SESSION_STATS_FROM_PARSED_SQL)
         .bind(&s.id) // ?1
@@ -226,6 +244,7 @@ where
         .bind(&s.slug) // ?64
         .bind(&s.entrypoint) // ?65
         .bind(i64::from(STATS_VERSION.0)) // ?66 stats_version default for INSERT
+        .bind(config_dir) // ?67
         .execute(executor)
         .await?;
 

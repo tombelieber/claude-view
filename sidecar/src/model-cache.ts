@@ -5,10 +5,11 @@
 //
 // Why V1 query()? V2 SDKSession doesn't expose supportedModels() — only the
 // V1 Query interface has initializationResult() → { models: ModelInfo[] }.
-// The query spawns a CLI subprocess, reads init data, then interrupts.
+// The query spawns a CLI subprocess, reads init data, then closes the subprocess.
 
 import { type ModelInfo, query } from '@anthropic-ai/claude-agent-sdk'
 import { findClaudeExecutable } from './cli-path.js'
+import { MessageBridge } from './message-bridge.js'
 
 interface ModelCacheState {
   models: ModelInfo[]
@@ -48,19 +49,20 @@ export function updateModelCacheFromSession(models: ModelInfo[]): void {
 
 /** Promise.race with a timeout — prevents initializationResult() from hanging forever. */
 function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>
   return Promise.race([
     promise,
-    new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms),
-    ),
-  ])
+    new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    }),
+  ]).finally(() => clearTimeout(timer))
 }
 
 /**
  * Refresh the model cache using the V1 query() API.
  *
  * Creates a V1 query to read initialization data (which includes the model list),
- * then immediately interrupts. This spawns a CLI subprocess, so it's called
+ * then immediately closes the query. This spawns a CLI subprocess, so it's called
  * sparingly: once on startup, then hourly.
  *
  * Fire-and-forget: never throws, logs errors.
@@ -74,9 +76,13 @@ async function refreshModelCache(): Promise<void> {
   refreshInFlight = true
 
   let q: ReturnType<typeof query> | null = null
+  const bridge = new MessageBridge()
 
   try {
-    q = query({ prompt: '', options: { pathToClaudeCodeExecutable: findClaudeExecutable() } })
+    q = query({
+      prompt: bridge,
+      options: { pathToClaudeCodeExecutable: findClaudeExecutable(), persistSession: false },
+    })
 
     // Timeout guards against initializationResult() hanging (e.g. CLI not found,
     // auth issues, network problems). Without this, refreshInFlight stays true
@@ -84,8 +90,8 @@ async function refreshModelCache(): Promise<void> {
     const initResult = await withTimeout(q.initializationResult(), 30_000, 'initializationResult')
     const models = initResult.models
 
-    // Interrupt immediately — we only needed the init data, not a conversation turn.
-    await q.interrupt()
+    // Close immediately — we only needed the init data, not a conversation turn.
+    q.close()
     q = null
 
     if (!models || models.length === 0) {
@@ -108,12 +114,13 @@ async function refreshModelCache(): Promise<void> {
     // Best-effort cleanup if query is still alive after timeout/error
     if (q) {
       try {
-        await q.interrupt()
+        q.close()
       } catch {
         /* already dead */
       }
     }
   } finally {
+    bridge.close()
     refreshInFlight = false
   }
 }

@@ -19,14 +19,19 @@ export const ideGeneratedTools: ToolDef[] = [
     name: 'ide_post_open',
     description: '`POST /api/ide/open` — open a file in the requested IDE.',
     inputSchema: z.object({
-    filePath: z.string().describe('Relative path to the file within the project (optional).').optional(),
-    ide: z.string().describe('The IDE id to open (must match an id from the detect response).'),
-    projectPath: z.string().describe('Absolute path to the project directory.'),
-  }),
+      filePath: z
+        .string()
+        .describe('Relative path to the file within the project (optional).')
+        .optional(),
+      ide: z.string().describe('The IDE id to open (must match an id from the detect response).'),
+      projectPath: z.string().describe('Absolute path to the project directory.'),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', '/api/ide/open', { body: { filePath: args.filePath, ide: args.ide, projectPath: args.projectPath } })
+      const result = await client.request('POST', '/api/ide/open', {
+        body: { filePath: args.filePath, ide: args.ide, projectPath: args.projectPath },
+      })
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

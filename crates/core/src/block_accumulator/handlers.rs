@@ -235,6 +235,12 @@ impl BlockAccumulator {
                     builder.add_tool_use(tu.id, tu.name, tu.input, tu.parent_tool_use_id);
                 }
             }
+
+            if !blocks.model_fallbacks.is_empty() {
+                if let Some(ref mut builder) = self.current_assistant {
+                    builder.add_model_fallbacks(blocks.model_fallbacks);
+                }
+            }
         }
 
         // ── Team transcript wiring ──────────────────────────────────

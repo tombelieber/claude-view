@@ -14,5 +14,5 @@ export const monitorGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/monitor/snapshot')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

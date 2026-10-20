@@ -34,6 +34,8 @@ export interface ControlSession {
   permissionMode: string
   wsClients: Set<WebSocket>
   lastSessionInit: SessionInit | null
+  /** Control handshake completed before the first real user prompt. */
+  controlReady?: boolean
   accumulator: StreamAccumulator
 }
 

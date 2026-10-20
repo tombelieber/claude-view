@@ -6,6 +6,7 @@ use super::core::LiveSession;
 ///
 /// Uses `kill(pid, 0)` which checks process existence without sending a signal.
 /// Returns `false` for PIDs <= 1 (kernel/init) to guard against reparented processes.
+#[cfg(unix)]
 pub fn is_pid_alive(pid: u32) -> bool {
     if pid <= 1 {
         return false;
@@ -13,6 +14,35 @@ pub fn is_pid_alive(pid: u32) -> bool {
     // SAFETY: kill with signal 0 does not send a signal, only checks existence.
     // Returns 0 if process exists and we have permission, -1 with ESRCH if not.
     unsafe { libc::kill(pid as i32, 0) == 0 }
+}
+
+/// Check if a process with the given PID is still alive.
+///
+/// Windows has no `kill(pid, 0)`: open a query handle and ask for the exit code.
+/// `STILL_ACTIVE` (259) means running. Returns `false` for PIDs <= 1.
+#[cfg(windows)]
+pub fn is_pid_alive(pid: u32) -> bool {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::System::Threading::{
+        GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+
+    const STILL_ACTIVE: u32 = 259;
+
+    if pid <= 1 {
+        return false;
+    }
+    // SAFETY: handle is checked for null and always closed before returning.
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code: u32 = 0;
+        let ok = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        ok && code == STILL_ACTIVE
+    }
 }
 
 /// What to do with a session that's in the live_sessions map.

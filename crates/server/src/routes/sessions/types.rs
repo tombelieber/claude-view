@@ -79,6 +79,9 @@ pub struct SessionsListQuery {
     /// Comma-separated provider ids to include ("claude-code" = native CC
     /// sessions; "codex", "cursor", … = foreign agents). Absent = all.
     pub providers: Option<String>,
+    /// Comma-separated Claude config-dir profiles to include ("default" =
+    /// ~/.claude; "work" = ~/.claude-work). Absent = all.
+    pub profiles: Option<String>,
 }
 
 /// Response for GET /api/sessions with pagination

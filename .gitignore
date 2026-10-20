@@ -169,3 +169,5 @@ apps/landing/.astro/
 bench/results/
 bench-api-*.json
 
+# Synthetic before/after evidence for the community compatibility release.
+!docs/images/releases/v0.46.0/*.png

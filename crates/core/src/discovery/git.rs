@@ -171,9 +171,25 @@ mod tests {
         let root = resolve_git_root(manifest).await;
         assert!(root.is_some(), "expected a git root for {manifest}");
         let root = root.unwrap();
-        assert!(
-            manifest.starts_with(&root),
-            "git root {root} should be ancestor of {manifest}"
+        let expected = std::process::Command::new("git")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_COMMON_DIR")
+            .env_remove("GIT_INDEX_FILE")
+            .args([
+                "-C",
+                manifest,
+                "rev-parse",
+                "--path-format=absolute",
+                "--git-common-dir",
+            ])
+            .output()
+            .unwrap();
+        assert!(expected.status.success());
+        let expected = String::from_utf8(expected.stdout).unwrap();
+        assert_eq!(
+            std::path::Path::new(expected.trim()).parent().unwrap(),
+            std::path::Path::new(&root)
         );
     }
 

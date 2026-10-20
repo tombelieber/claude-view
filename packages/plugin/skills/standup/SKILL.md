@@ -146,6 +146,8 @@ Generate a standup-style work summary from recent Claude Code sessions.
 | **Processes Tools** | |
 | `processes_cleanup_processes` | processes cleanup |
 | `processes_kill_process` | processes {pid} kill |
+| **Profiles Tools** | |
+| `profiles_list_profiles` | profiles |
 | **Projects Tools** | |
 | `projects_list_projects` | list all projects backed by the in-memory catalog. |
 | `projects_list_project_branches` | List distinct branches with session counts. |

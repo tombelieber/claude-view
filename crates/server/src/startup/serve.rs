@@ -39,13 +39,30 @@ pub async fn run(
         .with_graceful_shutdown(async move {
             // Listen for both SIGINT (Ctrl+C) and SIGTERM (kill, Docker, systemd).
             // Without SIGTERM handling, `kill <pid>` bypasses all cleanup.
+            #[cfg(unix)]
             let mut sigterm =
                 tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                     .expect("register SIGTERM handler");
 
+            // ponytail: Windows has no SIGTERM. Ctrl+Close (console window closed)
+            // and Ctrl+Break are the equivalents that still let cleanup run.
+            #[cfg(windows)]
+            let mut ctrl_close =
+                tokio::signal::windows::ctrl_close().expect("register ctrl_close handler");
+            #[cfg(windows)]
+            let mut ctrl_break =
+                tokio::signal::windows::ctrl_break().expect("register ctrl_break handler");
+
+            #[cfg(unix)]
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {}
                 _ = sigterm.recv() => {}
+            }
+            #[cfg(windows)]
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = ctrl_close.recv() => {}
+                _ = ctrl_break.recv() => {}
             }
             eprintln!("\n  Shutting down...");
 
@@ -73,9 +90,17 @@ pub async fn run(
             // Second signal (Ctrl+C or another SIGTERM) skips the wait for
             // impatient users. `sigterm.recv()` is re-armable and cancel-safe —
             // safe to reuse in a second `select!`.
+            #[cfg(unix)]
             tokio::select! {
                 _ = tokio::signal::ctrl_c() => {}
                 _ = sigterm.recv() => {}
+                _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
+            }
+            #[cfg(windows)]
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {}
+                _ = ctrl_close.recv() => {}
+                _ = ctrl_break.recv() => {}
                 _ = tokio::time::sleep(std::time::Duration::from_secs(2)) => {}
             }
         })

@@ -15,6 +15,30 @@ fn archive_base_dir() -> std::path::PathBuf {
     claude_view_core::paths::archive_dir()
 }
 
+/// The `projects/` root an unarchived session should be restored into.
+///
+/// Uses the `config_dir` recorded when the session was indexed, falling back
+/// to the primary root for sessions indexed before that column existed or
+/// whose path never matched Claude Code's layout.
+async fn restore_projects_root(
+    state: &Arc<AppState>,
+    session_id: &str,
+) -> ApiResult<std::path::PathBuf> {
+    let config_dir = state
+        .db
+        .get_session_config_dir(session_id)
+        .await
+        .map_err(|e| ApiError::Internal(format!("DB error: {e}")))?
+        .unwrap_or_default();
+
+    if !config_dir.is_empty() {
+        return Ok(std::path::PathBuf::from(config_dir).join("projects"));
+    }
+
+    claude_view_core::discovery::claude_projects_dir()
+        .map_err(|e| ApiError::Internal(format!("Cannot determine projects dir: {e}")))
+}
+
 #[utoipa::path(post, path = "/api/sessions/{id}/archive", tag = "sessions",
     params(("id" = String, Path, description = "Session ID")),
     responses(
@@ -100,12 +124,12 @@ pub async fn unarchive_session_handler(
             return Err(ApiError::BadRequest("Invalid archive path".to_string()));
         }
 
-        let Some(home) = dirs::home_dir() else {
-            return Err(ApiError::Internal(
-                "Cannot determine home directory".to_string(),
-            ));
-        };
-        let original = home.join(".claude").join("projects").join(relative);
+        // Restore into the config dir the session came from. Archiving
+        // flattens `{config_dir}/projects/{project}/` to
+        // `{archive}/{project}/`, so without this a session archived from a
+        // non-primary config dir would reappear under ~/.claude.
+        let root = restore_projects_root(&state, &id).await?;
+        let original = root.join(relative);
 
         // Move file back — failure is non-fatal
         if current.exists() {
@@ -218,7 +242,10 @@ pub async fn bulk_unarchive_handler(
                 tracing::warn!("Bulk unarchive: path traversal in {id}, skipping");
                 continue;
             }
-            let original = home.join(".claude").join("projects").join(relative);
+            let original = restore_projects_root(&state, id)
+                .await
+                .unwrap_or_else(|_| home.join(".claude").join("projects"))
+                .join(relative);
             if current.exists() {
                 if let Some(parent) = original.parent() {
                     let _ = tokio::fs::create_dir_all(parent).await;

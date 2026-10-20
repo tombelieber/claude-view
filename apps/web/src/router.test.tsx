@@ -53,6 +53,19 @@ vi.mock('./pages/ReportsPage', () => ({
   ReportsPage: () => <div>Reports Page</div>,
 }))
 
+// Route contracts should not initialize unrelated page dependency graphs.
+vi.mock('./pages/ClaudeHomePage', () => ({ ClaudeHomePage: () => <div>ClaudeHomePage</div> }))
+vi.mock('./pages/PluginsPage', () => ({ PluginsPage: () => <div>PluginsPage</div> }))
+vi.mock('./pages/PromptsPage', () => ({ PromptsPage: () => <div>PromptsPage</div> }))
+vi.mock('./pages/SystemMonitorPage', () => ({
+  SystemMonitorPage: () => <div>SystemMonitorPage</div>,
+}))
+vi.mock('./pages/TeamsPage', () => ({ TeamsPage: () => <div>TeamsPage</div> }))
+vi.mock('./pages/WorkflowRunDetailPage', () => ({
+  WorkflowRunDetailPage: () => <div>WorkflowRunDetailPage</div>,
+}))
+vi.mock('./pages/WorkflowsPage', () => ({ WorkflowsPage: () => <div>WorkflowsPage</div> }))
+
 async function renderAt(path: string) {
   const { router } = await import('./router')
   const memoryRouter = createMemoryRouter(router.routes, {

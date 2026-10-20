@@ -76,10 +76,10 @@ fi
 '
 
 run_gate "Gate 1" "${ARTIFACT_DIR}/gate1.log" bash -euo pipefail -c '
-cargo test --locked -p claude-view-core --lib live_parser 2>&1 | tee artifacts/integrity/gate1-core.log
-cargo test --locked -p claude-view-db --lib indexer_parallel 2>&1 | tee artifacts/integrity/gate1-db-lib.log
-cargo test --locked -p claude-view-db --test golden_parse_test 2>&1 | tee artifacts/integrity/gate1-db-golden.log
-cargo test --locked -p claude-view-search --lib 2>&1 | tee artifacts/integrity/gate1-search.log
+./scripts/cq test --locked -p claude-view-core --lib live_parser 2>&1 | tee artifacts/integrity/gate1-core.log
+./scripts/cq test --locked -p claude-view-db --lib indexer_parallel 2>&1 | tee artifacts/integrity/gate1-db-lib.log
+./scripts/cq test --locked -p claude-view-db --test golden_parse_test 2>&1 | tee artifacts/integrity/gate1-db-golden.log
+./scripts/cq test --locked -p claude-view-search --lib 2>&1 | tee artifacts/integrity/gate1-search.log
 for f in \
   artifacts/integrity/gate1-core.log \
   artifacts/integrity/gate1-db-lib.log \
@@ -115,9 +115,9 @@ for f in \
     exit 1
   }
 done
-cargo test --locked -p claude-view-core --test live_parser_integrity_test 2>&1 | tee artifacts/integrity/gate2-core-integrity.log
-cargo test --locked -p claude-view-db --test indexer_integrity_test 2>&1 | tee artifacts/integrity/gate2-db-indexer-integrity.log
-cargo test --locked -p claude-view-db --test integrity_real_shape_fixtures 2>&1 | tee artifacts/integrity/gate2-db-fixture-integrity.log
+./scripts/cq test --locked -p claude-view-core --test live_parser_integrity_test 2>&1 | tee artifacts/integrity/gate2-core-integrity.log
+./scripts/cq test --locked -p claude-view-db --test indexer_integrity_test 2>&1 | tee artifacts/integrity/gate2-db-indexer-integrity.log
+./scripts/cq test --locked -p claude-view-db --test integrity_real_shape_fixtures 2>&1 | tee artifacts/integrity/gate2-db-fixture-integrity.log
 for f in \
   artifacts/integrity/gate2-core-integrity.log \
   artifacts/integrity/gate2-db-indexer-integrity.log \

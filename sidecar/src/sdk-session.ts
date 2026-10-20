@@ -9,6 +9,7 @@ import {
   type Options,
   type PermissionMode,
   type SDKMessage,
+  forkSession,
   getSessionInfo,
   query,
 } from '@anthropic-ai/claude-agent-sdk'
@@ -34,7 +35,6 @@ function buildQueryOptions(
     disallowedTools?: string[]
     projectPath?: string
     resume?: string
-    forkSession?: boolean
   },
   permissions: PermissionHandler,
   emitFn: (event: ServerEvent) => void,
@@ -54,7 +54,6 @@ function buildQueryOptions(
     ...(opts.disallowedTools ? { disallowedTools: opts.disallowedTools } : {}),
     cwd: opts.projectPath || process.cwd(),
     ...(opts.resume ? { resume: opts.resume } : {}),
-    ...(opts.forkSession ? { forkSession: true } : {}),
     includePartialMessages: true,
     abortController: abort,
     canUseTool: async (toolName, input, toolOpts) => {
@@ -79,9 +78,7 @@ interface SessionSetupOpts {
   projectPath?: string
   /** Session ID to resume from — set for resume and fork, absent for create. */
   resume?: string
-  /** Branch conversation history into a new session. Requires resume. */
-  forkSession?: boolean
-  /** Known session ID — set for resume (known up front), empty for create/fork (SDK assigns). */
+  /** Restored transcript ID, known before querying for both resume and file-based forks. */
   knownSessionId?: string
   /** Initial user message to queue before the stream loop starts. */
   initialMessage?: string
@@ -119,7 +116,6 @@ function setupControlSession(opts: SessionSetupOpts, registry: SessionRegistry):
         disallowedTools: opts.disallowedTools,
         projectPath: opts.projectPath,
         resume: opts.resume,
-        forkSession: opts.forkSession,
       },
       permissions,
       emit,
@@ -159,6 +155,28 @@ function setupControlSession(opts: SessionSetupOpts, registry: SessionRegistry):
   }
 
   runStreamLoop(cs, registry)
+
+  // A restored transcript is ready for input once the control handshake completes.
+  // The CLI emits system.init only after a user prompt; never manufacture that prompt.
+  if (opts.knownSessionId && !opts.initialMessage) {
+    void q.initializationResult().then(
+      () => {
+        if (cs.closeReason || cs.state !== 'initializing') return
+        cs.controlReady = true
+        cs.state = 'waiting_input'
+        registry.emitSequenced(cs, { type: 'control_ready' })
+      },
+      (err: unknown) => {
+        if (cs.closeReason) return
+        cs.state = 'error'
+        registry.emitSequenced(cs, {
+          type: 'error',
+          message: err instanceof Error ? err.message : String(err),
+          fatal: true,
+        })
+      },
+    )
+  }
 
   return cs
 }
@@ -225,8 +243,14 @@ export async function resumeControlSession(
     // close the old session and re-resume with the new mode.
     // This is needed for bypassPermissions which can't be set mid-session
     // via setPermissionMode() — it must be passed at query() init time.
-    if (req.permissionMode && req.permissionMode !== existing.permissionMode) {
+    if (
+      existing.closeReason ||
+      existing.state === 'closed' ||
+      existing.state === 'error' ||
+      (req.permissionMode && req.permissionMode !== existing.permissionMode)
+    ) {
       closeSession(existing, registry)
+      registry.remove(existing.controlId)
       // Fall through to create new session with the requested mode
     } else {
       return existing
@@ -253,14 +277,15 @@ export async function forkControlSession(
   registry: SessionRegistry,
 ): Promise<ControlSession> {
   const resolvedPath = await resolveExistingSession(req.sessionId, req.projectPath)
+  const fork = await forkSession(req.sessionId, { dir: resolvedPath })
 
   return setupControlSession(
     {
       model: req.model ?? 'claude-sonnet-4-20250514',
       permissionMode: req.permissionMode,
       projectPath: resolvedPath,
-      resume: req.sessionId,
-      forkSession: true,
+      resume: fork.sessionId,
+      knownSessionId: fork.sessionId,
       initialMessage: req.initialMessage,
     },
     registry,
@@ -390,7 +415,7 @@ export function sendMessage(cs: ControlSession, content: string): void {
   })
 }
 
-export function closeSession(cs: ControlSession, registry: SessionRegistry): void {
+export function closeSession(cs: ControlSession, _registry: SessionRegistry): void {
   cs.permissions.drainAll()
   cs.closeReason = 'user_closed'
   cs.bridge.close()
@@ -425,15 +450,15 @@ export async function setSessionMode(
 }
 
 /**
- * Wait for the SDK session to fully initialize (session_init event emitted).
+ * Wait for a live session initialization or a restored transcript control handshake.
  *
  * For new sessions: waits for session_id extraction + session_init.
- * For resumed sessions: sessionId is already known, but still waits for session_init
- * so that lastSessionInit is cached before the HTTP response triggers WS connections.
+ * Restored sessions without a prompt expose control_ready instead of forcing a model turn.
+ * The real session_init follows the first user prompt and supplies full capabilities.
  */
 export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Promise<void> {
   // Only skip if BOTH sessionId is set AND session_init has been received
-  if (cs.sessionId && cs.lastSessionInit) return Promise.resolve()
+  if (cs.sessionId && (cs.lastSessionInit || cs.controlReady)) return Promise.resolve()
 
   return new Promise<void>((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -450,7 +475,7 @@ export function waitForSessionInit(cs: ControlSession, timeoutMs = 15_000): Prom
     }
 
     const onMessage = (event: { type: string; message?: string; fatal?: boolean }) => {
-      if (event.type === 'session_init') {
+      if (event.type === 'session_init' || event.type === 'control_ready') {
         // session_init received — lastSessionInit is now cached by emitSequenced
         if (cs.sessionId) {
           cleanup()

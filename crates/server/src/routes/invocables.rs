@@ -180,6 +180,8 @@ mod tests {
             project_path: "/home/user/project-a".to_string(),
             display_name: "project-a".to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: "/home/user/.claude/projects/project-a/sess-1.jsonl".to_string(),
             modified_at: 1000,
             size_bytes: 2048,

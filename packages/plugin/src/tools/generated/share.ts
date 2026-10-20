@@ -9,11 +9,14 @@ export const shareGeneratedTools: ToolDef[] = [
     name: 'share_create_share',
     description: 'Create Share (POST /api/sessions/share)',
     inputSchema: z.object({
-    session_id: z.string(),
-  }),
+      session_id: z.string(),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', `/api/sessions/${encodeURIComponent(String(args.session_id))}/share`)
+      const result = await client.request(
+        'POST',
+        `/api/sessions/${encodeURIComponent(String(args.session_id))}/share`,
+      )
       return JSON.stringify(result, null, 2)
     },
   },
@@ -21,11 +24,14 @@ export const shareGeneratedTools: ToolDef[] = [
     name: 'share_revoke_share',
     description: 'Revoke Share (DELETE /api/sessions/share)',
     inputSchema: z.object({
-    session_id: z.string(),
-  }),
+      session_id: z.string(),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('DELETE', `/api/sessions/${encodeURIComponent(String(args.session_id))}/share`)
+      const result = await client.request(
+        'DELETE',
+        `/api/sessions/${encodeURIComponent(String(args.session_id))}/share`,
+      )
       return JSON.stringify(result, null, 2)
     },
   },
@@ -38,5 +44,5 @@ export const shareGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/shares')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

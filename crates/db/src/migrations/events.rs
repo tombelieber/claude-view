@@ -418,4 +418,115 @@ CREATE INDEX IF NOT EXISTS idx_session_stats_project_first_message ON session_st
 DROP TABLE IF EXISTS sessions;
 COMMIT;
 PRAGMA foreign_keys=ON;"#,
+    // Multi-config-dir support: record which Claude config directory each
+    // session came from, so sessions written by a launcher that sets
+    // CLAUDE_CONFIG_DIR stay attributable instead of blending together.
+    //
+    // Empty string means "unknown / not derivable", which is what every row
+    // gets when the path does not match Claude Code's
+    // `{config_dir}/projects/{project}/{session}.jsonl` layout.
+    r#"ALTER TABLE session_stats ADD COLUMN config_dir TEXT NOT NULL DEFAULT '';"#,
+    r#"CREATE INDEX IF NOT EXISTS idx_session_stats_config_dir ON session_stats(config_dir);"#,
+    // Attribute existing rows using the final projects/project/session shape,
+    // including Windows separators and config paths nested under `projects`.
+    r#"
+WITH RECURSIVE roots(id, path, root, tail) AS (
+  SELECT session_id, replace(file_path, char(92), '/'), '', replace(file_path, char(92), '/')
+  FROM session_stats WHERE config_dir = ''
+  UNION ALL
+  SELECT id, path,
+    substr(path, 1, length(path) - length(tail) + instr(tail, '/projects/') - 1),
+    substr(tail, instr(tail, '/projects/') + 10)
+  FROM roots WHERE instr(tail, '/projects/') > 0
+)
+UPDATE session_stats SET config_dir = COALESCE((
+  SELECT root FROM roots WHERE id = session_id AND root <> ''
+    AND instr(tail, '/') > 0
+    AND instr(substr(tail, instr(tail, '/') + 1), '/') = 0
+    AND tail LIKE '%.jsonl'
+  ORDER BY length(root) DESC LIMIT 1
+), '') WHERE config_dir = '';
+"#,
+    // `valid_sessions` enumerates its columns explicitly, so ADD COLUMN on
+    // `session_stats` does not reach the view. Rebuild it so readers that go
+    // through `FROM valid_sessions s` can select config_dir. Identical to the
+    // migration 90 definition plus the new column.
+    r#"BEGIN;
+DROP VIEW IF EXISTS valid_sessions;
+CREATE VIEW valid_sessions AS
+  SELECT
+    ss.session_id AS id,
+    ss.project_id,
+    ss.project_display_name,
+    ss.project_path,
+    ss.file_path,
+    ss.preview,
+    ss.summary,
+    ss.message_count,
+    ss.last_message_at,
+    ss.first_message_at,
+    ss.git_branch,
+    ss.is_sidechain,
+    ss.size_bytes,
+    ss.indexed_at,
+    ss.last_message,
+    ss.files_touched,
+    ss.skills_used,
+    ss.tool_counts_edit,
+    ss.tool_counts_read,
+    ss.tool_counts_bash,
+    ss.tool_counts_write,
+    ss.turn_count,
+    ss.deep_indexed_at,
+    ss.parse_version,
+    ss.file_size_at_index,
+    ss.file_mtime_at_index,
+    ss.user_prompt_count,
+    ss.api_call_count,
+    ss.tool_call_count,
+    ss.files_read,
+    ss.files_edited,
+    ss.files_read_count,
+    ss.files_edited_count,
+    ss.reedited_files_count,
+    ss.duration_seconds,
+    ss.commit_count,
+    ss.total_input_tokens,
+    ss.total_output_tokens,
+    ss.cache_read_tokens,
+    ss.cache_creation_tokens,
+    ss.thinking_block_count,
+    ss.turn_duration_avg_ms,
+    ss.turn_duration_max_ms,
+    ss.turn_duration_total_ms,
+    ss.api_error_count,
+    ss.api_retry_count,
+    ss.compaction_count,
+    ss.hook_blocked_count,
+    ss.agent_spawn_count,
+    ss.bash_progress_count,
+    ss.hook_progress_count,
+    ss.mcp_progress_count,
+    ss.summary_text,
+    ss.lines_added,
+    ss.lines_removed,
+    ss.loc_source,
+    ss.ai_lines_added,
+    ss.ai_lines_removed,
+    ss.work_type,
+    ss.primary_model,
+    ss.total_task_time_seconds,
+    ss.longest_task_seconds,
+    ss.longest_task_preview,
+    ss.total_cost_usd,
+    ss.slug,
+    ss.entrypoint,
+    ss.git_root,
+    ss.session_cwd,
+    ss.parent_session_id,
+    ss.config_dir
+  FROM session_stats ss
+  LEFT JOIN session_flags sf ON sf.session_id = ss.session_id
+  WHERE ss.is_sidechain = 0 AND sf.archived_at IS NULL;
+COMMIT;"#,
 ];

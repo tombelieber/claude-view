@@ -9,21 +9,35 @@ export const promptsGeneratedTools: ToolDef[] = [
     name: 'prompts_list_prompts',
     description: 'List prompt history with optional search/filter.',
     inputSchema: z.object({
-    q: z.string().optional(),
-    project: z.string().optional(),
-    intent: z.string().optional(),
-    complexity: z.string().optional(),
-    has_paste: z.string().optional(),
-    sort: z.string().optional(),
-    time_after: z.number().optional(),
-    time_before: z.number().optional(),
-    template_match: z.string().optional(),
-    limit: z.number().optional(),
-    offset: z.number().optional(),
-  }),
+      q: z.string().optional(),
+      project: z.string().optional(),
+      intent: z.string().optional(),
+      complexity: z.string().optional(),
+      has_paste: z.string().optional(),
+      sort: z.string().optional(),
+      time_after: z.number().optional(),
+      time_before: z.number().optional(),
+      template_match: z.string().optional(),
+      limit: z.number().optional(),
+      offset: z.number().optional(),
+    }),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('GET', '/api/prompts', { params: { q: args.q, project: args.project, intent: args.intent, complexity: args.complexity, has_paste: args.has_paste, sort: args.sort, time_after: args.time_after, time_before: args.time_before, template_match: args.template_match, limit: args.limit, offset: args.offset } })
+      const result = await client.request('GET', '/api/prompts', {
+        params: {
+          q: args.q,
+          project: args.project,
+          intent: args.intent,
+          complexity: args.complexity,
+          has_paste: args.has_paste,
+          sort: args.sort,
+          time_after: args.time_after,
+          time_before: args.time_before,
+          template_match: args.template_match,
+          limit: args.limit,
+          offset: args.offset,
+        },
+      })
       return JSON.stringify(result, null, 2)
     },
   },
@@ -46,5 +60,5 @@ export const promptsGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/prompts/templates')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

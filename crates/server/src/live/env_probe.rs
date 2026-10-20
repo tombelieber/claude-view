@@ -253,8 +253,13 @@ mod tests {
         // Create a bare session (default shell, no command override) so the
         // pane runs the user's $SHELL — a user binary that `ps eww` can
         // introspect reliably on macOS.
+        let runtime = std::env::current_exe().expect("test executable");
+        let command = format!(
+            "exec '{}' --exact live::env_probe::tests::tmux_probe_child --ignored --nocapture",
+            runtime.display().to_string().replace('\'', "'\\''")
+        );
         let created = Command::new("tmux")
-            .args(["new-session", "-d", "-s", &test_name])
+            .args(["new-session", "-d", "-s", &test_name, &command])
             .status();
         if !matches!(created, Ok(s) if s.success()) {
             eprintln!("SKIP: could not create test tmux session");
@@ -310,5 +315,10 @@ mod tests {
              got pane_id={}, resolved to session name {:?}, expected {:?}",
             env.pane_id, resolved, test_name
         );
+    }
+    #[test]
+    #[ignore = "helper process launched by integration_user_spawned_tmux_round_trip"]
+    fn tmux_probe_child() {
+        std::thread::sleep(std::time::Duration::from_secs(20));
     }
 }

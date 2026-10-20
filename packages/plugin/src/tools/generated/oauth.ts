@@ -7,7 +7,7 @@ import type { ToolDef } from '../types.js'
 export const oauthGeneratedTools: ToolDef[] = [
   {
     name: 'oauth_get_auth_identity',
-    description: 'Get Auth Identity',
+    description: 'Get Auth Identity (GET /api/oauth/identity)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, _args) => {
@@ -17,7 +17,7 @@ export const oauthGeneratedTools: ToolDef[] = [
   },
   {
     name: 'oauth_get_oauth_usage',
-    description: 'Get Oauth Usage',
+    description: 'Get Oauth Usage (GET /api/oauth/usage)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     handler: async (client, _args) => {
@@ -27,12 +27,12 @@ export const oauthGeneratedTools: ToolDef[] = [
   },
   {
     name: 'oauth_post_oauth_usage_refresh',
-    description: 'Post Oauth Usage Refresh',
+    description: 'Post Oauth Usage Refresh (POST /api/oauth/usage/refresh)',
     inputSchema: z.object({}),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, _args) => {
       const result = await client.request('POST', '/api/oauth/usage/refresh')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

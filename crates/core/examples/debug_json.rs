@@ -7,6 +7,8 @@ fn main() {
         project_path: "/test".to_string(),
         display_name: "test".to_string(),
         git_root: None,
+        config_dir: String::new(),
+        profile: String::new(),
         file_path: "/test/session.jsonl".to_string(),
         modified_at: 1769482232,
         size_bytes: 100,

@@ -391,6 +391,7 @@ export type ServerEvent =
   | TurnComplete
   | TurnError
   | SessionInit
+  | { type: 'control_ready' }
   | SessionStatus
   | SessionClosed
   | ContextCompacted

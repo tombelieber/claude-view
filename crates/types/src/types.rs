@@ -312,6 +312,15 @@ pub struct SessionInfo {
     /// None for non-git directories or sessions indexed before this field existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub git_root: Option<String>,
+    /// Claude config dir this session was written by, e.g. `/home/u/.claude`
+    /// or `/home/u/.claude-work`. Empty for sessions indexed before the
+    /// column existed, or whose path never matched Claude Code's layout.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub config_dir: String,
+    /// Short name for `config_dir`: `default` for `~/.claude`, otherwise the
+    /// suffix (`~/.claude-work` -> `work`). Empty when `config_dir` is.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub profile: String,
     pub file_path: String,
     #[ts(type = "number")]
     pub modified_at: i64,
@@ -1194,6 +1203,8 @@ mod tests {
             project_path: "/path/to/project".to_string(),
             display_name: "project".to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1769482232, // Unix timestamp
             size_bytes: 1024,
@@ -1372,6 +1383,8 @@ mod tests {
             project_path: "/path/to/project".to_string(),
             display_name: "project".to_string(),
             git_root: None,
+            config_dir: String::new(),
+            profile: String::new(),
             file_path: "/path/to/session.jsonl".to_string(),
             modified_at: 1700000000,
             size_bytes: 1024,

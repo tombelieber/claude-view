@@ -1,4 +1,4 @@
-//! Parser for ~/.claude/sessions/{pid}.json active session files.
+//! Parser for `{config_dir}/sessions/{pid}.json` active session files.
 //!
 //! Ephemeral JSON files created by Claude Code CLI on session start, deleted on exit.
 //! Only live sessions are visible. Provides hook-free session lifecycle detection.
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use ts_rs::TS;
 
-/// A parsed session file from ~/.claude/sessions/{pid}.json.
+/// A parsed session file from `{config_dir}/sessions/{pid}.json`.
 ///
 /// Written by Claude Code CLI — external data we don't control.
 /// Every field uses `#[serde(default)]` so missing fields never
@@ -81,9 +81,53 @@ pub fn parse_session_file(path: &Path) -> Option<ActiveSession> {
     serde_json::from_str(&contents).ok()
 }
 
-/// Resolve the ~/.claude/sessions/ directory.
+/// Resolve the primary `~/.claude/sessions/` directory.
+///
+/// Prefer [`claude_sessions_dirs`] for anything that watches or scans; a
+/// session started by a launcher that sets `CLAUDE_CONFIG_DIR` writes its
+/// file under that config dir, not this one.
 pub fn claude_sessions_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".claude").join("sessions"))
+    claude_sessions_dirs().into_iter().next()
+}
+
+/// Resolve the `sessions/` directory of every configured Claude config dir.
+///
+/// Claude Code writes `{config_dir}/sessions/{pid}.json` on start and deletes
+/// it on exit, so live-session detection has to look in all of them or it
+/// only ever sees sessions from the primary config dir.
+///
+/// Always at least `~/.claude/sessions`, matching the previous behaviour.
+pub fn claude_sessions_dirs() -> Vec<PathBuf> {
+    let dirs = crate::discovery::claude_config_dirs().unwrap_or_default();
+    if dirs.is_empty() {
+        return dirs::home_dir()
+            .map(|h| h.join(".claude").join("sessions"))
+            .into_iter()
+            .collect();
+    }
+    dirs.into_iter().map(|d| d.join("sessions")).collect()
+}
+
+/// Find the `sessions/` directory holding this pid's file.
+///
+/// Returns the first config dir that has `{sessions}/{pid}.json`, so callers
+/// that clean up a stale file act on the dir it actually lives in rather than
+/// assuming the primary one.
+pub fn sessions_dir_for_pid(pid: u32) -> Option<PathBuf> {
+    claude_sessions_dirs()
+        .into_iter()
+        .find(|dir| dir.join(format!("{pid}.json")).is_file())
+}
+
+/// Scan every configured `sessions/` directory.
+///
+/// A pid is unique per machine, so files from different config dirs cannot
+/// collide.
+pub fn scan_all_active_sessions() -> Vec<ActiveSession> {
+    claude_sessions_dirs()
+        .iter()
+        .flat_map(|dir| scan_active_sessions(dir))
+        .collect()
 }
 
 #[cfg(test)]

@@ -48,6 +48,18 @@ pub fn apply_lifecycle(
                         context: None,
                     };
                 }
+                // CC 2.1.214+ reports "fork" for sessions that begin as a fork
+                // (previously "resume"). Treat like a resume — prior context,
+                // waiting for you — rather than falling through to the generic
+                // "Waiting for first prompt".
+                Some("fork") => {
+                    hook.agent_state = AgentState {
+                        group: AgentStateGroup::NeedsYou,
+                        state: "idle".into(),
+                        label: "Session forked".into(),
+                        context: None,
+                    };
+                }
                 _ => {
                     hook.agent_state = AgentState {
                         group: AgentStateGroup::NeedsYou,

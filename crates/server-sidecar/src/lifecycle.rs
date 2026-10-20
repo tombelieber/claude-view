@@ -197,13 +197,23 @@ impl SidecarManager {
 
             // Send SIGTERM so Node.js cleanup handlers can run.
             // SAFETY: pid comes from a Child we own; the process exists.
-            let term_result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
-            if term_result != 0 {
-                tracing::warn!(pid, errno = term_result, "SIGTERM send failed");
+            #[cfg(unix)]
+            {
+                let term_result = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+                if term_result != 0 {
+                    tracing::warn!(pid, errno = term_result, "SIGTERM send failed");
+                }
             }
 
-            // Poll for graceful exit (up to 3s, 50ms intervals).
-            let deadline = std::time::Instant::now() + Duration::from_secs(3);
+            // ponytail: Windows has no SIGTERM, so there is nothing to wait for —
+            // zero grace period falls straight through to kill() below.
+            #[cfg(unix)]
+            let grace = Duration::from_secs(3);
+            #[cfg(windows)]
+            let grace = Duration::from_secs(0);
+
+            // Poll for graceful exit (50ms intervals).
+            let deadline = std::time::Instant::now() + grace;
             loop {
                 match child.try_wait() {
                     Ok(Some(status)) => {

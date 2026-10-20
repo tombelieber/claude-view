@@ -205,6 +205,19 @@ pub async fn list_sessions(
                 .collect()
         })
         .unwrap_or_default();
+    // Config-dir profile filter ("default", "work", …). A session indexed
+    // before attribution existed has an empty profile and is excluded whenever
+    // the filter is active, the same way an unknown model is.
+    let profiles_filter: Vec<String> = query
+        .profiles
+        .as_deref()
+        .map(|s| {
+            s.split(',')
+                .map(|p| p.trim().to_string())
+                .filter(|p| !p.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
     // Branches filter splits the `~` NO_BRANCH_SENTINEL out of the named list:
     // matches sessions whose git_branch is NULL. Named entries match the
     // stored branch string exactly. Mixed ("~,main") means NULL OR main.
@@ -295,6 +308,9 @@ pub async fn list_sessions(
                 if !models_filter.iter().any(|m| m == primary) {
                     return false;
                 }
+            }
+            if !profiles_filter.is_empty() && !profiles_filter.contains(&info.profile) {
+                return false;
             }
             if branches_filter_active {
                 let matched = match &info.git_branch {

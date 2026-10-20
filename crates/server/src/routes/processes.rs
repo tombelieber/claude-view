@@ -21,6 +21,7 @@ use std::sync::Arc;
 use sysinfo::{ProcessesToUpdate, System};
 use ts_rs::TS;
 
+use crate::platform::terminate_in;
 use crate::state::AppState;
 
 // =============================================================================
@@ -142,19 +143,13 @@ pub async fn cleanup_processes(
 
         for target in &targets {
             match validate_pid_in_system(&sys, target.pid, target.start_time, own_pid) {
-                Ok(()) => {
-                    let signal = libc::SIGTERM;
-                    let result = unsafe { libc::kill(target.pid as i32, signal) };
-                    if result == 0 {
-                        killed.push(target.pid);
-                    } else {
-                        let errno = std::io::Error::last_os_error();
-                        failed.push(KillFailure {
-                            pid: target.pid,
-                            reason: format!("SIGTERM failed: {errno}"),
-                        });
-                    }
-                }
+                Ok(()) => match terminate_in(&sys, target.pid, false) {
+                    Ok(()) => killed.push(target.pid),
+                    Err(reason) => failed.push(KillFailure {
+                        pid: target.pid,
+                        reason,
+                    }),
+                },
                 Err(reason) => {
                     failed.push(KillFailure {
                         pid: target.pid,
@@ -193,17 +188,7 @@ fn validate_and_kill(pid: u32, start_time: i64, force: bool) -> Result<(), Strin
 
     validate_pid_in_system(&sys, pid, start_time, own_pid)?;
 
-    let signal = if force { libc::SIGKILL } else { libc::SIGTERM };
-    let result = unsafe { libc::kill(pid as i32, signal) };
-    if result == 0 {
-        Ok(())
-    } else {
-        let errno = std::io::Error::last_os_error();
-        Err(format!(
-            "{} failed: {errno}",
-            if force { "SIGKILL" } else { "SIGTERM" }
-        ))
-    }
+    terminate_in(&sys, pid, force)
 }
 
 /// Validate that a PID is safe to kill: exists, start_time matches, not self.

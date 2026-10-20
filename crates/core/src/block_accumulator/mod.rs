@@ -247,6 +247,12 @@ pub fn handled_record_types() -> &'static [&'static str] {
 /// - `bridge-session`: a mobile/remote bridge pointer record (`{type, sessionId,
 ///   bridgeSessionId, lastSequenceNum}` — no content/message/uuid) linking a local
 ///   session to its bridge-side counterpart. Pure routing/sequencing bookkeeping.
+/// - `fork-context-ref`: a fork/rewind lineage pointer (`{type, agentId,
+///   parentSessionId, parentLastUuid, contextLength}` — no content/message/uuid)
+///   emitted in a forked sub-agent transcript to record which parent session/uuid
+///   its context was forked from (the `/branch` + `/rewind` features, CC 2.1.191+).
+///   Pure lineage bookkeeping; session-level fork provenance is already surfaced via
+///   the top-level `forkedFrom` extraction in `process_line`.
 ///
 /// - `atis-latch`: internal session latch; no conversation payload.
 /// - `cost-state`: cumulative checkpoint; token usage is already counted from
@@ -262,6 +268,7 @@ pub fn intentionally_ignored_record_types() -> &'static [&'static str] {
         "started",
         "result",
         "bridge-session",
+        "fork-context-ref",
         "atis-latch",
         "cost-state",
         "file-history-delta",

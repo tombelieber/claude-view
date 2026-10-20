@@ -29,11 +29,14 @@ export const classifyGeneratedTools: ToolDef[] = [
     name: 'classify_single_session',
     description: 'Classify a single session synchronously.',
     inputSchema: z.object({
-    session_id: z.string(),
-  }),
+      session_id: z.string(),
+    }),
     annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     handler: async (client, args) => {
-      const result = await client.request('POST', `/api/classify/single/${encodeURIComponent(String(args.session_id))}`)
+      const result = await client.request(
+        'POST',
+        `/api/classify/single/${encodeURIComponent(String(args.session_id))}`,
+      )
       return JSON.stringify(result, null, 2)
     },
   },
@@ -46,5 +49,5 @@ export const classifyGeneratedTools: ToolDef[] = [
       const result = await client.request('GET', '/api/classify/status')
       return JSON.stringify(result, null, 2)
     },
-  }
+  },
 ]

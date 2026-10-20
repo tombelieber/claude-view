@@ -96,6 +96,8 @@ export function handleWebSocket(ws: WebSocket, controlId: string, registry: Sess
   // 1. Re-send cached session_init if available (V2 multi-tab behavior)
   if (session.lastSessionInit) {
     ws.send(JSON.stringify(session.lastSessionInit))
+  } else if (session.controlReady) {
+    ws.send(JSON.stringify({ type: 'control_ready' }))
   }
 
   // 2. Send session_status

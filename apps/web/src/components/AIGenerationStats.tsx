@@ -70,16 +70,14 @@ export function AIGenerationStats({ timeRange, project, branch }: AIGenerationSt
   // Check if we have any meaningful data for the by-model / by-project breakdowns
   const hasModelData = stats.tokensByModel.length > 0
   const hasProjectData = stats.tokensByProject.length > 0
+  if (!hasModelData && !hasProjectData) {
+    return null
+  }
+
   const scopeMeta = stats.meta
   const sessionsScope = scopeLabel(scopeMeta.dataScope.sessions)
   const workloadScope = scopeLabel(scopeMeta.dataScope.workload)
   const sessionBreakdown = resolveSessionBreakdown(scopeMeta)
-
-  // Headline tokens + cost now live in TokenCostSummary at the top of the dashboard.
-  // If there's nothing to show here (neither by-model nor by-project data), hide entirely.
-  if (!hasModelData && !hasProjectData) {
-    return null
-  }
 
   return (
     <div className="space-y-4 sm:space-y-6">

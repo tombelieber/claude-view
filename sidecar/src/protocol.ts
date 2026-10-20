@@ -319,6 +319,7 @@ export type ServerEvent =
   | TurnError
   // Session
   | SessionInit
+  | { type: 'control_ready' }
   | SessionStatus
   | SessionClosed
   // Context

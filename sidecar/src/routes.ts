@@ -9,7 +9,6 @@ import {
   createControlSession,
   forkControlSession,
   resumeControlSession,
-  sendMessage,
   waitForSessionInit,
 } from './sdk-session.js'
 import type { SessionRegistry } from './session-registry.js'
@@ -47,7 +46,12 @@ export function createRoutes(registry: SessionRegistry) {
     // a prior bind was lost (startup race, server restart, etc.)
     if (registry.hasSessionId(sessionId)) {
       const existing = registry.getBySessionId(sessionId)!
-      if (existing.lastSessionInit) {
+      if (
+        (existing.lastSessionInit || existing.controlReady) &&
+        !existing.closeReason &&
+        existing.state !== 'closed' &&
+        existing.state !== 'error'
+      ) {
         // Healthy session — reuse it
         notifyBindControl(sessionId, existing.controlId)
         return c.json({
@@ -58,6 +62,7 @@ export function createRoutes(registry: SessionRegistry) {
       }
       // Zombie session (never fully initialized) — close and re-resume below
       closeSession(existing, registry)
+      registry.remove(existing.controlId)
     }
 
     const body = await c.req.json<Omit<ResumeSessionRequest, 'sessionId'>>().catch(() => ({}))

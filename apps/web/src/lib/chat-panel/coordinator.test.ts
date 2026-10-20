@@ -681,3 +681,28 @@ describe('coordinator', () => {
     expect(store.projectPath).toBe('/initial/path')
   })
 })
+
+test('restored control becomes usable before the first prompt without invented capabilities', () => {
+  const acquiring: ChatPanelStore = {
+    ...INITIAL,
+    panel: {
+      phase: 'acquiring',
+      action: 'resume',
+      sessionId: 'abc',
+      targetSessionId: 'abc',
+      historyBlocks: mockBlocks,
+      pendingMessage: null,
+      step: { step: 'ws_initializing', controlId: 'c1' },
+    },
+  }
+  const ready = drive(acquiring, [{ type: 'CONTROL_READY' }])
+  expect(ready.store.panel).toMatchObject({
+    phase: 'sdk_owned',
+    turn: { turn: 'idle' },
+    blocks: mockBlocks,
+  })
+  expect(ready.store.meta).toBeNull()
+  expect(ready.allCmds.some((c) => c.cmd === 'WS_SEND')).toBe(false)
+  const initialized = drive(ready.store, [mockInitEvent])
+  expect(initialized.store.meta?.model).toBe('opus')
+})

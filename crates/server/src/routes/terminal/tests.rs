@@ -221,6 +221,22 @@ async fn recv_until_type(
     None
 }
 
+/// `buffer_end` precedes tracker/watcher creation. A pong confirms the event
+/// loop is ready and all preceding mode requests have been processed in order.
+async fn wait_for_control_messages(
+    ws: &mut tokio_tungstenite::WebSocketStream<
+        tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+    >,
+) {
+    ws.send(tungstenite::Message::Text(r#"{"type":"ping"}"#.into()))
+        .await
+        .unwrap();
+    let pong = tokio::time::timeout(Duration::from_secs(5), recv_until_type(ws, "pong"))
+        .await
+        .expect("terminal control loop must become ready");
+    assert!(pong.is_some(), "expected pong before appending live input");
+}
+
 // =========================================================================
 // Test 1: ws_upgrade_returns_101
 // =========================================================================
@@ -492,6 +508,7 @@ async fn ws_live_lines_streamed() {
     // Wait for buffer_end
     let _buffer_end = recv_until_type(&mut ws, "buffer_end").await;
     assert!(_buffer_end.is_some(), "Expected buffer_end");
+    wait_for_control_messages(&mut ws).await;
 
     // Append new lines to the file in a loop to reliably trigger the
     // file watcher (macOS FSEvents can batch/coalesce events).
@@ -666,8 +683,7 @@ async fn ws_mode_switch() {
     .await
     .unwrap();
 
-    // Small delay to let the mode switch be processed
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_control_messages(&mut ws).await;
 
     // Append new lines to reliably trigger the file watcher
     let path = tmp.path().to_path_buf();
@@ -801,8 +817,7 @@ async fn ws_mode_switch_to_block() {
     .await
     .unwrap();
 
-    // Small delay to let the mode switch be processed.
-    tokio::time::sleep(Duration::from_millis(100)).await;
+    wait_for_control_messages(&mut ws).await;
 
     // Append new lines to reliably trigger the file watcher.
     let path = tmp.path().to_path_buf();

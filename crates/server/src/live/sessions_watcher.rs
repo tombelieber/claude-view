@@ -1,4 +1,5 @@
-//! File watcher for ~/.claude/sessions/ directory — hook-free lifecycle detection.
+//! File watcher for every configured `{config_dir}/sessions/` directory —
+//! hook-free lifecycle detection.
 //!
 //! Watches for create/delete events on session JSON files:
 //! - Create → new Claude Code session started (extract kind/entrypoint/sessionId)
@@ -8,7 +9,7 @@
 //! activity labels) but sessions/ handles birth/death without requiring hooks.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -28,14 +29,12 @@ pub enum SessionLifecycleEvent {
     Crashed { pid: u32, session_id: String },
 }
 
-/// Scan the sessions directory and return all currently alive sessions.
+/// Scan every configured sessions directory and return all currently alive
+/// sessions.
 ///
 /// Called at startup to establish initial state BEFORE snapshot recovery.
 pub fn scan_sessions_dir() -> Vec<ActiveSession> {
-    match session_files::claude_sessions_dir() {
-        Some(dir) => session_files::scan_active_sessions(&dir),
-        None => Vec::new(),
-    }
+    session_files::scan_all_active_sessions()
 }
 
 /// Check which sessions from the sessions dir are actually alive (kill -0).
@@ -62,23 +61,49 @@ pub fn partition_by_liveness(
 /// Returns a receiver for lifecycle events and the watcher handle (must be kept alive).
 pub fn start_sessions_watcher(
 ) -> Option<(mpsc::Receiver<SessionLifecycleEvent>, RecommendedWatcher)> {
-    let sessions_dir = session_files::claude_sessions_dir()?;
+    let sessions_dirs = session_files::claude_sessions_dirs();
+    if sessions_dirs.is_empty() {
+        return None;
+    }
 
-    if !sessions_dir.exists() {
-        // Create the directory if it doesn't exist — Claude Code may not have run yet
-        if std::fs::create_dir_all(&sessions_dir).is_err() {
-            warn!("Failed to create ~/.claude/sessions/ directory");
-            return None;
-        }
+    // Create any that do not exist yet — Claude Code may not have run under
+    // that config dir. A dir we cannot create is skipped rather than fatal,
+    // so one bad config dir does not disable live detection for the rest.
+    let sessions_dirs: Vec<PathBuf> = sessions_dirs
+        .into_iter()
+        .filter(|dir| {
+            if dir.exists() {
+                return true;
+            }
+            if std::fs::create_dir_all(dir).is_err() {
+                warn!("Failed to create {}", dir.display());
+                return false;
+            }
+            true
+        })
+        .collect();
+
+    if sessions_dirs.is_empty() {
+        return None;
     }
 
     let (tx, rx) = mpsc::channel::<SessionLifecycleEvent>(64);
-    let sessions_dir_clone = sessions_dir.clone();
+
+    // The event handler needs the dir the event came from, so it can build
+    // the `{pid}.json` path. Match the event path against each root rather
+    // than assuming a single one.
+    let dirs_for_handler = sessions_dirs.clone();
 
     let mut watcher = match RecommendedWatcher::new(
         move |res: Result<Event, notify::Error>| match res {
             Ok(event) => {
-                handle_notify_event(&tx, &sessions_dir_clone, event);
+                let root = event
+                    .paths
+                    .first()
+                    .and_then(|p| dirs_for_handler.iter().find(|d| p.starts_with(d)));
+                if let Some(root) = root {
+                    handle_notify_event(&tx, root, event);
+                }
             }
             Err(e) => {
                 warn!("Sessions watcher error: {e}");
@@ -93,12 +118,19 @@ pub fn start_sessions_watcher(
         }
     };
 
-    if let Err(e) = watcher.watch(&sessions_dir, RecursiveMode::NonRecursive) {
-        error!("Failed to watch ~/.claude/sessions/: {e}");
-        return None;
+    let mut watched = 0usize;
+    for dir in &sessions_dirs {
+        if let Err(e) = watcher.watch(dir, RecursiveMode::NonRecursive) {
+            error!("Failed to watch {}: {e}", dir.display());
+            continue;
+        }
+        watched += 1;
+        info!("Sessions watcher started on {}", dir.display());
     }
 
-    info!("Sessions watcher started on {}", sessions_dir.display());
+    if watched == 0 {
+        return None;
+    }
 
     Some((rx, watcher))
 }
