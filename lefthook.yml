@@ -42,6 +42,9 @@ post-merge:
 pre-push:
   parallel: true
   commands:
+    docker-packaging:
+      glob: "{Dockerfile,.dockerignore,docker-compose.yml,docker/**,test/docker-smoke.mjs}"
+      run: bunx biome check docker/download-release.mjs docker/download-release.test.mjs test/docker-smoke.mjs && node --test docker/download-release.test.mjs && node test/docker-smoke.mjs
     clippy:
       # -D deprecated is explicit (in addition to -D warnings which already
       # catches deprecated by default) so any new caller of a legacy writer

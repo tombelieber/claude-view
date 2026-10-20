@@ -1,0 +1,7 @@
+# This image packages a published release; no source tree, credentials, local
+# sessions, agent configuration or Git history is needed by the builder.
+**
+!npx-cli/
+!npx-cli/package.json
+!docker/
+!docker/download-release.mjs

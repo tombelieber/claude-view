@@ -1,0 +1,30 @@
+services:
+  claude-view:
+    build: .
+    init: true
+    ports:
+      - "127.0.0.1:${CLAUDE_VIEW_PORT:-47892}:47892"
+    volumes:
+      # Share transcripts only, never host settings, authentication or code.
+      - type: bind
+        source: "${CLAUDE_PROJECTS_DIR:-${HOME:?Set CLAUDE_PROJECTS_DIR to your Claude projects directory}/.claude/projects}"
+        target: /sessions/projects
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: claude-view-data
+        target: /data
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=128m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    restart: unless-stopped
+    stop_grace_period: 15s
+
+volumes:
+  claude-view-data:

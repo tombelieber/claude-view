@@ -363,6 +363,10 @@ Why default-on for official builds? With thousands of anonymous installs and zer
 
 The shell installer downloads a pre-built binary (~10 MB), installs to `~/.claude-view/bin`, and adds it to your PATH. Then just run `claude-view`.
 
+**Docker:** From a published release checkout, run `docker compose up --build -d`
+to browse host session transcripts with read-only mounts. See the
+[Docker guide](docs/docker.md) for Windows PowerShell setup and container limits.
+
 **Only requirement:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed.
 
 <details>
