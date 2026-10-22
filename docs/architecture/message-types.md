@@ -896,3 +896,25 @@ Live field coverage remains separate from phantom-field evidence, which also
 includes the shipped synthetic `legacy_tool_inputs.jsonl` regression fixture.
 That fixture is parsed through the real block pipeline and keeps optional legacy
 Agent/TodoWrite inputs supported even when a current local corpus omits them.
+Its matching Agent result also exercises the existing live parser's
+`toolUseResult.totalDurationMs` and `totalToolUseCount` extraction. These optional
+fields remain supported and are not removed from phantom-field validation.
+
+The 2026-10-22 audit classification also records the existing skip behavior for
+two content-less pointer types. `fork-context-ref` carries `agentId`,
+`parentSessionId`, `parentLastUuid`, and numeric `contextLength`; the parser already
+declares this lineage record ignored. `frame-link` carries string `sessionId`,
+`timestamp`, `path`, and `frameUrl`, with optional string `title` and no
+message/content/text payload. Its
+baseline entry documents the current wildcard skip, without adding a handler,
+changing runtime ignore declarations, rendering a frame, or following its URL.
+The observed assistant boolean `apiErrorIsTransient` and user boolean
+`stackedExpansion` are not consumed by the current parser; classifying those
+metadata fields leaves message content and existing error handling unchanged.
+The root user strings `stackedOriginalInput` and `userFeedback` remain wire
+metadata rather than an alternative source of conversation text. In the reviewed
+records, `stackedOriginalInput` accompanies a distinct nonempty `message.content`
+string, while all five `userFeedback` strings already appear within the tool
+result output the current parser renders. The audit classification preserves
+`message.content` as authoritative and does not add or remove displayed feedback.
+Unreviewed record types and field paths continue to fail the audit.

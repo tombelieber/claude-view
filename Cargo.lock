@@ -157,9 +157,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "arbitrary"
@@ -734,7 +734,7 @@ checksum = "c8d4a3bb8b1e0c1050499d1815f5ab16d04f0959b233085fb31653fbfc9d98f9"
 
 [[package]]
 name = "claude-view-core"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "async-trait",
  "chrono",
@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-db"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "axum 0.8.9",
  "chrono",
@@ -798,7 +798,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-observability"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -830,7 +830,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-providers"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -849,7 +849,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-relay"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-search"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -902,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -989,7 +989,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-insights"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "serde",
  "ts-rs",
@@ -999,7 +999,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-jobs"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "chrono",
  "serde",
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-live-state"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "claude-view-core",
  "claude-view-db",
@@ -1029,7 +1029,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-local-llm"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "claude-view-core",
  "claude-view-types",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-process-tree"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "chrono",
  "libc",
@@ -1060,7 +1060,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-sidecar"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "libc",
  "reqwest",
@@ -1073,7 +1073,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-teams"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -1090,7 +1090,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-server-types"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "axum 0.8.9",
  "claude-view-core",
@@ -1111,7 +1111,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-session-parser"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "arbitrary",
  "blake3",
@@ -1126,7 +1126,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-stats-rollup"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "chrono",
  "claude-view-core",
@@ -1141,7 +1141,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-stats-rollup-derive"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1153,7 +1153,7 @@ dependencies = [
 
 [[package]]
 name = "claude-view-types"
-version = "0.46.0"
+version = "0.46.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2396,7 +2396,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
@@ -2939,9 +2939,9 @@ checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "memmap2"
-version = "0.9.10"
+version = "0.9.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "714098028fe011992e1c3962653c96b2d578c4b4bce9036e15ff220319b1e0e3"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
 dependencies = [
  "libc",
 ]
@@ -4248,7 +4248,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
@@ -4471,9 +4471,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.15"
+version = "0.103.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3c3cf1d8b1e7d4927e2d154c3fcb02979afb9939629c62cd9048d4f07b60ac2"
+checksum = "4443b1b6d39d7c663139942cc4558262562d2c84123bb6282ef177009ca8b281"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -6266,14 +6266,14 @@ version = "0.26.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
 dependencies = [
- "webpki-roots 1.0.7",
+ "webpki-roots 1.0.10",
 ]
 
 [[package]]
 name = "webpki-roots"
-version = "1.0.7"
+version = "1.0.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "52f5ee44c96cf55f1b349600768e3ece3a8f26010c05265ab73f945bb1a2eb9d"
+checksum = "1c1c8e20c8a38fc7d65abfe74eb7280e4aa667e8eec8bc84996d2874810748d9"
 dependencies = [
  "rustls-pki-types",
 ]
