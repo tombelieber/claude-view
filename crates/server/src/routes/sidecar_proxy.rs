@@ -19,7 +19,8 @@ use std::time::Duration;
 use axum::{
     body::Body,
     extract::{ws::WebSocket, Request, State, WebSocketUpgrade},
-    http::{HeaderMap, Method, StatusCode},
+    http::{header, HeaderMap, Method, StatusCode},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{any, get},
     Router,
@@ -52,6 +53,65 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/ws/chat/{session_id}", get(ws_proxy_handler))
         .route("/api/sidecar/{*rest}", any(http_proxy_handler))
+        .route_layer(middleware::from_fn(guard_sidecar_access))
+}
+
+/// Validate the original browser request before starting or recovering the sidecar.
+/// The WebSocket relay creates a new request without the browser's Origin, so
+/// checking only the sidecar would otherwise leave that path unprotected.
+async fn guard_sidecar_access(req: Request, next: Next) -> Response {
+    if !allows_sidecar_access(req.headers()) {
+        return error_response(
+            StatusCode::FORBIDDEN,
+            "Sidecar access is restricted to localhost",
+        );
+    }
+    next.run(req).await
+}
+
+fn allows_sidecar_access(headers: &HeaderMap) -> bool {
+    let mut hosts = headers.get_all(header::HOST).iter();
+    let Some(host) = hosts.next().and_then(|value| value.to_str().ok()) else {
+        return false;
+    };
+    if hosts.next().is_some() || !is_loopback_authority(host) {
+        return false;
+    }
+
+    let mut origins = headers.get_all(header::ORIGIN).iter();
+    let Some(origin) = origins.next() else {
+        // Rust/native callers do not send Origin.
+        return true;
+    };
+    origins.next().is_none()
+        && origin.to_str().is_ok_and(|origin| {
+            origin.split_once("://").is_some_and(|(scheme, authority)| {
+                (scheme.eq_ignore_ascii_case("http") || scheme.eq_ignore_ascii_case("https"))
+                    && is_loopback_authority(authority)
+            })
+        })
+}
+
+/// Accept exact loopback names only, with an optional valid numeric port.
+/// Avoid URL normalization: alternate IP spellings and userinfo are not local
+/// request authorities, even when a URL parser would normalize them to one.
+fn is_loopback_authority(authority: &str) -> bool {
+    ["localhost", "127.0.0.1", "[::1]"].iter().any(|host| {
+        let Some(prefix) = authority.get(..host.len()) else {
+            return false;
+        };
+        if !prefix.eq_ignore_ascii_case(host) {
+            return false;
+        }
+        let suffix = &authority[host.len()..];
+        suffix.is_empty()
+            || suffix.strip_prefix(':').is_some_and(|port| {
+                !port.is_empty()
+                    && port.len() <= 5
+                    && port.bytes().all(|byte| byte.is_ascii_digit())
+                    && port.parse::<u16>().is_ok()
+            })
+    })
 }
 
 // ── HTTP reverse proxy ──────────────────────────────────────────────
@@ -390,4 +450,134 @@ fn tungstenite_to_axum(
         T::Close(None) => A::Close(None),
         T::Frame(_) => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tower::ServiceExt;
+
+    fn guarded_probe(calls: Arc<AtomicUsize>) -> Router {
+        async fn handler(State(calls): State<Arc<AtomicUsize>>) -> StatusCode {
+            calls.fetch_add(1, Ordering::SeqCst);
+            StatusCode::NO_CONTENT
+        }
+
+        Router::new()
+            .route("/api/sidecar/{*rest}", any(handler))
+            .route(
+                "/ws/chat/{session_id}",
+                get(|State(calls): State<Arc<AtomicUsize>>| async move {
+                    calls.fetch_add(1, Ordering::SeqCst);
+                    StatusCode::NO_CONTENT
+                }),
+            )
+            .route_layer(middleware::from_fn(guard_sidecar_access))
+            .with_state(calls)
+    }
+
+    fn request(path: &str, host: Option<&str>, origin: Option<&str>) -> Request {
+        let mut builder = Request::builder().uri(path);
+        if let Some(host) = host {
+            builder = builder.header(header::HOST, host);
+        }
+        if let Some(origin) = origin {
+            builder = builder.header(header::ORIGIN, origin);
+        }
+        if path.starts_with("/ws/") {
+            builder = builder
+                .header(header::CONNECTION, "upgrade")
+                .header(header::UPGRADE, "websocket")
+                .header(header::SEC_WEBSOCKET_VERSION, "13")
+                .header(header::SEC_WEBSOCKET_KEY, "dGhlIHNhbXBsZSBub25jZQ==");
+        } else {
+            builder = builder.method(Method::POST);
+        }
+        builder.body(Body::empty()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn sidecar_access_rejects_http_and_websocket_before_handler() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let app = guarded_probe(calls.clone());
+        for path in ["/api/sidecar/sessions", "/ws/chat/session-1"] {
+            for (host, origin) in [
+                (None, None),
+                (Some("attacker.example:47892"), None),
+                (Some("localhost.attacker.example:47892"), None),
+                (Some("127.0.0.2:47892"), None),
+                (Some("localhost:65536"), None),
+                (Some("localhost:47892"), Some("https://attacker.example")),
+                (Some("localhost:47892"), Some("null")),
+                (
+                    Some("localhost:47892"),
+                    Some("http://localhost@attacker.example"),
+                ),
+                (
+                    Some("localhost:47892"),
+                    Some("http://localhost.attacker.example"),
+                ),
+                (Some("localhost:47892"), Some("http://localhost:5173/path")),
+                (Some("localhost:47892"), Some("http://localhost:5173?query")),
+                (
+                    Some("localhost:47892"),
+                    Some("http://localhost:5173#fragment"),
+                ),
+                (Some("localhost:47892"), Some("http://localhost:")),
+                (Some("localhost:47892"), Some("ws://localhost:5173")),
+            ] {
+                let response = app
+                    .clone()
+                    .oneshot(request(path, host, origin))
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    StatusCode::FORBIDDEN,
+                    "{path}: {host:?}, {origin:?}"
+                );
+            }
+
+            for duplicate in [header::HOST, header::ORIGIN] {
+                let mut req = request(path, Some("localhost:47892"), Some("http://localhost:5173"));
+                let value = req.headers()[&duplicate].clone();
+                req.headers_mut().append(duplicate, value);
+                let response = app.clone().oneshot(req).await.unwrap();
+                assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            }
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn sidecar_access_preserves_local_browser_and_native_calls() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let app = guarded_probe(calls.clone());
+        for path in ["/api/sidecar/sessions", "/ws/chat/session-1"] {
+            for (host, origin) in [
+                ("localhost:47892", Some("http://localhost:47892")),
+                ("127.0.0.1:47892", Some("http://localhost:5173")),
+                ("localhost:47892", Some("http://127.0.0.1:5173")),
+                ("[::1]:47892", Some("https://[::1]:5173")),
+                ("LOCALHOST:47892", Some("HTTP://LOCALHOST:5173")),
+                ("localhost", Some("https://localhost")),
+                ("localhost:47892", None),
+                ("127.0.0.1:47892", None),
+                ("[::1]:47892", None),
+            ] {
+                let response = app
+                    .clone()
+                    .oneshot(request(path, Some(host), origin))
+                    .await
+                    .unwrap();
+                assert_eq!(
+                    response.status(),
+                    StatusCode::NO_CONTENT,
+                    "{path}: {host}, {origin:?}"
+                );
+            }
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 18);
+    }
 }

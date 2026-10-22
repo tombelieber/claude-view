@@ -25,7 +25,7 @@ export default defineConfig({
       '/ws/chat': {
         target: 'ws://localhost:3001',
         ws: true,
-        rewriteWsOrigin: true,
+        // Preserve the browser Origin so the sidecar can reject cross-site connections.
       },
       '/ws/terminal': {
         target: 'ws://localhost:47892',

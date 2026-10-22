@@ -10,6 +10,7 @@ import { WebSocketServer } from 'ws'
 import { healthRouter } from './health.js'
 import { startMemoryMonitor } from './memory-monitor.js'
 import { startModelCacheRefresh, stopModelCacheRefresh } from './model-cache.js'
+import { isLocalRequest } from './request-access.js'
 import { createRoutes } from './routes.js'
 import { SessionRegistry } from './session-registry.js'
 import { runWorkflow } from './workflow-runner.js'
@@ -20,6 +21,13 @@ const SIDECAR_PORT = Number(process.env.SIDECAR_PORT ?? '3001')
 
 const registry = new SessionRegistry()
 const app = new Hono()
+
+app.use('*', async (c, next) => {
+  if (!isLocalRequest({ host: c.req.header('host'), origin: c.req.header('origin') })) {
+    return c.json({ error: 'Local requests only' }, 403)
+  }
+  await next()
+})
 
 app.route(
   '/health',
@@ -67,8 +75,8 @@ server.on('error', (err: NodeJS.ErrnoException) => {
 
 const memoryMonitor = startMemoryMonitor(() => registry.activeCount)
 
-server.listen(SIDECAR_PORT, () => {
-  console.log(`[sidecar] Listening on :${SIDECAR_PORT}`)
+server.listen(SIDECAR_PORT, '127.0.0.1', () => {
+  console.log(`[sidecar] Listening on 127.0.0.1:${SIDECAR_PORT}`)
   console.log(`[sidecar] PID: ${process.pid}`)
   // Populate supported models cache (fire-and-forget, refreshes hourly)
   startModelCacheRefresh()
@@ -77,6 +85,11 @@ server.listen(SIDECAR_PORT, () => {
 // WS upgrade — /ws/chat/:sessionId and /ws/terminal/:tmuxSessionId
 const wss = new WebSocketServer({ noServer: true })
 server.on('upgrade', (request, socket, head) => {
+  if (!isLocalRequest(request.headers)) {
+    socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n')
+    return
+  }
+
   // Chat WS — SDK interactive chat
   const chatMatch = request.url?.match(/\/ws\/chat\/([^/?]+)/)
   if (chatMatch?.[1]) {
