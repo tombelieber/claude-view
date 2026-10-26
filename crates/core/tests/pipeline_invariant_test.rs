@@ -74,6 +74,9 @@ fn legacy_tool_paths_remain_proven_without_appearing_in_current_sessions() {
     baseline.field_extraction_paths.as_mut().unwrap().extracted = vec![
         "message.content[].input.name".into(),
         "message.content[].input.todos".into(),
+        "message.content[].input.subject".into(),
+        "message.content[].input.activeForm".into(),
+        "message.content[].input.taskId".into(),
         "toolUseResult.totalDurationMs".into(),
         "toolUseResult.totalToolUseCount".into(),
     ];
@@ -124,6 +127,41 @@ fn legacy_agent_totals_fixture_reaches_existing_live_parser() {
 }
 
 #[test]
+fn legacy_task_fixture_preserves_create_and_update_fields() {
+    use claude_view_core::live_parser::{parse_single_line, TailFinders};
+    let finders = TailFinders::new();
+    let mut creates = Vec::new();
+    let mut updates = Vec::new();
+    for line in include_str!("fixtures/legacy_tool_inputs.jsonl").lines() {
+        let parsed = parse_single_line(line.as_bytes(), &finders);
+        creates.extend(parsed.task_creates);
+        updates.extend(parsed.task_updates);
+    }
+    assert_eq!(
+        creates.len(),
+        1,
+        "fixture must exercise a supported TaskCreate"
+    );
+    assert_eq!(creates[0].subject, "Synthetic release task");
+    assert_eq!(creates[0].active_form, "Verifying release fixtures");
+    assert_eq!(
+        updates.len(),
+        1,
+        "fixture must exercise a supported TaskUpdate"
+    );
+    assert_eq!(updates[0].task_id, "fixture-task");
+    assert_eq!(updates[0].status.as_deref(), Some("completed"));
+    assert_eq!(
+        updates[0].subject.as_deref(),
+        Some("Synthetic release task")
+    );
+    assert_eq!(
+        updates[0].active_form.as_deref(),
+        Some("Release fixtures verified")
+    );
+}
+
+#[test]
 fn reviewed_metadata_does_not_mask_unknown_type_or_field_drift() {
     use claude_view_core::evidence_audit::{load_baseline, run_audit_checks, AggregatedSignals};
     use claude_view_core::field_inventory::{extract_field_inventory, FieldInventory};
@@ -166,6 +204,53 @@ fn reviewed_metadata_does_not_mask_unknown_type_or_field_drift() {
         !run_audit_checks(&signals, &baseline).passed,
         "reviewed metadata must not allow unrelated unknown record types"
     );
+}
+
+#[test]
+fn request_replay_metadata_does_not_duplicate_conversation_or_hide_drift() {
+    use claude_view_core::block_accumulator::parse_session_as_blocks;
+    use claude_view_core::evidence_audit::{load_baseline, run_audit_checks, AggregatedSignals};
+    use claude_view_core::field_inventory::{extract_field_inventory, FieldInventory};
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let baseline = load_baseline(&root.join("scripts/integrity/evidence-baseline.json")).unwrap();
+    let conversation = [
+        r#"{"type":"assistant","requestRef":"fixture-request","apiErrorParams":{"rate_limit_info":{"status":"allowed"}},"message":{"content":[{"type":"text","text":"Original answer"}],"model":"claude-sonnet-4","usage":{"input_tokens":10,"output_tokens":5}}}"#,
+        r#"{"type":"user","sandboxed":true,"message":{"content":"Original question"}}"#,
+    ];
+    let replay = [
+        r#"{"type":"api-request-shape","shapeHash":"fixture-shape","shape":{"system":[{"type":"text","text":"Replay system prompt"}],"tools":[{"name":"fixture-tool","input_schema":{"type":"object","properties":{"private_fixture_key":{"type":"string"}}}}]}}"#,
+        r#"{"type":"api-request-blob","hash":"fixture-blob","message":{"content":[{"type":"text","text":"Duplicate answer"},{"type":"tool_addition","tool":{"definition":{"input_schema":{"type":"object"}}}}],"output_config":{"effort":"high"},"usage":{"input_tokens":10,"output_tokens":5}}}"#,
+        r#"{"type":"api-request","id":"fixture-request","querySource":"fixture","shapeHash":"fixture-shape","params":{"model":"claude-sonnet-4","safeguards":[{"classifier_context":{"private_fixture_key":"opaque"}}]},"keep":1,"tail":["fixture-blob"],"cacheControl":[{"path":["messages",0],"value":{"type":"ephemeral"}}],"requestDigest":"fixture-digest","base":"fixture-base"}"#,
+    ];
+    let mut inventory = FieldInventory::default();
+    let mut signals = AggregatedSignals::default();
+    for line in conversation.iter().chain(replay.iter()) {
+        inventory.merge(&extract_field_inventory(line.as_bytes()));
+        let value: serde_json::Value = serde_json::from_str(line).unwrap();
+        signals
+            .top_level_types
+            .insert(value["type"].as_str().unwrap().into());
+    }
+    let paths = baseline.field_extraction_paths.as_ref().unwrap();
+    assert!(check_field_coverage(&inventory, paths).passed);
+    assert!(run_audit_checks(&signals, &baseline).passed);
+    let expected = serde_json::to_value(parse_session_as_blocks(&conversation.join("\n"))).unwrap();
+    let combined = conversation
+        .into_iter()
+        .chain(replay)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        serde_json::to_value(parse_session_as_blocks(&combined)).unwrap(),
+        expected,
+        "API replay records must not duplicate messages, tool executions or usage"
+    );
+    inventory
+        .paths
+        .insert("unreviewed_request_metadata".into(), 1);
+    assert!(!check_field_coverage(&inventory, paths).passed);
+    signals.top_level_types.insert("api-request-unknown".into());
+    assert!(!run_audit_checks(&signals, &baseline).passed);
 }
 
 #[test]

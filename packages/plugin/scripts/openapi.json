@@ -6,7 +6,7 @@
     "license": {
       "name": "MIT"
     },
-    "version": "0.46.1"
+    "version": "0.46.2"
   },
   "paths": {
     "/api/active-sessions": {

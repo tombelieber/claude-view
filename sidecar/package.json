@@ -1,6 +1,6 @@
 {
   "name": "claude-view-sidecar",
-  "version": "0.46.1",
+  "version": "0.46.2",
   "private": true,
   "type": "module",
   "scripts": {

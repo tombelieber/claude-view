@@ -896,9 +896,23 @@ Live field coverage remains separate from phantom-field evidence, which also
 includes the shipped synthetic `legacy_tool_inputs.jsonl` regression fixture.
 That fixture is parsed through the real block pipeline and keeps optional legacy
 Agent/TodoWrite inputs supported even when a current local corpus omits them.
+TaskCreate/TaskUpdate records also prove `subject`, `activeForm`, and `taskId`
+through the real live parser when recent sessions omit the task lifecycle.
 Its matching Agent result also exercises the existing live parser's
 `toolUseResult.totalDurationMs` and `totalToolUseCount` extraction. These optional
 fields remain supported and are not removed from phantom-field validation.
+
+The 2026-10-26 review classifies `api-request-shape`, `api-request-blob`, and
+`api-request` as request-replay records under the existing wildcard skip.
+They store reusable system/tool schemas, content-addressed message copies, and
+request parameters/hash deltas; counting those copies as conversation actions
+or token usage would duplicate the original assistant/user records. Their opaque
+schema/classifier payloads and replay-only tool additions/removals are not rendered.
+The original records' `requestRef`, `sandboxed`, and rate-limit `apiErrorParams`
+are wire metadata; existing message, permission, error, and usage parsing stays
+unchanged. A regression compares the actual block pipeline with and without
+replay records and proves unrelated unknown fields/types still fail audit.
+See the [upstream transcript report](https://github.com/anthropics/claude-code/issues/103567).
 
 The 2026-10-22 audit classification also records the existing skip behavior for
 two content-less pointer types. `fork-context-ref` carries `agentId`,
