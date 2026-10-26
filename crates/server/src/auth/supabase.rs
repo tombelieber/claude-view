@@ -103,3 +103,46 @@ pub async fn validate_jwt_with_rotation(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn real_jwt_verifier_accepts_supported_signatures_and_rejects_invalid_tokens() {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../test/fixtures/jwt-verification-vectors.json"
+        )))
+        .unwrap();
+        for vector in fixture["vectors"].as_array().unwrap() {
+            let jwk = serde_json::from_value(vector["jwk"].clone()).unwrap();
+            let cache = JwksCache {
+                decoding_key: DecodingKey::from_jwk(&jwk).unwrap(),
+                algorithm: jwk_algorithm(&vector["jwk"]).unwrap(),
+                issuer: fixture["issuer"].as_str().unwrap().into(),
+                supabase_url: "https://example.invalid".into(),
+            };
+            let token = vector["token"].as_str().unwrap();
+            let user = validate_jwt(token, &cache).unwrap();
+            assert_eq!(user.user_id, "fixture-user", "{}", vector["algorithm"]);
+            let mut tampered = token.as_bytes().to_vec();
+            let signature_start = token.rfind('.').unwrap() + 1;
+            tampered[signature_start] = if tampered[signature_start] == b'A' {
+                b'B'
+            } else {
+                b'A'
+            };
+            assert!(validate_jwt(std::str::from_utf8(&tampered).unwrap(), &cache).is_err());
+            if cache.algorithm == Algorithm::ES256 {
+                for invalid in fixture["invalid_claims"].as_array().unwrap() {
+                    assert!(
+                        validate_jwt(invalid["token"].as_str().unwrap(), &cache).is_err(),
+                        "{} must be rejected",
+                        invalid["name"]
+                    );
+                }
+            }
+        }
+    }
+}

@@ -119,7 +119,7 @@ serde-saphyr = { version = "2", default-features = false, features = ["deseriali
 utoipa = { workspace = true }
 utoipa-axum = { workspace = true }
 utoipa-swagger-ui = { workspace = true, optional = true }
-jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
+jsonwebtoken = { version = "10.3.0", features = ["aws_lc_rs"] }
 tempfile = { workspace = true }
 workspace-hack = { version = "0.1", path = "../../workspace-hack" }
 
