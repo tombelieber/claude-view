@@ -341,12 +341,12 @@ impl Database {
     ///
     /// This is deliberately lightweight: a single-table SELECT with no JOINs.
     pub async fn get_sessions_for_git_sync(&self) -> DbResult<Vec<SessionSyncInfo>> {
-        let rows: Vec<(String, String, Option<i64>, Option<i64>)> = sqlx::query_as(
+        let rows: Vec<(String, String, Option<i64>, Option<i64>, i64, Vec<u8>)> = sqlx::query_as(
             r#"
-            SELECT session_id, project_path, first_message_at, last_message_at
+            SELECT session_id, project_path, first_message_at, last_message_at, indexed_at, source_content_hash
             FROM session_stats
             WHERE project_path != '' AND last_message_at IS NOT NULL
-            ORDER BY last_message_at DESC
+            ORDER BY last_message_at DESC, session_id
             "#,
         )
         .fetch_all(self.pool())
@@ -355,7 +355,16 @@ impl Database {
         Ok(rows
             .into_iter()
             .map(
-                |(session_id, project_path, first_message_at, last_message_at)| SessionSyncInfo {
+                |(
+                    session_id,
+                    project_path,
+                    first_message_at,
+                    last_message_at,
+                    indexed_at,
+                    source_content_hash,
+                )| SessionSyncInfo {
+                    indexed_at,
+                    source_content_hash,
                     session_id,
                     project_path,
                     first_message_at,

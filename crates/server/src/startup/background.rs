@@ -11,11 +11,15 @@ use claude_view_db::Database;
 use crate::record_sync;
 
 /// Run git sync with structured logging. Used by both initial and periodic sync.
-pub async fn run_git_sync_logged(db: &Database, label: &str) {
+pub async fn run_git_sync_logged(
+    db: &Database,
+    cache: &mut claude_view_db::git_correlation::GitSyncCache,
+    label: &str,
+) {
     let start = Instant::now();
     tracing::info!(sync_type = label, "Starting git sync");
 
-    match claude_view_db::git_correlation::run_git_sync(db, |_| {}).await {
+    match claude_view_db::git_correlation::run_git_sync_incremental(db, cache, |_| {}).await {
         Ok(r) => {
             let duration = start.elapsed();
             if r.repos_scanned > 0 || r.links_created > 0 {

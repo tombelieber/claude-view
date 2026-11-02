@@ -8,7 +8,7 @@ use crate::git_correlation::{CommitSkillInvocation, GitCommit, SessionCorrelatio
 use crate::Database;
 use tempfile::TempDir;
 
-async fn seed_git_session(
+pub(super) async fn seed_git_session(
     db: &Database,
     id: &str,
     project_path: &str,

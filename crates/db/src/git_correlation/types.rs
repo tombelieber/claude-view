@@ -97,9 +97,12 @@ pub struct CorrelationMatch {
 pub use crate::indexer_parallel::CommitSkillInvocation;
 
 /// Lightweight session data for git correlation.
-/// Contains only the 4 fields needed -- no JOINs, no JSON arrays, no token sums.
-#[derive(Debug, Clone)]
+/// Includes correlation inputs and index revision; no JOINs or aggregate sums.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionSyncInfo {
+    /// Index revision: reindexing can reset derived fields without changing time windows.
+    pub indexed_at: i64,
+    pub source_content_hash: Vec<u8>,
     pub session_id: String,
     pub project_path: String,
     pub first_message_at: Option<i64>,

@@ -7,8 +7,10 @@
 //! - `Tier2Matcher`: Match commits during session time range
 //! - CRUD operations for commits and session_commits tables
 
+mod command;
 mod db_ops;
 mod diff_stats;
+mod incremental;
 mod matching;
 mod scanning;
 mod sync;
@@ -35,4 +37,5 @@ pub use diff_stats::{extract_commit_diff_stats, get_batch_diff_stats, get_commit
 pub use matching::{tier1_match, tier2_match};
 
 // Sync pipeline
-pub use sync::{correlate_session, run_git_sync};
+pub use incremental::GitSyncCache;
+pub use sync::{correlate_session, run_git_sync, run_git_sync_incremental};

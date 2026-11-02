@@ -1,10 +1,10 @@
 // crates/db/src/git_correlation/diff_stats.rs
 //! Git diff stats extraction and parsing.
 
+use super::command::git_command;
 use super::types::{DiffStats, GIT_TIMEOUT_SECS};
 use std::path::Path;
 use std::time::Duration;
-use tokio::process::Command;
 
 impl DiffStats {
     /// Parse numstat output and aggregate stats.
@@ -64,10 +64,13 @@ pub async fn get_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> DiffS
     // Output format: "N files changed, N insertions(+), N deletions(-)"
     let output = tokio::time::timeout(
         Duration::from_secs(GIT_TIMEOUT_SECS),
-        Command::new("git")
-            .args(["show", "--stat", "--format=", commit_hash])
-            .current_dir(repo_path)
-            .output(),
+        match git_command() {
+            Ok(command) => command,
+            Err(_) => return DiffStats::default(),
+        }
+        .args(["show", "--stat", "--format=", commit_hash])
+        .current_dir(repo_path)
+        .output(),
     )
     .await;
 
@@ -220,7 +223,8 @@ fn parse_diff_stats_from_output(output: &str) -> DiffStats {
 pub async fn extract_commit_diff_stats(repo_path: &Path, commit_hash: &str) -> Option<DiffStats> {
     let output = tokio::time::timeout(
         Duration::from_secs(5),
-        Command::new("git")
+        git_command()
+            .ok()?
             .args([
                 "show",
                 "--numstat",

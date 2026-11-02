@@ -1,12 +1,12 @@
 // crates/db/src/git_correlation/scanning.rs
 //! Git repository scanning: spawn `git log`, parse output, handle edge cases.
 
+use super::command::git_command;
 use super::types::{GitCommit, ScanResult, GIT_TIMEOUT_SECS};
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::process::Command;
 
 /// Scan a git repository for recent commits.
 ///
@@ -62,7 +62,15 @@ pub async fn scan_repo_commits(
 
     // Build git log command
     // Format: hash|author|timestamp|message
-    let mut cmd = Command::new("git");
+    let mut cmd = match git_command() {
+        Ok(command) => command,
+        Err(error) => {
+            return ScanResult {
+                error: Some(error.to_string()),
+                ..Default::default()
+            }
+        }
+    };
     cmd.arg("log")
         .arg("--format=%H|%an|%at|%s")
         .arg(format!("-n{}", limit))
@@ -196,7 +204,8 @@ fn parse_git_log_line(line: &str, repo_path: &Path) -> Option<GitCommit> {
 async fn check_is_git_repo(path: &Path) -> Result<bool, String> {
     let output = tokio::time::timeout(
         Duration::from_secs(5),
-        Command::new("git")
+        git_command()
+            .map_err(|e| e.to_string())?
             .arg("rev-parse")
             .arg("--git-dir")
             .current_dir(path)
@@ -213,7 +222,8 @@ async fn check_is_git_repo(path: &Path) -> Result<bool, String> {
 async fn get_current_branch(repo_path: &Path) -> Result<String, String> {
     let output = tokio::time::timeout(
         Duration::from_secs(5),
-        Command::new("git")
+        git_command()
+            .map_err(|e| e.to_string())?
             .arg("rev-parse")
             .arg("--abbrev-ref")
             .arg("HEAD")

@@ -252,8 +252,10 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
                     tracing::warn!("Failed to persist registry hash: {e}");
                 }
 
+                let mut git_sync_cache = claude_view_db::git_correlation::GitSyncCache::default();
+
                 // 5. Post-index tasks
-                run_git_sync_logged(&idx_db, "initial").await;
+                run_git_sync_logged(&idx_db, &mut git_sync_cache, "initial").await;
                 run_snapshot_generation(&idx_db, "initial").await;
 
                 // 6. Prompt History Indexing
@@ -296,7 +298,7 @@ pub fn spawn_indexer_task(deps: IndexerDeps) {
                         Err(e) => tracing::warn!(error = %e, "Periodic re-scan failed (non-fatal)"),
                     }
 
-                    run_git_sync_logged(&idx_db, "periodic").await;
+                    run_git_sync_logged(&idx_db, &mut git_sync_cache, "periodic").await;
                     run_snapshot_generation(&idx_db, "periodic").await;
                 }
             }

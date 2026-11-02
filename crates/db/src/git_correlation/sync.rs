@@ -2,6 +2,7 @@
 //! Full correlation pipeline and git sync orchestrator.
 
 use super::diff_stats::extract_commit_diff_stats;
+use super::incremental::{discover, fingerprint, CachedInputs, GitSyncCache};
 use super::matching::{tier1_match, tier2_match};
 use super::scanning::scan_repo_commits;
 use super::types::{DiffStats, GitCommit, GitSyncProgress, GitSyncResult, SessionCorrelationInfo};
@@ -99,11 +100,25 @@ pub async fn run_git_sync<F>(db: &Database, on_progress: F) -> DbResult<GitSyncR
 where
     F: Fn(GitSyncProgress) + Send + 'static,
 {
+    run_git_sync_incremental(db, &mut GitSyncCache::default(), on_progress).await
+}
+
+/// Periodic variant. The caller owns the cache, scoped to one database/indexer.
+/// Explicit user syncs keep using `run_git_sync` for an unconditional refresh.
+pub async fn run_git_sync_incremental<F>(
+    db: &Database,
+    cache: &mut GitSyncCache,
+    on_progress: F,
+) -> DbResult<GitSyncResult>
+where
+    F: Fn(GitSyncProgress) + Send + 'static,
+{
     let mut result = GitSyncResult::default();
 
     // Step 1: Fetch all eligible sessions
     let sessions = db.get_sessions_for_git_sync().await?;
     if sessions.is_empty() {
+        cache.entries.clear();
         tracing::debug!("Git sync: no eligible sessions found");
         db.update_git_sync_metadata_on_success(0, 0).await?;
         return Ok(result);
@@ -111,58 +126,76 @@ where
 
     tracing::info!("Git sync: {} eligible sessions", sessions.len());
 
-    // Step 2: Group sessions by project_path to deduplicate repo scans
-    let mut sessions_by_repo: std::collections::HashMap<
-        String,
-        Vec<&super::types::SessionSyncInfo>,
-    > = std::collections::HashMap::new();
+    // Discover metadata without spawning git for every non-repo/project alias.
+    let mut groups = std::collections::HashMap::new();
+    let mut locations = std::collections::HashMap::new();
     for session in &sessions {
-        sessions_by_repo
+        let location = locations
             .entry(session.project_path.clone())
-            .or_default()
-            .push(session);
+            .or_insert_with(|| discover(std::path::Path::new(&session.project_path)));
+        if let Some(repo) = location {
+            groups
+                .entry(repo.git_dir.clone())
+                .or_insert_with(Vec::new)
+                .push(session.clone());
+        }
     }
-
-    let total_repos = sessions_by_repo.len();
-    tracing::info!("Git sync: {} unique project paths to scan", total_repos);
-
+    cache.entries.retain(|key, _| groups.contains_key(key));
+    let total_repos = groups.len();
     on_progress(GitSyncProgress::ScanningStarted { total_repos });
+    let mut commits_by_repo = std::collections::HashMap::new();
+    let mut successful_inputs = Vec::new();
 
-    // Step 3: Scan each unique repo and upsert commits
-    let mut commits_by_repo: std::collections::HashMap<String, Vec<GitCommit>> =
-        std::collections::HashMap::new();
-
-    for project_path in sessions_by_repo.keys() {
-        let path = std::path::Path::new(project_path.as_str());
-        let scan = scan_repo_commits(path, None, None).await;
-
+    for (git_dir, inputs) in groups {
+        let repo = locations[&inputs[0].project_path]
+            .as_ref()
+            .expect("discovered repo");
+        let before = fingerprint(repo);
+        if let (Some(state), Some(previous)) = (&before, cache.entries.get(&git_dir)) {
+            if previous.unchanged(state, &inputs) {
+                continue;
+            }
+        }
+        // Remove stale success before any fallible work: errors must retry.
+        cache.entries.remove(&git_dir);
+        let scan = scan_repo_commits(&repo.root, None, None).await;
+        if let Some(err) = &scan.error {
+            if !scan.not_a_repo {
+                result
+                    .errors
+                    .push(format!("{}: {}", repo.root.display(), err));
+            }
+            continue;
+        }
         if scan.not_a_repo {
             continue;
         }
-
-        if let Some(err) = &scan.error {
-            tracing::warn!("Git sync: error scanning {}: {}", project_path, err);
-            result.errors.push(format!("{}: {}", project_path, err));
-            continue;
-        }
-
-        if scan.commits.is_empty() {
-            continue;
-        }
-
-        let commits_in_repo = scan.commits.len() as u32;
         result.repos_scanned += 1;
-        result.commits_found += commits_in_repo;
-
+        result.commits_found += scan.commits.len() as u32;
         on_progress(GitSyncProgress::RepoScanned {
             repos_done: result.repos_scanned as usize,
             total_repos,
-            commits_in_repo,
+            commits_in_repo: scan.commits.len() as u32,
         });
-
-        db.batch_upsert_commits(&scan.commits).await?;
-
-        commits_by_repo.insert(project_path.clone(), scan.commits);
+        // Preserve exact-path matching for sessions in subdirectories/aliases.
+        for session in &inputs {
+            if commits_by_repo.contains_key(&session.project_path) {
+                continue;
+            }
+            let mut commits = scan.commits.clone();
+            for commit in &mut commits {
+                commit.repo_path.clone_from(&session.project_path);
+            }
+            db.batch_upsert_commits(&commits).await?;
+            commits_by_repo.insert(session.project_path.clone(), commits);
+        }
+        // Only publish cache state after all DB work succeeds, and only if the
+        // repo stayed stable throughout the scan (a concurrent commit retries).
+        if let Some(state) = before {
+            if fingerprint(repo).as_ref() == Some(&state) {
+                successful_inputs.push((git_dir, state, inputs));
+            }
+        }
     }
 
     tracing::info!(
@@ -182,6 +215,7 @@ where
     });
 
     let mut sessions_done: usize = 0;
+    let mut failed_projects = std::collections::HashSet::new();
 
     for session in &sessions {
         let commits = match commits_by_repo.get(&session.project_path) {
@@ -209,6 +243,7 @@ where
                 });
             }
             Err(e) => {
+                failed_projects.insert(session.project_path.as_str());
                 tracing::warn!(
                     "Git sync: correlation failed for session {}: {}",
                     session.session_id,
@@ -234,6 +269,22 @@ where
     )
     .await?;
 
+    for (git_dir, state, sessions) in successful_inputs {
+        if !sessions
+            .iter()
+            .any(|session| failed_projects.contains(session.project_path.as_str()))
+        {
+            cache.entries.insert(
+                git_dir,
+                CachedInputs {
+                    state,
+                    sessions,
+                    checked_at: std::time::Instant::now(),
+                },
+            );
+        }
+    }
+
     tracing::info!(
         "Git sync complete: {} repos, {} commits, {} links, {} errors",
         result.repos_scanned,
@@ -248,3 +299,7 @@ where
 #[cfg(test)]
 #[path = "sync_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "incremental_tests.rs"]
+mod incremental_tests;
